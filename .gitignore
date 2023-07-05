@@ -4,7 +4,7 @@
 /flagged
 /images
 /results
-/venv
+/weights
 /app.log
 /__pycache__
 /inswapper_128.onnx
