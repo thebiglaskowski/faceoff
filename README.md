@@ -10,7 +10,7 @@ Read more at [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://t
 
 Faceoff on the left, DeepFaceLab on the right
 
-<video src='https://youtu.be/J51ipLvmScE' width=853/>
+https://github.com/thebiglaskowski/faceoff/assets/5170343/9f30932c-bfed-4dbe-9131-eaee92a854de
 
 ## Installation
 
@@ -84,11 +84,11 @@ python faceoff_video.py
 
 Basic on the left, Enhanced on the right
 
-<video src='https://youtu.be/WLWk4fy5s9w' width=853/>
+https://github.com/thebiglaskowski/faceoff/assets/5170343/cd2eec67-2233-4813-ae16-5d3554c61884
 
 Sarah Connor?
 
-<video src='https://youtu.be/H7KS8ZoulGw' width=853/>
+[![Watch the video](https://img.youtube.com/vi/H7KS8ZoulGw/hqdefault.jpg)](https://www.youtube.com/embed/H7KS8ZoulGw)
 
 ## To Do
 
