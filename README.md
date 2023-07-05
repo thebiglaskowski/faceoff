@@ -1,4 +1,4 @@
-# Faceoff 
+# Faceoff
 
 **Img2Image - Img2GIF - Img2MP4**
 
@@ -10,7 +10,7 @@ Read more at [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://t
 
 Faceoff on the left, DeepFaceLab on the right
 
-https://github.com/thebiglaskowski/faceoff/assets/5170343/9f30932c-bfed-4dbe-9131-eaee92a854de
+<https://github.com/thebiglaskowski/faceoff/assets/5170343/9f30932c-bfed-4dbe-9131-eaee92a854de>
 
 ## Installation
 
@@ -84,7 +84,7 @@ python faceoff_video.py
 
 Basic on the left, Enhanced on the right
 
-https://github.com/thebiglaskowski/faceoff/assets/5170343/cd2eec67-2233-4813-ae16-5d3554c61884
+<https://github.com/thebiglaskowski/faceoff/assets/5170343/cd2eec67-2233-4813-ae16-5d3554c61884>
 
 Sarah Connor?
 
@@ -94,6 +94,7 @@ Sarah Connor?
 
 - [ ] Add Enhanced version of Img2GIF
 - [ ] Add Enhanced version of Img2MP4
+- [ ] Develop controls to manage multiple faces (source/destination)
 
 ## Special Thanks To
 
