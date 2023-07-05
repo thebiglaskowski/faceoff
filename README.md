@@ -10,7 +10,7 @@ Read more at [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://t
 
 Faceoff on the left, DeepFaceLab on the right
 
-<iframe width="853" height="505" src="https://www.youtube.com/embed/J51ipLvmScE" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+<video src='https://youtu.be/J51ipLvmScE' width=853/>
 
 ## Installation
 
@@ -84,16 +84,16 @@ python faceoff_video.py
 
 Basic on the left, Enhanced on the right
 
-<iframe width="853" height="505" src="https://www.youtube.com/embed/WLWk4fy5s9w" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+<video src='https://youtu.be/WLWk4fy5s9w' width=853/>
 
 Sarah Connor?
 
-<iframe width="853" height="505" src="https://www.youtube.com/embed/H7KS8ZoulGw" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+<video src='https://youtu.be/H7KS8ZoulGw' width=853/>
 
 ## To Do
 
 - [ ] Add Enhanced version of Img2GIF
-- [x] Add Enhanced version of Img2MP4
+- [ ] Add Enhanced version of Img2MP4
 
 ## Special Thanks
 
