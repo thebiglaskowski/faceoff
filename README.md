@@ -20,7 +20,9 @@ https://github.com/thebiglaskowski/faceoff/assets/5170343/9f30932c-bfed-4dbe-913
 
 [Download and install FFmpeg](https://ffmpeg.org/download.html)
 
-1. Requirements
+2. [CUDA >= 10.1](https://developer.nvidia.com/cuda-10.1-download-archive-base)
+
+3. Requirements
 
 ```powershell
 git clone https://github.com/thebiglaskowski/faceoff.git
@@ -36,7 +38,7 @@ pip install torch==2.0.0+cu118 -f https://download.pytorch.org/whl/torch_stable.
 pip install -r requirements.txt
 ```
 
-3. Download the [inswapper_128.onnx model](https://huggingface.co/thebiglaskowski/inswapper_128.onnx/tree/main) from Hugging Face and place it in the root directory of this project.
+4. Download the [inswapper_128.onnx model](https://huggingface.co/thebiglaskowski/inswapper_128.onnx/tree/main) from Hugging Face and place it in the root directory of this project.
 
 ## Usage
 
