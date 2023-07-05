@@ -91,7 +91,7 @@ Sarah Connor?
 - [ ] Add Enhanced version of Img2GIF
 - [ ] Add Enhanced version of Img2MP4
 
-## Special Thanks
+## Special Thanks To
 
 - [FFMpeg](https://github.com/FFmpeg/FFmpeg)
 - [InsightFace](https://github.com/deepinsight/insightface)
