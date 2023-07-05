@@ -18,11 +18,7 @@ https://github.com/thebiglaskowski/faceoff/assets/5170343/9f30932c-bfed-4dbe-913
 
 1. FFmpeg
 
-From a PowerShell Terminal:
-
-```powershell
-winget install Gyan.FFmpeg
-```
+[Download and install FFmpeg](https://ffmpeg.org/download.html)
 
 1. Requirements
 
@@ -97,10 +93,10 @@ Sarah Connor?
 
 ## Special Thanks
 
-- FFMpeg
-- InsightFace
-- Real-ESRGAN
-- CodeFormer
-- Open-AI GPT
-- PyTorch
-- Torchvision
+- [FFMpeg](https://github.com/FFmpeg/FFmpeg)
+- [InsightFace](https://github.com/deepinsight/insightface)
+- [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)
+- [CodeFormer](https://github.com/sczhou/CodeFormer)
+- [Open-AI GPT](https://github.com/openai)
+- [PyTorch](https://github.com/pytorch/pytorch)
+- [Torchvision](https://github.com/pytorch/pytorch)
