@@ -20,9 +20,11 @@ https://github.com/thebiglaskowski/faceoff/assets/5170343/9f30932c-bfed-4dbe-913
 
 [Download and install FFmpeg](https://ffmpeg.org/download.html)
 
-2. [CUDA >= 10.1](https://developer.nvidia.com/cuda-10.1-download-archive-base)
+2. CUDA >= 10.1
 
-3. Requirements
+[Download and install CUDA](https://developer.nvidia.com/cuda-10.1-download-archive-base)
+
+1. Requirements
 
 ```powershell
 git clone https://github.com/thebiglaskowski/faceoff.git
