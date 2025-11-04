@@ -1,19 +1,50 @@
-# custom files
-/Real-ESRGAN\.git
-/Real-ESRGAN\results
-/flagged
-/results
-/weights
-/app.log
-/__pycache__
-/inswapper_128.onnx
+# --- Python build artifacts ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.h5
+*.log
 
-# temp files directories
-cache/
-log/
-*.swp
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Gradio temp files ---
+.gradio/
+
+# --- Application runtime directories ---
+inputs/
+outputs/
+temp/
+
+# --- Edit history logs ---
+app.log
+
+# --- Config/environment for local machine only ---
+*.env
+
+# --- Model weights (large files) ---
+# (Commit ONLY if under 100MB or tracked via git-lfs)
+models/**/*.pth
+models/**/*.pt
+models/**/*.onnx
+
+# But keep your **main ONNX swapper** (if under 100MB) by explicitly negating
+!inswapper_128.onnx
+
+# --- External git repos inside project (prevent nested repos issues) ---
+external/**/.git
+
+# --- OS / Editor junk ---
 .DS_Store
+Thumbs.db
+*.swp
 
-# editor configs
-.vscode
-.idea
+# --- Node / frontend (if present later) ---
+node_modules/
+dist/
+build/

@@ -1,0 +1,45 @@
+name: faceoff
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - ffmpeg
+  - dlib
+  - numpy>=1.26
+  - scikit-image==0.25.0
+  - imageio>=2.33.0
+  - pillow
+  - matplotlib
+  - pyyaml
+  - requests
+  - tqdm
+  - pandas
+  - scipy
+  - cloudpickle
+  - libzlib
+  - libffi
+  - liblzma
+  - tk
+  - pip
+  - pip:
+      - gradio>=5.23.3
+      - facexlib==0.3.0
+      - gfpgan==1.3.8
+      - opencv-python-headless>=4.9
+      - ffmpeg-python
+      - gdown
+      - basicsr==1.4.2
+      - lpips
+      - uvicorn
+      - fastapi
+      - insightface>=0.7.3
+      - onnxruntime-gpu>=1.17
+      - moviepy>=1.0.3
+      - python-magic-bin==0.4.14
+      - imageio-ffmpeg>=0.4.7
+      - decorator>=4.4.2
+      - torch==2.2.1+cu121
+      - torchvision==0.17.1+cu121
+      - realesrgan
+      - --extra-index-url https://download.pytorch.org/whl/cu121
