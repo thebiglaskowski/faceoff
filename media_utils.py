@@ -30,7 +30,8 @@ class FileProcessingError(Exception):
 class MediaProcessor:
     """Handles media processing with CUDA acceleration and enhanced error handling"""
 
-    def __init__(self) -> None:
+    def __init__(self, device_id=0) -> None:
+        self.device_id = device_id
         self._validate_environment()
         self._initialize_models()
 
@@ -48,16 +49,33 @@ class MediaProcessor:
     def _initialize_models(self) -> None:
         """Initialize models with CUDA context management"""
         try:
+            # Configure CUDA provider with specific device
+            cuda_provider_options = {
+                'device_id': self.device_id,
+                'arena_extend_strategy': 'kNextPowerOfTwo',
+                'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB
+                'cudnn_conv_algo_search': 'EXHAUSTIVE',
+                'do_copy_in_default_stream': True,
+            }
+            
+            providers = [
+                ('CUDAExecutionProvider', cuda_provider_options),
+                'CPUExecutionProvider'
+            ]
+            
             self.face_app = insightface.app.FaceAnalysis(
                 name=config.get("face_analysis_name"),
                 root=".",
-                providers=[config.get("cuda_provider")],
+                providers=providers,
             )
             self.face_app.prepare(
-                ctx_id=0, det_size=tuple(config.get("face_analysis_det_size"))
+                ctx_id=self.device_id, det_size=tuple(config.get("face_analysis_det_size"))
             )
             self.swapper = insightface.model_zoo.get_model(
-                config.get("inswapper_model_path"), download=False, download_zip=False
+                config.get("inswapper_model_path"), 
+                download=False, 
+                download_zip=False,
+                providers=providers
             )
         except Exception as e:
             logging.error("Model initialization failed: %s", e)

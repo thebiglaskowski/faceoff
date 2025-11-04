@@ -9,11 +9,162 @@ import torch
 import cv2
 from concurrent.futures import ThreadPoolExecutor
 import subprocess
+import magic
 
 logger = logging.getLogger("FaceOff")
 
+def filter_faces_by_confidence(faces, threshold=0.5):
+    """Filter faces by detection confidence threshold."""
+    if not faces:
+        return faces
+    filtered = [f for f in faces if (f.det_score if hasattr(f, 'det_score') else 1.0) >= threshold]
+    if len(filtered) < len(faces):
+        logger.info("Filtered faces: %d/%d meet confidence threshold %.0f%%", len(filtered), len(faces), threshold * 100)
+    return filtered
+
+def _apply_realesrgan_enhancement_multi_gpu(input_paths, output_dir, media_type, device_ids, fps=None, audio=None, frame_durations=None, tile_size=256, outscale=4):
+    """
+    Apply Real-ESRGAN enhancement using multiple GPUs for parallel processing.
+    
+    Args:
+        input_paths: List of frame paths to enhance
+        output_dir: Output directory for enhanced results
+        media_type: "video" or "gif"
+        device_ids: List of GPU device IDs to use
+        fps: Frames per second (for video reconstruction)
+        audio: Audio track to add back (for video)
+        frame_durations: List of durations for each frame (for GIF)
+        tile_size: Tile size for processing
+        outscale: Upscaling factor
+    
+    Returns:
+        List of enhanced frames (as PIL Images for GIF or numpy arrays for video)
+    """
+    if len(device_ids) <= 1:
+        # Fall back to single GPU enhancement
+        return _apply_realesrgan_enhancement(
+            input_paths if isinstance(input_paths, (str, Path)) else input_paths[0].parent,
+            output_dir, media_type, fps=fps, audio=audio, 
+            frame_durations=frame_durations, tile_size=tile_size, 
+            outscale=outscale, gpu_id=device_ids[0] if device_ids else 0
+        )
+    
+    logger.info("🚀 Multi-GPU Enhancement: Distributing %d frames across %d GPUs", len(input_paths), len(device_ids))
+    
+    # Split frames into chunks for each GPU
+    chunks = [[] for _ in device_ids]
+    for idx, frame_path in enumerate(input_paths):
+        gpu_idx = idx % len(device_ids)
+        chunks[gpu_idx].append(frame_path)
+    
+    # Create temporary directories for each GPU's work
+    temp_dirs = []
+    enhanced_dirs = []
+    for gpu_idx in range(len(device_ids)):
+        temp_dir = output_dir / f"temp_{media_type}_gpu{gpu_idx}_frames"
+        enhanced_dir = output_dir / f"temp_{media_type}_gpu{gpu_idx}_enhanced"
+        temp_dir.mkdir(exist_ok=True, parents=True)
+        
+        # Remove enhanced directory if it exists
+        if enhanced_dir.exists():
+            shutil.rmtree(enhanced_dir)
+        
+        temp_dirs.append(temp_dir)
+        enhanced_dirs.append(enhanced_dir)
+    
+    # Copy frames to their respective GPU directories with sequential numbering
+    for gpu_idx, chunk in enumerate(chunks):
+        for seq_idx, frame_path in enumerate(chunk):
+            dest_path = temp_dirs[gpu_idx] / f"frame_{seq_idx:06d}.png"
+            shutil.copy(frame_path, dest_path)
+    
+    logger.info("Split frames: %s", [len(chunk) for chunk in chunks])
+    
+    # Run Real-ESRGAN on each GPU in parallel
+    def enhance_on_gpu(args):
+        gpu_idx, gpu_id, temp_dir, enhanced_dir = args
+        
+        command = [
+            'python',
+            'G:/My Drive/scripts/faceoff/external/Real-ESRGAN/inference_realesrgan.py',
+            '-n', 'RealESRGAN_x4plus',
+            '-i', str(temp_dir),
+            '-o', str(enhanced_dir),
+            '--outscale', str(outscale),
+            '--tile', str(tile_size),
+            '--gpu-id', str(gpu_id),
+            '--face_enhance'
+        ]
+        
+        logger.info("GPU %d: Enhancing %d frames...", gpu_id, len(chunks[gpu_idx]))
+        
+        try:
+            subprocess.run(command, check=True, capture_output=True)
+            logger.info("✅ GPU %d: Enhancement complete", gpu_id)
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.error("GPU %d: Enhancement failed: %s", gpu_id, e)
+            return False
+    
+    # Execute enhancement on all GPUs in parallel
+    enhancement_args = [
+        (gpu_idx, device_ids[gpu_idx], temp_dirs[gpu_idx], enhanced_dirs[gpu_idx])
+        for gpu_idx in range(len(device_ids))
+    ]
+    
+    try:
+        with ThreadPoolExecutor(max_workers=len(device_ids)) as executor:
+            results = list(executor.map(enhance_on_gpu, enhancement_args))
+        
+        if not all(results):
+            logger.error("Some GPU enhancement tasks failed")
+            return None
+    except Exception as e:
+        logger.error("Multi-GPU enhancement failed: %s", e)
+        return None
+    
+    # Collect enhanced frames in original order
+    logger.info("Collecting enhanced frames from all GPUs...")
+    enhanced_frames = [None] * len(input_paths)
+    
+    for idx, frame_path in enumerate(input_paths):
+        gpu_idx = idx % len(device_ids)
+        seq_idx = chunks[gpu_idx].index(frame_path)
+        
+        enhanced_frame_path = enhanced_dirs[gpu_idx] / f"frame_{seq_idx:06d}_out.png"
+        
+        if enhanced_frame_path.exists():
+            if media_type == "gif":
+                enhanced_frames[idx] = Image.open(enhanced_frame_path).copy()
+            else:  # video
+                enhanced_frames[idx] = np.array(Image.open(enhanced_frame_path))
+        else:
+            logger.error("Enhanced frame not found: %s", enhanced_frame_path)
+            return None
+    
+    # Clean up temporary directories
+    for temp_dir in temp_dirs + enhanced_dirs:
+        try:
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+        except Exception as e:
+            logger.warning("Failed to clean up %s: %s", temp_dir, e)
+    
+    logger.info("✅ Multi-GPU enhancement complete: %d frames enhanced", len(enhanced_frames))
+    
+    # Return appropriate format based on media type
+    if media_type == "video":
+        # Reconstruct video with audio
+        enhanced_clip = ImageSequenceClip(enhanced_frames, fps=fps)
+        if audio:
+            enhanced_clip = enhanced_clip.set_audio(audio)
+        return enhanced_frames, enhanced_clip
+    else:  # gif
+        return enhanced_frames
+
+
 def _apply_realesrgan_enhancement(input_path, output_dir, media_type="image", frame_pattern=None, 
-                                   fps=None, audio=None, frame_durations=None, tile_size=256, outscale=4):
+                                   fps=None, audio=None, frame_durations=None, tile_size=256, outscale=4, gpu_id=0):
     """
     Apply Real-ESRGAN enhancement to images, videos, or GIF frames.
     
@@ -27,11 +178,12 @@ def _apply_realesrgan_enhancement(input_path, output_dir, media_type="image", fr
         frame_durations: List of durations for each frame (for GIF)
         tile_size: Tile size for processing (256 for 8GB GPU, 512 for faster/more VRAM)
         outscale: Upscaling factor (2 or 4)
+        gpu_id: GPU device ID to use for Real-ESRGAN processing
     
     Returns:
         Path to enhanced output file (for image/video/gif) or None if enhancement failed
     """
-    logger.info("Enhancement enabled. Applying Real-ESRGAN to %s.", media_type)
+    logger.info("Enhancement enabled. Applying Real-ESRGAN on GPU %d to %s.", gpu_id, media_type)
     
     # Free up GPU memory before running Real-ESRGAN
     import gc
@@ -50,8 +202,11 @@ def _apply_realesrgan_enhancement(input_path, output_dir, media_type="image", fr
             '-o', str(output_dir / f"temp_{media_type}_enhanced" if media_type != "image" else output_dir),
             '--outscale', str(outscale),
             '--tile', str(tile_size),
+            '--gpu-id', str(gpu_id),
             '--face_enhance'
         ]
+        
+        logger.info("Running Real-ESRGAN on GPU %d: %s", gpu_id, ' '.join(command))
 
         try:
             # Run the command and wait for it to complete
@@ -159,7 +314,12 @@ def _apply_realesrgan_enhancement(input_path, output_dir, media_type="image", fr
         logger.error("Enhancement initialization failed: %s", e)
         return None
 
-def _process_image(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4):
+def _process_image(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4, face_confidence=0.5, device_ids=None):
+    # For single images, we just use the first device (multi-GPU doesn't help here)
+    if not device_ids:
+        device_ids = [0]
+    gpu_id = device_ids[0]
+    
     dest_image = Image.open(dest_path).convert("RGB")
     logger.info("inswapper-shape: %s", processor.swapper.input_shape)
 
@@ -171,10 +331,14 @@ def _process_image(processor, source_image, dest_path, output_dir, enhance, tile
 
     src_faces = processor.get_faces(source_array)
     dst_faces = processor.get_faces(dest_array)
+    
+    # Apply confidence filtering
+    src_faces = filter_faces_by_confidence(src_faces, face_confidence)
+    dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
 
     # Log detected faces
-    logger.info("Source faces detected: %s", len(src_faces))
-    logger.info("Destination faces detected: %s", len(dst_faces))
+    logger.info("Source faces detected (after filtering): %s", len(src_faces))
+    logger.info("Destination faces detected (after filtering): %s", len(dst_faces))
 
     if not src_faces:
         raise ValueError("No faces detected in the source image.")
@@ -197,11 +361,15 @@ def _process_image(processor, source_image, dest_path, output_dir, enhance, tile
     
     # Apply Real-ESRGAN enhancement if enabled
     if enhance:
-        _apply_realesrgan_enhancement(output_path, output_dir, media_type="image", tile_size=tile_size, outscale=outscale)
+        _apply_realesrgan_enhancement(output_path, output_dir, media_type="image", tile_size=tile_size, outscale=outscale, gpu_id=gpu_id)
     
     return str(output_path), None
 
-def _process_animated(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4):
+def _process_animated(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4, face_confidence=0.5, device_ids=None):
+    if not device_ids:
+        device_ids = [0]
+    gpu_id = device_ids[0]  # Use first GPU for enhancement
+    
     clip = VideoFileClip(dest_path)
     fps = clip.fps
 
@@ -214,28 +382,81 @@ def _process_animated(processor, source_image, dest_path, output_dir, enhance, t
 
     frames = list(clip.iter_frames())
     logger.info("inswapper-shape: %s, total frames: %s", processor.swapper.input_shape, len(frames))
-    src_faces = processor.get_faces(source_image)
+    
+    # Multi-GPU setup: Create processors for each device
+    if len(device_ids) > 1:
+        logger.info("🚀 Multi-GPU Mode: Setting up %d GPUs: %s", len(device_ids), device_ids)
+        processors = [MediaProcessor(device_id=dev_id) for dev_id in device_ids]
+        
+        # Get source faces using first processor
+        src_faces = processors[0].get_faces(source_image)
+        src_faces = filter_faces_by_confidence(src_faces, face_confidence)
+        logger.info("Source faces detected (after filtering): %s", len(src_faces))
+        
+        # Store source faces for each processor to avoid repeated detection
+        processor_src_faces = []
+        for proc in processors:
+            proc_src = proc.get_faces(source_image)
+            proc_src = filter_faces_by_confidence(proc_src, face_confidence)
+            processor_src_faces.append(proc_src)
+        
+        def process_frame_multi_gpu(args):
+            frame_idx, frame = args
+            # Distribute frames across GPUs round-robin
+            gpu_idx = frame_idx % len(processors)
+            proc = processors[gpu_idx]
+            proc_src_faces = processor_src_faces[gpu_idx]
+            
+            dst_faces = proc.get_faces(frame)
+            dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
+            swapped = frame.copy()
+            for face in dst_faces:
+                if proc_src_faces:
+                    swapped = proc.swapper.get(swapped, face, proc_src_faces[0], paste_back=True)
+            return swapped
+        
+        # Process ALL frames at once for better GPU distribution
+        logger.info("Processing %d frames across %d GPUs...", len(frames), len(device_ids))
+        max_workers = len(device_ids) * 4  # 4 workers per GPU for better parallelism
+        result = []
+        
+        try:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Create enumerated list for proper frame ordering
+                frame_tasks = [(idx, frame) for idx, frame in enumerate(frames)]
+                result = list(executor.map(process_frame_multi_gpu, frame_tasks))
+                logger.info("✅ Multi-GPU processing complete: %d frames processed", len(result))
+        except Exception as e:
+            logger.error("Multi-GPU parallel processing failed, falling back to sequential: %s", e)
+            result = [process_frame_multi_gpu((idx, frame)) for idx, frame in enumerate(frames)]
+    else:
+        logger.info("Single GPU Mode: Using GPU %d", device_ids[0])
+        src_faces = processor.get_faces(source_image)
+        src_faces = filter_faces_by_confidence(src_faces, face_confidence)
+        logger.info("Source faces detected (after filtering): %s", len(src_faces))
+        
+        # Single GPU processing (original code)
+        def process_frame(frame):
+            dst_faces = processor.get_faces(frame)
+            dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
+            swapped = frame.copy()
+            for face in dst_faces:
+                swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
+            return swapped
 
-    def process_frame(frame):
-        dst_faces = processor.get_faces(frame)
-        swapped = frame.copy()
-        for face in dst_faces:
-            swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
-        return swapped
+        max_workers = 4
+        batch_size = 50
+        result = []
 
-    # Limit parallelism and use batch processing
-    max_workers = 4  # Limit the number of threads
-    batch_size = 50  # Process frames in batches
-    result = []
-
-    try:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for i in range(0, len(frames), batch_size):
-                batch = frames[i:i + batch_size]
-                result.extend(executor.map(process_frame, batch))
-    except Exception as e:
-        logger.error("Parallel processing failed, falling back to sequential processing: %s", e)
-        result = [process_frame(frame) for frame in frames]  # Fallback to sequential
+        try:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                for i in range(0, len(frames), batch_size):
+                    batch = frames[i:i + batch_size]
+                    result.extend(executor.map(process_frame, batch))
+        except Exception as e:
+            logger.error("Parallel processing failed, falling back to sequential processing: %s", e)
+            for idx, frame in enumerate(frames):
+                result.append(process_frame(frame))
 
     # Create the processed video first
     output_path = output_dir / "swapped_{}.mp4".format(Path(dest_path).stem)
@@ -274,22 +495,38 @@ def _process_animated(processor, source_image, dest_path, output_dir, enhance, t
             
             logger.info("Extracting frames from video for enhancement")
             
+            frame_paths = []
             for i, frame in enumerate(video_clip.iter_frames()):
                 frame_path = temp_frames_dir / f"frame_{i:06d}.png"
                 Image.fromarray(frame).save(frame_path)
+                frame_paths.append(frame_path)
             
             video_clip.close()
             
-            # Enhance frames and get result
-            result = _apply_realesrgan_enhancement(
-                temp_frames_dir, 
-                output_dir, 
-                media_type="video",
-                fps=fps,
-                audio=audio,
-                tile_size=tile_size,
-                outscale=outscale
-            )
+            # Enhance frames - use multi-GPU if available
+            if len(device_ids) > 1:
+                logger.info("Using multi-GPU enhancement with %d GPUs", len(device_ids))
+                result = _apply_realesrgan_enhancement_multi_gpu(
+                    frame_paths,
+                    output_dir,
+                    media_type="video",
+                    device_ids=device_ids,
+                    fps=fps,
+                    audio=audio,
+                    tile_size=tile_size,
+                    outscale=outscale
+                )
+            else:
+                result = _apply_realesrgan_enhancement(
+                    temp_frames_dir, 
+                    output_dir, 
+                    media_type="video",
+                    fps=fps,
+                    audio=audio,
+                    tile_size=tile_size,
+                    outscale=outscale,
+                    gpu_id=gpu_id
+                )
             
             if result:
                 enhanced_frames, enhanced_clip = result
@@ -320,7 +557,11 @@ def _process_animated(processor, source_image, dest_path, output_dir, enhance, t
     
     return None, str(output_path)
 
-def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4):
+def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4, face_confidence=0.5, device_ids=None):
+    if not device_ids:
+        device_ids = [0]
+    gpu_id = device_ids[0]  # Use first GPU for enhancement
+    
     # Extract frames and durations using MediaProcessor's process_gif method
     frame_paths, frame_durations = processor.process_gif(dest_path, output_dir)
     logger.info("Extracted %d frames from GIF.", len(frame_paths))
@@ -338,16 +579,69 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_s
     frame_durations = [extract_duration(duration) for duration in frame_durations]
 
     # Perform face swapping on each frame
-    src_faces = processor.get_faces(np.array(source_image))
     result_frames = []
-    for frame_path in frame_paths:
-        frame = processor.read_image(frame_path)
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert to RGB for processing
-        dst_faces = processor.get_faces(frame)
-        swapped = frame.copy()
-        for face in dst_faces:
-            swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
-        result_frames.append(swapped)
+    total_frames = len(frame_paths)
+    
+    # Multi-GPU setup for GIF processing
+    if len(device_ids) > 1:
+        logger.info("🚀 Multi-GPU GIF Mode: Setting up %d GPUs: %s", len(device_ids), device_ids)
+        processors = [MediaProcessor(device_id=dev_id) for dev_id in device_ids]
+        
+        # Pre-detect source faces for each processor
+        processor_src_faces = []
+        for proc in processors:
+            proc_src = proc.get_faces(np.array(source_image))
+            proc_src = filter_faces_by_confidence(proc_src, face_confidence)
+            processor_src_faces.append(proc_src)
+        logger.info("Source faces detected (after filtering): %s", len(processor_src_faces[0]))
+        
+        def process_gif_frame_multi_gpu(args):
+            frame_idx, frame_path = args
+            # Distribute frames across GPUs round-robin
+            gpu_idx = frame_idx % len(processors)
+            proc = processors[gpu_idx]
+            proc_src_faces = processor_src_faces[gpu_idx]
+            
+            frame = proc.read_image(frame_path)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            dst_faces = proc.get_faces(frame)
+            dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
+            swapped = frame.copy()
+            for face in dst_faces:
+                if proc_src_faces:
+                    swapped = proc.swapper.get(swapped, face, proc_src_faces[0], paste_back=True)
+            return swapped
+        
+        # Process ALL frames at once for better GPU distribution
+        logger.info("Processing %d GIF frames across %d GPUs...", len(frame_paths), len(device_ids))
+        max_workers = len(device_ids) * 4  # 4 workers per GPU
+        frame_tasks = [(idx, path) for idx, path in enumerate(frame_paths)]
+        
+        try:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                result_frames = list(executor.map(process_gif_frame_multi_gpu, frame_tasks))
+                logger.info("✅ Multi-GPU GIF processing complete: %d frames processed", len(result_frames))
+        except Exception as e:
+            logger.error("Multi-GPU GIF processing failed, falling back to sequential: %s", e)
+            result_frames = [process_gif_frame_multi_gpu((idx, path)) for idx, path in enumerate(frame_paths)]
+    else:
+        logger.info("Single GPU GIF Mode: Using GPU %d", device_ids[0])
+        src_faces = processor.get_faces(np.array(source_image))
+        src_faces = filter_faces_by_confidence(src_faces, face_confidence)
+        logger.info("Source faces detected (after filtering): %s", len(src_faces))
+        
+        # Single GPU processing (original sequential code)
+        for idx, frame_path in enumerate(frame_paths):
+            frame = processor.read_image(frame_path)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert to RGB for processing
+            dst_faces = processor.get_faces(frame)
+            # Apply confidence filtering to destination faces
+            dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
+            swapped = frame.copy()
+            for face in dst_faces:
+                swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
+            
+            result_frames.append(swapped)
 
     # Reassemble frames into a GIF first
     output_path = Path(output_dir) / f"swapped_{Path(dest_path).stem}.gif"
@@ -368,20 +662,35 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_s
             if enhanced_output_dir.exists():
                 shutil.rmtree(enhanced_output_dir)
             
-            # Save each frame as a separate image
+            # Save each frame as a separate image and track paths
+            frame_paths = []
             for i, frame in enumerate(result_frames):
                 frame_path = temp_frames_dir / f"frame_{i:04d}.png"
                 Image.fromarray(frame).save(frame_path)
+                frame_paths.append(frame_path)
             
-            # Enhance frames and get result
-            enhanced_frames = _apply_realesrgan_enhancement(
-                temp_frames_dir,
-                output_dir,
-                media_type="gif",
-                frame_durations=frame_durations,
-                tile_size=tile_size,
-                outscale=outscale
-            )
+            # Enhance frames - use multi-GPU if available
+            if len(device_ids) > 1:
+                logger.info("Using multi-GPU GIF enhancement with %d GPUs", len(device_ids))
+                enhanced_frames = _apply_realesrgan_enhancement_multi_gpu(
+                    frame_paths,
+                    output_dir,
+                    media_type="gif",
+                    device_ids=device_ids,
+                    frame_durations=frame_durations,
+                    tile_size=tile_size,
+                    outscale=outscale
+                )
+            else:
+                enhanced_frames = _apply_realesrgan_enhancement(
+                    temp_frames_dir,
+                    output_dir,
+                    media_type="gif",
+                    frame_durations=frame_durations,
+                    tile_size=tile_size,
+                    outscale=outscale,
+                    gpu_id=gpu_id
+                )
             
             # Create enhanced GIF if enhancement succeeded
             if enhanced_frames and len(enhanced_frames) == len(result_frames):
@@ -425,27 +734,51 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_s
 
     return None, str(output_path)  # Return only the GIF path
 
-def process_media(source_image, dest_path, media_type, output_dir, enhance=False, tile_size=256, outscale=4):
+def process_media(source_image, dest_path, media_type, output_dir, enhance=False, tile_size=256, outscale=4, face_confidence=0.5, gpu_selection=None):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
-    logger.info("Initializing MediaProcessor with CUDA support")
-    processor = MediaProcessor()
+    
+    # Parse GPU selection
+    device_ids = []
+    if gpu_selection and gpu_selection.startswith("All GPUs"):
+        # Use all available GPUs
+        if torch.cuda.is_available():
+            device_ids = list(range(torch.cuda.device_count()))
+            logger.info("Using all %d GPUs for processing", len(device_ids))
+    elif gpu_selection and gpu_selection.startswith("GPU"):
+        # Extract GPU ID from string like "GPU 0: RTX 4090"
+        try:
+            gpu_id = int(gpu_selection.split(":")[0].split(" ")[1])
+            device_ids = [gpu_id]
+            logger.info("Using GPU %d for processing", gpu_id)
+        except (ValueError, IndexError):
+            logger.warning("Failed to parse GPU selection, using default GPU 0")
+            device_ids = [0]
+    else:
+        # Default to GPU 0
+        device_ids = [0] if torch.cuda.is_available() else []
+        logger.info("Using default GPU 0 for processing")
+    
+    logger.info("Initializing MediaProcessor with device(s): %s", device_ids)
+    # Initialize processor with the first device in the list (or device 0 as fallback)
+    primary_device = device_ids[0] if device_ids else 0
+    processor = MediaProcessor(device_id=primary_device)
 
     if media_type == "image":
         try:
-            return _process_image(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale)
+            return _process_image(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale, face_confidence, device_ids)
         except Exception as e:
             logger.error("Image processing failed: %s", e)
             raise
     elif media_type == "video":
         try:
-            return _process_animated(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale)
+            return _process_animated(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale, face_confidence, device_ids)
         except Exception as e:
             logger.error("Video processing failed: %s", e)
             raise
     elif media_type == "gif":
         try:
-            return _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale)
+            return _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale, face_confidence, device_ids)
         except Exception as e:
             logger.error("GIF processing failed: %s", e)
             raise
