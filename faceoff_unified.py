@@ -194,6 +194,60 @@ def detect_faces_info(image_path: str, confidence_threshold: float = 0.5) -> str
         logger.error("Face detection failed: %s", e)
         return f"❌ Face detection failed: {str(e)}"
 
+
+def detect_and_extract_faces(image_path: str, confidence_threshold: float = 0.5):
+    """
+    Detect faces and extract face thumbnails for preview.
+    Returns list of face images and info text.
+    Faces are sorted by position (left-to-right, top-to-bottom) for consistency.
+    """
+    try:
+        from media_utils import MediaProcessor
+        import cv2
+        
+        processor = MediaProcessor()
+        img = processor.read_image(image_path)
+        all_faces = processor.get_faces(img)
+        
+        # Filter by confidence
+        faces = [f for f in all_faces if (f.det_score if hasattr(f, 'det_score') else 1.0) >= confidence_threshold]
+        
+        if not faces:
+            return [], "⚠️ No faces detected"
+        
+        # Sort faces by position (left-to-right, top-to-bottom) to match processing order
+        faces = sorted(faces, key=lambda f: (f.bbox[0], f.bbox[1]))
+        
+        # Extract face thumbnails
+        face_images = []
+        for face in faces:
+            # Get bounding box
+            bbox = face.bbox.astype(int)
+            x1, y1, x2, y2 = bbox[0], bbox[1], bbox[2], bbox[3]
+            
+            # Add padding
+            padding = 20
+            h, w = img.shape[:2]
+            x1 = max(0, x1 - padding)
+            y1 = max(0, y1 - padding)
+            x2 = min(w, x2 + padding)
+            y2 = min(h, y2 + padding)
+            
+            # Crop face
+            face_crop = img[y1:y2, x1:x2]
+            
+            # Convert BGR to RGB
+            face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
+            face_pil = Image.fromarray(face_rgb)
+            face_images.append(face_pil)
+        
+        info_text = f"✅ Detected {len(faces)} face(s) (sorted left→right, top→bottom)"
+        return face_images, info_text
+        
+    except Exception as e:
+        logger.error("Face extraction failed: %s", e)
+        return [], f"❌ Error: {str(e)}"
+
 def validate_media(file_path: str) -> str:
     mime_type = magic.from_file(file_path, mime=True)
     if mime_type == "image/gif":
@@ -203,6 +257,219 @@ def validate_media(file_path: str) -> str:
     elif mime_type.startswith("video"):
         return "video"
     raise gr.Error("Unsupported media type: only images, GIFs, and videos are allowed.")
+
+
+# Global state for face mappings (per session)
+face_mappings_state = []
+
+def detect_faces_for_mapping(source_img, target_img, face_confidence):
+    """
+    Detect faces in both images and prepare UI for mapping.
+    Returns updated gallery components and dropdown choices.
+    """
+    if source_img is None or target_img is None:
+        return (
+            [], [], 
+            "Upload both images first", 
+            gr.update(choices=[]), 
+            gr.update(choices=[]),
+            gr.update(visible=False),
+            gr.update(visible=False)
+        )
+    
+    # Save images temporarily
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as src_tmp:
+        source_img.save(src_tmp.name)
+        src_faces, src_info = detect_and_extract_faces(src_tmp.name, face_confidence)
+    
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tgt_tmp:
+        target_img.save(tgt_tmp.name)
+        tgt_faces, tgt_info = detect_and_extract_faces(tgt_tmp.name, face_confidence)
+    
+    if not src_faces or not tgt_faces:
+        status = f"⚠️ Detection failed - Source: {src_info}, Target: {tgt_info}"
+        return (
+            [], [], 
+            status, 
+            gr.update(choices=[]), 
+            gr.update(choices=[]),
+            gr.update(visible=False),
+            gr.update(visible=False)
+        )
+    
+    # Create dropdown choices
+    src_choices = [f"Source Face {i}" for i in range(len(src_faces))]
+    tgt_choices = [f"Target Face {i}" for i in range(len(tgt_faces))]
+    
+    status = f"✅ Detected {len(src_faces)} source face(s) and {len(tgt_faces)} target face(s)"
+    
+    return (
+        src_faces, 
+        tgt_faces, 
+        status,
+        gr.update(choices=src_choices, value=src_choices[0] if src_choices else None),
+        gr.update(choices=tgt_choices, value=tgt_choices[0] if tgt_choices else None),
+        gr.update(visible=True),  # source gallery
+        gr.update(visible=True)   # target gallery
+    )
+
+def add_face_mapping(source_idx, target_idx, current_mappings_text):
+    """Add a face mapping to the current state."""
+    global face_mappings_state
+    
+    if source_idx is None or target_idx is None:
+        return "⚠️ Select both source and target faces", current_mappings_text
+    
+    # Parse indices from dropdown text
+    src_idx = int(source_idx.split()[-1])
+    tgt_idx = int(target_idx.split()[-1])
+    
+    # Add mapping
+    face_mappings_state.append((src_idx, tgt_idx))
+    
+    # Update display
+    if face_mappings_state:
+        mappings_text = "\n".join([f"Source Face {s} → Target Face {t}" for s, t in face_mappings_state])
+        status = f"✅ Added mapping: Source {src_idx} → Target {tgt_idx}"
+    else:
+        mappings_text = "No mappings"
+        status = "No mappings"
+    
+    return status, mappings_text
+
+def clear_face_mappings():
+    """Clear all face mappings."""
+    global face_mappings_state
+    face_mappings_state = []
+    return "Mappings cleared", "No mappings"
+
+
+def detect_faces_gif_video(source_img, target_file, face_confidence):
+    """
+    Detect faces in source image and first frame of GIF/Video.
+    Returns updated gallery components and dropdown choices.
+    """
+    if source_img is None or target_file is None:
+        return (
+            [], [], 
+            "Upload both source and target file first", 
+            gr.update(choices=[]), 
+            gr.update(choices=[]),
+            gr.update(visible=False),
+            gr.update(visible=False)
+        )
+    
+    import tempfile
+    from moviepy.editor import VideoFileClip
+    
+    # Save source image temporarily
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as src_tmp:
+        source_img.save(src_tmp.name)
+        src_faces, src_info = detect_and_extract_faces(src_tmp.name, face_confidence)
+    
+    # Extract first frame from GIF/Video
+    target_path = target_file.name if hasattr(target_file, 'name') else target_file
+    
+    try:
+        if target_path.lower().endswith('.gif'):
+            # Extract first frame from GIF
+            gif = Image.open(target_path)
+            first_frame = gif.convert('RGB')
+        else:
+            # Extract first frame from video
+            clip = VideoFileClip(target_path)
+            first_frame_array = clip.get_frame(0)
+            first_frame = Image.fromarray(first_frame_array)
+            clip.close()
+        
+        # Save first frame and detect faces
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as frame_tmp:
+            first_frame.save(frame_tmp.name)
+            tgt_faces, tgt_info = detect_and_extract_faces(frame_tmp.name, face_confidence)
+    
+    except Exception as e:
+        logger.error("Failed to extract first frame: %s", e)
+        return (
+            [], [], 
+            f"⚠️ Failed to extract first frame: {str(e)}", 
+            gr.update(choices=[]), 
+            gr.update(choices=[]),
+            gr.update(visible=False),
+            gr.update(visible=False)
+        )
+    
+    if not src_faces or not tgt_faces:
+        status = f"⚠️ Detection failed - Source: {src_info}, Target: {tgt_info}"
+        return (
+            [], [], 
+            status, 
+            gr.update(choices=[]), 
+            gr.update(choices=[]),
+            gr.update(visible=False),
+            gr.update(visible=False)
+        )
+    
+    # Create dropdown choices
+    src_choices = [f"Source Face {i}" for i in range(len(src_faces))]
+    tgt_choices = [f"Target Face {i}" for i in range(len(tgt_faces))]
+    
+    status = f"✅ Detected {len(src_faces)} source face(s) and {len(tgt_faces)} target face(s) in first frame"
+    
+    return (
+        src_faces, 
+        tgt_faces, 
+        status,
+        gr.update(choices=src_choices, value=src_choices[0] if src_choices else None),
+        gr.update(choices=tgt_choices, value=tgt_choices[0] if tgt_choices else None),
+        gr.update(visible=True),  # source gallery
+        gr.update(visible=True)   # target gallery
+    )
+
+
+def detect_faces_batch_source(source_img, face_confidence):
+    """
+    Detect faces in batch source image only.
+    Target faces will be detected per-file during processing.
+    """
+    if source_img is None:
+        return (
+            [], 
+            "Upload source image first", 
+            gr.update(choices=[]),
+            gr.update(visible=False)
+        )
+    
+    import tempfile
+    
+    # Save source image temporarily
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as src_tmp:
+        source_img.save(src_tmp.name)
+        src_faces, src_info = detect_and_extract_faces(src_tmp.name, face_confidence)
+    
+    if not src_faces:
+        return (
+            [], 
+            f"⚠️ {src_info}", 
+            gr.update(choices=[]),
+            gr.update(visible=False)
+        )
+    
+    # Create dropdown choices for source faces
+    src_choices = [f"Source Face {i}" for i in range(len(src_faces))]
+    
+    # For batch, we create generic target face indices (0-9) since targets vary
+    tgt_choices = [f"Target Face {i}" for i in range(10)]  # Support up to 10 faces per target
+    
+    status = f"✅ Detected {len(src_faces)} source face(s). Target faces detected per file during processing."
+    
+    return (
+        src_faces, 
+        status,
+        gr.update(choices=src_choices, value=src_choices[0] if src_choices else None),
+        gr.update(visible=True)
+    )
+
 
 def process_batch(source_img, target_files, enhance, quality_preset, face_confidence, create_comparisons, gpu_selection):
     """
@@ -282,7 +549,15 @@ logger.info(f"Using device: {device}")
 
 # Optimize process_input for better handling of media
 def process_input(src_img, dest_img, dest_vid, enhance, quality_preset="Balanced (4x, Tile 256)", 
-                 face_confidence=0.5, compare_view=False, gpu_selection=None):
+                 face_confidence=0.5, compare_view=False, gpu_selection=None, face_mappings=None):
+    """
+    Process face swapping with optional multi-face mapping.
+    
+    Args:
+        face_mappings: List of tuples (source_idx, dest_idx) for face mapping.
+                      None means swap all faces with first source face (default behavior).
+                      Example: [(0, 0), (1, 1)] swaps source face 0 to dest face 0, source face 1 to dest face 1
+    """
     start_time = time.time()
     
     inputs_dir = Path("inputs")
@@ -357,7 +632,8 @@ def process_input(src_img, dest_img, dest_vid, enhance, quality_preset="Balanced
             tile_size=tile_size,
             outscale=outscale,
             face_confidence=face_confidence,
-            gpu_selection=gpu_selection
+            gpu_selection=gpu_selection,
+            face_mappings=face_mappings
         )
 
         output_file = output_path_img or output_path_vid
@@ -417,10 +693,56 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
                 with gr.Column():
                     source_img = gr.Image(type="pil", label="Source Image")
                     face_info_img = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
+                    source_faces_gallery = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
                 with gr.Column():
                     target_img = gr.Image(type="pil", label="Target Image")
+                    target_faces_gallery = gr.Gallery(label="Target Faces", columns=4, height="auto", visible=False)
                 with gr.Column():
                     result_img = gr.Image(label="Swapped Result")
+            
+            # Face mapping controls
+            with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False) as face_mapping_accordion:
+                gr.Markdown("""
+                **Instructions:**
+                1. Upload both source and target images
+                2. Preview detected faces below
+                3. Add mappings: Select which source face goes to which target face
+                4. Run swap with your custom mappings
+                
+                *Leave empty to use default behavior (first source face → all target faces)*
+                """)
+                
+                face_mapping_status = gr.Textbox(
+                    label="Mapping Status",
+                    value="Upload images to detect faces",
+                    interactive=False
+                )
+                
+                # Dynamic face mapping controls - will be populated when faces are detected
+                with gr.Row():
+                    mapping_source_idx = gr.Dropdown(
+                        label="Source Face Index",
+                        choices=[],
+                        interactive=True
+                    )
+                    mapping_arrow = gr.Markdown("→")
+                    mapping_target_idx = gr.Dropdown(
+                        label="Target Face Index",
+                        choices=[],
+                        interactive=True
+                    )
+                    add_mapping_btn = gr.Button("Add Mapping", size="sm")
+                
+                current_mappings = gr.Textbox(
+                    label="Current Mappings",
+                    value="No mappings",
+                    interactive=False,
+                    lines=3
+                )
+                
+                with gr.Row():
+                    clear_mappings_btn = gr.Button("Clear All Mappings", size="sm")
+                    detect_faces_btn = gr.Button("Detect Faces", variant="secondary", size="sm")
 
             with gr.Row():
                 enhance_toggle = gr.Checkbox(label="Enable Enhancement (Real-ESRGAN)", value=False)
@@ -455,10 +777,53 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
                 with gr.Column():
                     source_gif = gr.Image(type="pil", label="Source Image")
                     face_info_gif = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
+                    source_faces_gallery_gif = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
                 with gr.Column():
                     target_gif_file = gr.File(label="Target GIF", file_types=[".gif"])
+                    target_faces_gallery_gif = gr.Gallery(label="Target Faces (First Frame)", columns=4, height="auto", visible=False)
                 with gr.Column():
                     result_gif = gr.Image(label="Swapped Result")
+            
+            # Face mapping controls for GIF
+            with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
+                gr.Markdown("""
+                **Instructions:**
+                1. Upload source image and target GIF
+                2. Click "Detect Faces" to preview faces (GIF: first frame analyzed)
+                3. Add mappings for which source face goes to which target face
+                4. Mappings apply to all frames in the GIF
+                """)
+                
+                face_mapping_status_gif = gr.Textbox(
+                    label="Mapping Status",
+                    value="Upload images to detect faces",
+                    interactive=False
+                )
+                
+                with gr.Row():
+                    mapping_source_idx_gif = gr.Dropdown(
+                        label="Source Face Index",
+                        choices=[],
+                        interactive=True
+                    )
+                    mapping_arrow_gif = gr.Markdown("→")
+                    mapping_target_idx_gif = gr.Dropdown(
+                        label="Target Face Index",
+                        choices=[],
+                        interactive=True
+                    )
+                    add_mapping_btn_gif = gr.Button("Add Mapping", size="sm")
+                
+                current_mappings_gif = gr.Textbox(
+                    label="Current Mappings",
+                    value="No mappings",
+                    interactive=False,
+                    lines=3
+                )
+                
+                with gr.Row():
+                    clear_mappings_btn_gif = gr.Button("Clear All Mappings", size="sm")
+                    detect_faces_btn_gif = gr.Button("Detect Faces", variant="secondary", size="sm")
 
             with gr.Row():
                 enhance_toggle_gif = gr.Checkbox(label="Enable Enhancement (Real-ESRGAN)", value=False)
@@ -493,10 +858,53 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
                 with gr.Column():
                     source_vid = gr.Image(type="pil", label="Source Image")
                     face_info_vid = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
+                    source_faces_gallery_vid = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
                 with gr.Column():
                     target_vid = gr.File(label="Target Video", file_types=[".mp4", ".webp"])
+                    target_faces_gallery_vid = gr.Gallery(label="Target Faces (First Frame)", columns=4, height="auto", visible=False)
                 with gr.Column():
                     result_vid = gr.Video(label="Swapped Result")
+            
+            # Face mapping controls for Video
+            with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
+                gr.Markdown("""
+                **Instructions:**
+                1. Upload source image and target video
+                2. Click "Detect Faces" to preview faces (Video: first frame analyzed)
+                3. Add mappings for which source face goes to which target face
+                4. Mappings apply to all frames in the video
+                """)
+                
+                face_mapping_status_vid = gr.Textbox(
+                    label="Mapping Status",
+                    value="Upload images to detect faces",
+                    interactive=False
+                )
+                
+                with gr.Row():
+                    mapping_source_idx_vid = gr.Dropdown(
+                        label="Source Face Index",
+                        choices=[],
+                        interactive=True
+                    )
+                    mapping_arrow_vid = gr.Markdown("→")
+                    mapping_target_idx_vid = gr.Dropdown(
+                        label="Target Face Index",
+                        choices=[],
+                        interactive=True
+                    )
+                    add_mapping_btn_vid = gr.Button("Add Mapping", size="sm")
+                
+                current_mappings_vid = gr.Textbox(
+                    label="Current Mappings",
+                    value="No mappings",
+                    interactive=False,
+                    lines=3
+                )
+                
+                with gr.Row():
+                    clear_mappings_btn_vid = gr.Button("Clear All Mappings", size="sm")
+                    detect_faces_btn_vid = gr.Button("Detect Faces", variant="secondary", size="sm")
 
             with gr.Row():
                 enhance_toggle_vid = gr.Checkbox(label="Enable Enhancement (Real-ESRGAN)", value=False)
@@ -534,11 +942,55 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
                 with gr.Column():
                     batch_source = gr.Image(type="pil", label="Source Face (Single)")
                     batch_face_info = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
+                    source_faces_gallery_batch = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
                 with gr.Column():
                     batch_targets = gr.Files(label="Target Files (Multiple Images/GIFs/Videos)", file_types=["image", "video"])
+                    gr.Markdown("*Note: Face mapping will apply to all batch files*")
                 with gr.Column():
                     batch_results = gr.File(label="Download Results (ZIP)")
             
+            # Face mapping controls for Batch
+            with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
+                gr.Markdown("""
+                **Instructions:**
+                1. Upload source image (face mapping setup)
+                2. Upload target files for batch processing
+                3. Click "Detect Faces" to preview source faces
+                4. Add mappings - will apply to ALL batch files
+                5. Target faces detected individually per file
+                """)
+                
+                face_mapping_status_batch = gr.Textbox(
+                    label="Mapping Status",
+                    value="Upload source image to detect faces",
+                    interactive=False
+                )
+                
+                with gr.Row():
+                    mapping_source_idx_batch = gr.Dropdown(
+                        label="Source Face Index",
+                        choices=[],
+                        interactive=True
+                    )
+                    mapping_arrow_batch = gr.Markdown("→")
+                    mapping_target_idx_batch = gr.Dropdown(
+                        label="Target Face Index",
+                        choices=[],
+                        interactive=True
+                    )
+                    add_mapping_btn_batch = gr.Button("Add Mapping", size="sm")
+                
+                current_mappings_batch = gr.Textbox(
+                    label="Current Mappings",
+                    value="No mappings",
+                    interactive=False,
+                    lines=3
+                )
+                
+                with gr.Row():
+                    clear_mappings_btn_batch = gr.Button("Clear All Mappings", size="sm")
+                    detect_faces_btn_batch = gr.Button("Detect Source Faces", variant="secondary", size="sm")
+
             with gr.Row():
                 batch_enhance = gr.Checkbox(label="Enable Enhancement (Real-ESRGAN)", value=False)
                 batch_quality = gr.Dropdown(
@@ -649,13 +1101,20 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
     )
 
     def wrapped_process_image(src, tgt, enhance, quality, confidence, gpu):
-        return process_input(src, tgt, None, enhance, quality, confidence, gpu_selection=gpu)
+        global face_mappings_state
+        # Pass face_mappings if any exist, otherwise None for default behavior
+        mappings = face_mappings_state if face_mappings_state else None
+        return process_input(src, tgt, None, enhance, quality, confidence, gpu_selection=gpu, face_mappings=mappings)
 
     def wrapped_process_gif(src, tgt, enhance, quality, confidence, gpu):
-        return process_input(src, None, tgt, enhance, quality, confidence, gpu_selection=gpu)
+        global face_mappings_state
+        mappings = face_mappings_state if face_mappings_state else None
+        return process_input(src, None, tgt, enhance, quality, confidence, gpu_selection=gpu, face_mappings=mappings)
 
     def wrapped_process_video(src, tgt, enhance, quality, confidence, gpu):
-        return process_input(src, None, tgt, enhance, quality, confidence, gpu_selection=gpu)
+        global face_mappings_state
+        mappings = face_mappings_state if face_mappings_state else None
+        return process_input(src, None, tgt, enhance, quality, confidence, gpu_selection=gpu, face_mappings=mappings)
     
     # Batch source face detection
     batch_source.change(
@@ -667,6 +1126,113 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
         detect_faces_from_upload,
         inputs=[batch_source, batch_confidence],
         outputs=[batch_face_info]
+    )
+    
+    # Face mapping UI event handlers
+    detect_faces_btn.click(
+        detect_faces_for_mapping,
+        inputs=[source_img, target_img, face_confidence],
+        outputs=[
+            source_faces_gallery, 
+            target_faces_gallery, 
+            face_mapping_status,
+            mapping_source_idx,
+            mapping_target_idx,
+            source_faces_gallery,
+            target_faces_gallery
+        ]
+    )
+    
+    add_mapping_btn.click(
+        add_face_mapping,
+        inputs=[mapping_source_idx, mapping_target_idx, current_mappings],
+        outputs=[face_mapping_status, current_mappings]
+    )
+    
+    clear_mappings_btn.click(
+        clear_face_mappings,
+        outputs=[face_mapping_status, current_mappings]
+    )
+    
+    # GIF face mapping event handlers
+    detect_faces_btn_gif.click(
+        detect_faces_gif_video,
+        inputs=[source_gif, target_gif_file, face_confidence_gif],
+        outputs=[
+            source_faces_gallery_gif,
+            target_faces_gallery_gif,
+            face_mapping_status_gif,
+            mapping_source_idx_gif,
+            mapping_target_idx_gif,
+            source_faces_gallery_gif,
+            target_faces_gallery_gif
+        ]
+    )
+    
+    add_mapping_btn_gif.click(
+        add_face_mapping,
+        inputs=[mapping_source_idx_gif, mapping_target_idx_gif, current_mappings_gif],
+        outputs=[face_mapping_status_gif, current_mappings_gif]
+    )
+    
+    clear_mappings_btn_gif.click(
+        clear_face_mappings,
+        outputs=[face_mapping_status_gif, current_mappings_gif]
+    )
+    
+    # Video face mapping event handlers
+    detect_faces_btn_vid.click(
+        detect_faces_gif_video,
+        inputs=[source_vid, target_vid, face_confidence_video],
+        outputs=[
+            source_faces_gallery_vid,
+            target_faces_gallery_vid,
+            face_mapping_status_vid,
+            mapping_source_idx_vid,
+            mapping_target_idx_vid,
+            source_faces_gallery_vid,
+            target_faces_gallery_vid
+        ]
+    )
+    
+    add_mapping_btn_vid.click(
+        add_face_mapping,
+        inputs=[mapping_source_idx_vid, mapping_target_idx_vid, current_mappings_vid],
+        outputs=[face_mapping_status_vid, current_mappings_vid]
+    )
+    
+    clear_mappings_btn_vid.click(
+        clear_face_mappings,
+        outputs=[face_mapping_status_vid, current_mappings_vid]
+    )
+    
+    # Batch face mapping event handlers (source only, targets detected per file)
+    detect_faces_btn_batch.click(
+        detect_faces_batch_source,
+        inputs=[batch_source, batch_confidence],
+        outputs=[
+            source_faces_gallery_batch,
+            face_mapping_status_batch,
+            mapping_source_idx_batch,
+            source_faces_gallery_batch
+        ]
+    )
+    
+    # For batch, we need to populate target indices dropdown with generic values
+    batch_source.change(
+        lambda: gr.update(choices=[f"Target Face {i}" for i in range(10)], value="Target Face 0"),
+        outputs=[mapping_target_idx_batch]
+    )
+    
+    add_mapping_btn_batch.click(
+        add_face_mapping,
+        inputs=[mapping_source_idx_batch, mapping_target_idx_batch, current_mappings_batch],
+        outputs=[face_mapping_status_batch, current_mappings_batch]
+    )
+    
+    clear_mappings_btn_batch.click(
+        clear_face_mappings,
+        outputs=[face_mapping_status_batch, current_mappings_batch]
     )
 
     run_image_btn.click(

@@ -22,6 +22,26 @@ def filter_faces_by_confidence(faces, threshold=0.5):
         logger.info("Filtered faces: %d/%d meet confidence threshold %.0f%%", len(filtered), len(faces), threshold * 100)
     return filtered
 
+
+def sort_faces_by_position(faces):
+    """
+    Sort faces consistently by position (left-to-right, top-to-bottom).
+    This ensures face indices remain consistent across frames.
+    
+    Args:
+        faces: List of face objects with bbox attribute
+        
+    Returns:
+        Sorted list of faces
+    """
+    if not faces:
+        return faces
+    
+    # Sort by x-coordinate (left to right), then by y-coordinate (top to bottom)
+    sorted_faces = sorted(faces, key=lambda f: (f.bbox[0], f.bbox[1]))
+    return sorted_faces
+
+
 def _apply_realesrgan_enhancement_multi_gpu(input_paths, output_dir, media_type, device_ids, fps=None, audio=None, frame_durations=None, tile_size=256, outscale=4):
     """
     Apply Real-ESRGAN enhancement using multiple GPUs for parallel processing.
@@ -314,7 +334,14 @@ def _apply_realesrgan_enhancement(input_path, output_dir, media_type="image", fr
         logger.error("Enhancement initialization failed: %s", e)
         return None
 
-def _process_image(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4, face_confidence=0.5, device_ids=None):
+def _process_image(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4, face_confidence=0.5, device_ids=None, face_mappings=None):
+    """
+    Process a single image with face swapping.
+    
+    Args:
+        face_mappings: Optional list of (source_face_idx, dest_face_idx) tuples for multi-face swapping.
+                      If None, uses default behavior (first source face to all destination faces).
+    """
     # For single images, we just use the first device (multi-GPU doesn't help here)
     if not device_ids:
         device_ids = [0]
@@ -335,6 +362,10 @@ def _process_image(processor, source_image, dest_path, output_dir, enhance, tile
     # Apply confidence filtering
     src_faces = filter_faces_by_confidence(src_faces, face_confidence)
     dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
+    
+    # Sort faces for consistent ordering
+    src_faces = sort_faces_by_position(src_faces)
+    dst_faces = sort_faces_by_position(dst_faces)
 
     # Log detected faces
     logger.info("Source faces detected (after filtering): %s", len(src_faces))
@@ -348,12 +379,29 @@ def _process_image(processor, source_image, dest_path, output_dir, enhance, tile
     swapped = np.array(dest_image.copy(), dtype=np.uint8)  # Convert to numpy array
     swapped = np.ascontiguousarray(swapped)  # Ensure contiguity
 
-    for face in dst_faces:
-        try:
-            swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
-        except Exception as e:
-            logger.error("Error during face swapping: %s", e)
-            raise
+    # Use face mappings if provided, otherwise default to first source face for all destination faces
+    if face_mappings:
+        logger.info("Using face mappings: %s", face_mappings)
+        for src_idx, dst_idx in face_mappings:
+            if src_idx >= len(src_faces):
+                logger.warning("Source face index %d out of range (only %d faces detected)", src_idx, len(src_faces))
+                continue
+            if dst_idx >= len(dst_faces):
+                logger.warning("Destination face index %d out of range (only %d faces detected)", dst_idx, len(dst_faces))
+                continue
+            try:
+                swapped = processor.swapper.get(swapped, dst_faces[dst_idx], src_faces[src_idx], paste_back=True)
+                logger.info("Swapped source face %d → destination face %d", src_idx, dst_idx)
+            except Exception as e:
+                logger.error("Error swapping face %d → %d: %s", src_idx, dst_idx, e)
+    else:
+        # Default behavior: swap first source face to all destination faces
+        for face in dst_faces:
+            try:
+                swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
+            except Exception as e:
+                logger.error("Error during face swapping: %s", e)
+                raise
 
     # Ensure the array is properly converted to a PIL Image for saving
     output_path = output_dir / f"swapped_{Path(dest_path).stem}.png"
@@ -365,7 +413,14 @@ def _process_image(processor, source_image, dest_path, output_dir, enhance, tile
     
     return str(output_path), None
 
-def _process_animated(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4, face_confidence=0.5, device_ids=None):
+def _process_animated(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4, face_confidence=0.5, device_ids=None, face_mappings=None):
+    """
+    Process video files with face swapping.
+    
+    Args:
+        face_mappings: Optional list of (source_face_idx, dest_face_idx) tuples for multi-face swapping.
+                      If None, uses default behavior (first source face to all destination faces).
+    """
     if not device_ids:
         device_ids = [0]
     gpu_id = device_ids[0]  # Use first GPU for enhancement
@@ -391,6 +446,7 @@ def _process_animated(processor, source_image, dest_path, output_dir, enhance, t
         # Get source faces using first processor
         src_faces = processors[0].get_faces(source_image)
         src_faces = filter_faces_by_confidence(src_faces, face_confidence)
+        src_faces = sort_faces_by_position(src_faces)  # Sort for consistency
         logger.info("Source faces detected (after filtering): %s", len(src_faces))
         
         # Store source faces for each processor to avoid repeated detection
@@ -398,6 +454,7 @@ def _process_animated(processor, source_image, dest_path, output_dir, enhance, t
         for proc in processors:
             proc_src = proc.get_faces(source_image)
             proc_src = filter_faces_by_confidence(proc_src, face_confidence)
+            proc_src = sort_faces_by_position(proc_src)  # Sort for consistency
             processor_src_faces.append(proc_src)
         
         def process_frame_multi_gpu(args):
@@ -409,10 +466,19 @@ def _process_animated(processor, source_image, dest_path, output_dir, enhance, t
             
             dst_faces = proc.get_faces(frame)
             dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
+            dst_faces = sort_faces_by_position(dst_faces)  # Sort for consistency
             swapped = frame.copy()
-            for face in dst_faces:
-                if proc_src_faces:
-                    swapped = proc.swapper.get(swapped, face, proc_src_faces[0], paste_back=True)
+            
+            # Use face mappings if provided
+            if face_mappings:
+                for src_idx, dst_idx in face_mappings:
+                    if src_idx < len(proc_src_faces) and dst_idx < len(dst_faces):
+                        swapped = proc.swapper.get(swapped, dst_faces[dst_idx], proc_src_faces[src_idx], paste_back=True)
+            else:
+                # Default: swap first source face to all destination faces
+                for face in dst_faces:
+                    if proc_src_faces:
+                        swapped = proc.swapper.get(swapped, face, proc_src_faces[0], paste_back=True)
             return swapped
         
         # Process ALL frames at once for better GPU distribution
@@ -433,15 +499,25 @@ def _process_animated(processor, source_image, dest_path, output_dir, enhance, t
         logger.info("Single GPU Mode: Using GPU %d", device_ids[0])
         src_faces = processor.get_faces(source_image)
         src_faces = filter_faces_by_confidence(src_faces, face_confidence)
+        src_faces = sort_faces_by_position(src_faces)  # Sort for consistency
         logger.info("Source faces detected (after filtering): %s", len(src_faces))
         
         # Single GPU processing (original code)
         def process_frame(frame):
             dst_faces = processor.get_faces(frame)
             dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
+            dst_faces = sort_faces_by_position(dst_faces)  # Sort for consistency
             swapped = frame.copy()
-            for face in dst_faces:
-                swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
+            
+            # Use face mappings if provided
+            if face_mappings:
+                for src_idx, dst_idx in face_mappings:
+                    if src_idx < len(src_faces) and dst_idx < len(dst_faces):
+                        swapped = processor.swapper.get(swapped, dst_faces[dst_idx], src_faces[src_idx], paste_back=True)
+            else:
+                # Default: swap first source face to all destination faces
+                for face in dst_faces:
+                    swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
             return swapped
 
         max_workers = 4
@@ -557,7 +633,14 @@ def _process_animated(processor, source_image, dest_path, output_dir, enhance, t
     
     return None, str(output_path)
 
-def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4, face_confidence=0.5, device_ids=None):
+def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_size=256, outscale=4, face_confidence=0.5, device_ids=None, face_mappings=None):
+    """
+    Process GIF files with face swapping.
+    
+    Args:
+        face_mappings: Optional list of (source_face_idx, dest_face_idx) tuples for multi-face swapping.
+                      If None, uses default behavior (first source face to all destination faces).
+    """
     if not device_ids:
         device_ids = [0]
     gpu_id = device_ids[0]  # Use first GPU for enhancement
@@ -592,6 +675,7 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_s
         for proc in processors:
             proc_src = proc.get_faces(np.array(source_image))
             proc_src = filter_faces_by_confidence(proc_src, face_confidence)
+            proc_src = sort_faces_by_position(proc_src)  # Sort for consistency
             processor_src_faces.append(proc_src)
         logger.info("Source faces detected (after filtering): %s", len(processor_src_faces[0]))
         
@@ -606,10 +690,19 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_s
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             dst_faces = proc.get_faces(frame)
             dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
+            dst_faces = sort_faces_by_position(dst_faces)  # Sort for consistency
             swapped = frame.copy()
-            for face in dst_faces:
-                if proc_src_faces:
-                    swapped = proc.swapper.get(swapped, face, proc_src_faces[0], paste_back=True)
+            
+            # Use face mappings if provided
+            if face_mappings:
+                for src_idx, dst_idx in face_mappings:
+                    if src_idx < len(proc_src_faces) and dst_idx < len(dst_faces):
+                        swapped = proc.swapper.get(swapped, dst_faces[dst_idx], proc_src_faces[src_idx], paste_back=True)
+            else:
+                # Default: swap first source face to all destination faces
+                for face in dst_faces:
+                    if proc_src_faces:
+                        swapped = proc.swapper.get(swapped, face, proc_src_faces[0], paste_back=True)
             return swapped
         
         # Process ALL frames at once for better GPU distribution
@@ -628,6 +721,7 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_s
         logger.info("Single GPU GIF Mode: Using GPU %d", device_ids[0])
         src_faces = processor.get_faces(np.array(source_image))
         src_faces = filter_faces_by_confidence(src_faces, face_confidence)
+        src_faces = sort_faces_by_position(src_faces)  # Sort for consistency
         logger.info("Source faces detected (after filtering): %s", len(src_faces))
         
         # Single GPU processing (original sequential code)
@@ -637,9 +731,18 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_s
             dst_faces = processor.get_faces(frame)
             # Apply confidence filtering to destination faces
             dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
+            dst_faces = sort_faces_by_position(dst_faces)  # Sort for consistency
             swapped = frame.copy()
-            for face in dst_faces:
-                swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
+            
+            # Use face mappings if provided
+            if face_mappings:
+                for src_idx, dst_idx in face_mappings:
+                    if src_idx < len(src_faces) and dst_idx < len(dst_faces):
+                        swapped = processor.swapper.get(swapped, dst_faces[dst_idx], src_faces[src_idx], paste_back=True)
+            else:
+                # Default: swap first source face to all destination faces
+                for face in dst_faces:
+                    swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
             
             result_frames.append(swapped)
 
@@ -734,7 +837,15 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_s
 
     return None, str(output_path)  # Return only the GIF path
 
-def process_media(source_image, dest_path, media_type, output_dir, enhance=False, tile_size=256, outscale=4, face_confidence=0.5, gpu_selection=None):
+def process_media(source_image, dest_path, media_type, output_dir, enhance=False, tile_size=256, outscale=4, face_confidence=0.5, gpu_selection=None, face_mappings=None):
+    """
+    Process media with optional multi-face mapping.
+    
+    Args:
+        face_mappings: List of tuples (source_idx, dest_idx) for mapping faces.
+                      None = swap all dest faces with first source face (default)
+                      Example: [(0, 0), (1, 1)] = source face 0 → dest face 0, source face 1 → dest face 1
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
     
@@ -766,19 +877,19 @@ def process_media(source_image, dest_path, media_type, output_dir, enhance=False
 
     if media_type == "image":
         try:
-            return _process_image(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale, face_confidence, device_ids)
+            return _process_image(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale, face_confidence, device_ids, face_mappings)
         except Exception as e:
             logger.error("Image processing failed: %s", e)
             raise
     elif media_type == "video":
         try:
-            return _process_animated(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale, face_confidence, device_ids)
+            return _process_animated(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale, face_confidence, device_ids, face_mappings)
         except Exception as e:
             logger.error("Video processing failed: %s", e)
             raise
     elif media_type == "gif":
         try:
-            return _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale, face_confidence, device_ids)
+            return _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_size, outscale, face_confidence, device_ids, face_mappings)
         except Exception as e:
             logger.error("GIF processing failed: %s", e)
             raise
