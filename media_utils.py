@@ -4,10 +4,11 @@ import logging
 import numpy as np
 import insightface
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from moviepy.editor import VideoFileClip
 from config import Config
 from concurrent.futures import ThreadPoolExecutor
+from enhancement_utils import EnhancementProcessor
 
 # Initialize logger
 logger = logging.getLogger("FaceOff")
@@ -33,6 +34,7 @@ class MediaProcessor:
     def __init__(self) -> None:
         self._validate_environment()
         self._initialize_models()
+        self._enhancement_processor: Optional[EnhancementProcessor] = None
 
     def _validate_environment(self) -> None:
         """Validate required models and CUDA availability"""
@@ -154,41 +156,18 @@ class MediaProcessor:
 
     def enhance_image(self, image: np.ndarray) -> np.ndarray:
         """Enhance the quality of an image using Real-ESRGAN."""
+        if self._enhancement_processor is None:
+            try:
+                self._enhancement_processor = EnhancementProcessor()
+            except Exception as e:
+                logging.error("Failed to initialize enhancement processor: %s", e)
+                raise RuntimeError("Unable to initialize enhancement processor") from e
+
         try:
-            from realesrgan import RealESRGANer
-
-            # Get the model path from the config
-            model_path = config.get("realesrgan_model_path")
-            logger.info("Using Real-ESRGAN model path: %s", model_path)  # Debugging log
-
-            if not model_path or not Path(model_path).exists():
-                raise FileNotFoundError(f"Real-ESRGAN model path is invalid: {model_path}")
-
-            # Fix: Ensure Real-ESRGAN model path is correctly resolved
-            model_path = Path(config.get("realesrgan_model_path")).resolve()
-            logger.info("Resolved Real-ESRGAN model path: %s", model_path)
-
-            if not model_path.exists():
-                raise FileNotFoundError(f"Real-ESRGAN model path does not exist: {model_path}")
-
-            # Initialize the Real-ESRGAN model
-            model = RealESRGANer(
-                scale=4,
-                model_path=model_path,
-                dni_weight=0.5,
-                device="cuda",
+            return self._enhancement_processor.apply_enhancement(
+                image.astype(np.uint8),
+                method="Real-ESRGAN",
             )
-
-            # Convert the image to RGB if it is not already
-            if image.shape[2] == 4:  # RGBA
-                image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
-
-            # Enhance the image
-            enhanced_image, _ = model.enhance(image, outscale=4)
-            return enhanced_image
-        except ImportError as e:
-            logging.error("Real-ESRGAN module not found: %s", e)
-            raise ImportError("Real-ESRGAN module is required but not installed.") from e
         except Exception as e:
             logging.error("Error during image enhancement: %s", e)
             raise RuntimeError("Failed to enhance image using Real-ESRGAN.") from e

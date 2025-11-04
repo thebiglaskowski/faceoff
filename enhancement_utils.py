@@ -1,6 +1,5 @@
 import cv2
 import logging
-import os
 import numpy as np
 from pathlib import Path
 from config import Config
@@ -19,16 +18,13 @@ class EnhancementProcessor:
     """
     def __init__(self) -> None:
         self.config = Config()
+        self.realesrganer = None
+        self.gfpganer = None
         self._init_real_esrgan()
         self._init_gfpgan()
         # Set integrated face enhancement attributes on the RealESRGANer instance.
         if self.realesrganer and self.gfpganer:
-            self.realesrganer.face_enhance = True
             self.realesrganer.face_enhancer = self.gfpganer
-
-    def _init_real_esrg_an(self) -> None:
-        # (Renamed helper to avoid accidental keyword conflicts)
-        pass
 
     def _init_real_esrgan(self) -> None:
         """
@@ -40,11 +36,28 @@ class EnhancementProcessor:
         try:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             logging.info(f"Initializing Real-ESRGAN on device: {device}")
-            weight_path = self.config.get("real_esrgan_weight_path", "models/realesrgan/weights/RealESRGAN_x4plus.pth")
-            if not Path(weight_path).exists():
-                raise FileNotFoundError(f"RealESRGAN weight file not found at {weight_path}")
+            weight_path = Path(
+                self.config.get(
+                    "real_esrgan_weight_path",
+                    "models/realesrgan/weights/RealESRGAN_x4plus.pth",
+                )
+            )
+            if not weight_path.exists():
+                raise FileNotFoundError(
+                    f"RealESRGAN weight file not found at {weight_path}"
+                )
             logging.info(f"Loading RealESRGAN weights from {weight_path}")
-            self.realesrganer = RealESRGANer(4, weight_path, True, device)
+            half_precision = device == "cuda"
+            self.realesrganer = RealESRGANer(
+                scale=4,
+                model_path=str(weight_path),
+                dni_weight=None,
+                tile=0,
+                tile_pad=10,
+                pre_pad=0,
+                half=half_precision,
+                device=device,
+            )
         except Exception as e:
             logging.error(f"Failed to initialize Real-ESRGAN: {e}")
             self.realesrganer = None
@@ -56,12 +69,19 @@ class EnhancementProcessor:
           'models/gfpgan/weights/GFPGANv1.4.pth'
         """
         try:
-            weight_path = 'models/gfpgan/weights/GFPGANv1.4.pth'
-            if not Path(weight_path).exists():
-                raise FileNotFoundError(f"GFPGAN weight file not found at {weight_path}")
+            weight_path = Path(
+                self.config.get(
+                    "gfpgan_weight_path",
+                    "models/gfpgan/weights/GFPGANv1.4.pth",
+                )
+            )
+            if not weight_path.exists():
+                raise FileNotFoundError(
+                    f"GFPGAN weight file not found at {weight_path}"
+                )
             logging.info(f"Loading GFPGAN weights from {weight_path}")
             self.gfpganer = GFPGANer(
-                model_path=weight_path,
+                model_path=str(weight_path),
                 upscale=1,
                 arch='clean',
                 channel_multiplier=2,
@@ -78,12 +98,28 @@ class EnhancementProcessor:
           - "Real-ESRGAN": Upscales the image and applies integrated face enhancement.
           - "Basic": Returns the original image.
         """
-        if method == "Real-ESRGAN":
+        if method.lower() == "real-esrgan":
             if not self.realesrganer:
                 raise RuntimeError("Real-ESRGAN model not initialized.")
             scale = self.config.get_real_esrgan_scaling_factor()
             try:
-                enhanced_image, _ = self.realesrganer.enhance(image, outscale=scale)
+                # Ensure contiguous uint8 data before conversion
+                image = np.ascontiguousarray(image, dtype=np.uint8)
+
+                # Real-ESRGAN expects images in BGR order
+                if image.ndim == 2:
+                    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+                elif image.shape[2] == 4:
+                    image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+                else:
+                    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+                enhanced_image, _ = self.realesrganer.enhance(
+                    image,
+                    outscale=scale,
+                    face_enhance=self.gfpganer is not None,
+                )
+                enhanced_image = cv2.cvtColor(enhanced_image, cv2.COLOR_BGR2RGB)
                 return enhanced_image
             except Exception as e:
                 logging.error(f"Real-ESRGAN enhance failed: {e}")

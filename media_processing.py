@@ -5,13 +5,8 @@ from PIL import Image
 import numpy as np
 from moviepy.editor import VideoFileClip, ImageSequenceClip
 from media_utils import MediaProcessor
-import torch
 import cv2
 from concurrent.futures import ThreadPoolExecutor
-import sys
-from realesrgan import RealESRGANer
-import json
-import subprocess
 
 logger = logging.getLogger("FaceOff")
 
@@ -51,30 +46,9 @@ def _process_image(processor, source_image, dest_path, output_dir, enhance):
     if enhance:
         logger.info("Enhancement enabled. Applying Real-ESRGAN.")
         try:
-            # Use the cloned Real-ESRGAN repository to enhance the image
-            input_path = output_dir / f"swapped_{Path(dest_path).stem}.png"
-            enhanced_path = output_dir / f"enhanced_{Path(dest_path).stem}.png"
-
-            # Construct the command to call inference_realesrgan.py
-            command = [
-                'python',
-                'G:/My Drive/scripts/faceoff/external/Real-ESRGAN/inference_realesrgan.py',
-                '-n', 'RealESRGAN_x4plus',
-                '-i', str(input_path),
-                '-o', str(output_dir),
-                '--outscale', '4',
-                '--face_enhance'
-            ]
-
-            try:
-                # Run the command and wait for it to complete
-                subprocess.run(command, check=True)
-                logger.info(f"Enhanced image saved to {enhanced_path}")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to enhance image using Real-ESRGAN: {e}")
-                raise
+            swapped = processor.enhance_image(swapped)
         except Exception as e:
-            logger.error(f"Failed to initialize Real-ESRGAN model: {e}")
+            logger.error("Failed to enhance swapped image: %s", e)
             raise
 
     # Ensure the array is properly converted to a PIL Image for saving
