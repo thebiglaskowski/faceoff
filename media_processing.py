@@ -47,39 +47,56 @@ def _process_image(processor, source_image, dest_path, output_dir, enhance):
             logger.error(f"Error during face swapping: {e}")
             raise
 
+    # Ensure the array is properly converted to a PIL Image for saving
+    output_path = output_dir / f"swapped_{Path(dest_path).stem}.png"
+    Image.fromarray(np.uint8(swapped)).save(output_path)  # Convert back to PIL Image for saving
+    
     # Apply Real-ESRGAN enhancement if enabled
     if enhance:
         logger.info("Enhancement enabled. Applying Real-ESRGAN.")
+        
+        # Free up GPU memory before running Real-ESRGAN
+        # This helps avoid CUDA out of memory errors
+        import gc
+        torch.cuda.empty_cache()
+        gc.collect()
+        logger.info("Cleared GPU cache before enhancement")
+        
         try:
-            # Use the cloned Real-ESRGAN repository to enhance the image
-            input_path = output_dir / f"swapped_{Path(dest_path).stem}.png"
-            enhanced_path = output_dir / f"enhanced_{Path(dest_path).stem}.png"
-
             # Construct the command to call inference_realesrgan.py
+            # Using --tile 256 to reduce memory usage and avoid CUDA OOM errors
             command = [
                 'python',
                 'G:/My Drive/scripts/faceoff/external/Real-ESRGAN/inference_realesrgan.py',
                 '-n', 'RealESRGAN_x4plus',
-                '-i', str(input_path),
+                '-i', str(output_path),
                 '-o', str(output_dir),
                 '--outscale', '4',
+                '--tile', '256',
                 '--face_enhance'
             ]
 
             try:
                 # Run the command and wait for it to complete
                 subprocess.run(command, check=True)
-                logger.info(f"Enhanced image saved to {enhanced_path}")
+                
+                # Real-ESRGAN saves with _out suffix by default
+                enhanced_path = output_dir / f"swapped_{Path(dest_path).stem}_out.png"
+                
+                if enhanced_path.exists():
+                    # Replace the original with the enhanced version
+                    shutil.move(str(enhanced_path), str(output_path))
+                    logger.info(f"Enhanced image saved to {output_path}")
+                else:
+                    logger.warning(f"Enhanced image not found at {enhanced_path}, using original")
+                    
             except subprocess.CalledProcessError as e:
                 logger.error(f"Failed to enhance image using Real-ESRGAN: {e}")
                 raise
         except Exception as e:
             logger.error(f"Failed to initialize Real-ESRGAN model: {e}")
             raise
-
-    # Ensure the array is properly converted to a PIL Image for saving
-    output_path = output_dir / f"swapped_{Path(dest_path).stem}.png"
-    Image.fromarray(np.uint8(swapped)).save(output_path)  # Convert back to PIL Image for saving
+    
     return str(output_path), None
 
 def _process_animated(processor, source_image, dest_path, output_dir, enhance):
@@ -118,12 +135,11 @@ def _process_animated(processor, source_image, dest_path, output_dir, enhance):
         logger.error("Parallel processing failed, falling back to sequential processing: %s", e)
         result = [process_frame(frame) for frame in frames]  # Fallback to sequential
 
-    # Apply Real-ESRGAN enhancement to each frame if enabled
-    if enhance:
-        logger.info("Enhancement enabled. Applying Real-ESRGAN to frames.")
-        result = [processor.enhance_image(frame) for frame in result]
+    # Create the processed video first
+    output_path = output_dir / "swapped_{}.mp4".format(Path(dest_path).stem)
+    clip = ImageSequenceClip([np.array(f) for f in result], fps=fps)
 
-    # Create the processed video
+    # Create the processed video first
     output_path = output_dir / "swapped_{}.mp4".format(Path(dest_path).stem)
     clip = ImageSequenceClip([np.array(f) for f in result], fps=fps)
 
@@ -135,6 +151,126 @@ def _process_animated(processor, source_image, dest_path, output_dir, enhance):
         logger.warning("Processed video will not contain audio.")
 
     clip.write_videofile(str(output_path), codec="libx264", audio_codec="aac")
+    
+    # Apply Real-ESRGAN enhancement if enabled
+    if enhance:
+        logger.info("Enhancement enabled. Applying Real-ESRGAN to video frames.")
+        
+        # Free up GPU memory before running Real-ESRGAN
+        import gc
+        torch.cuda.empty_cache()
+        gc.collect()
+        logger.info("Cleared GPU cache before enhancement")
+        
+        try:
+            # Create temporary directories for frames
+            temp_frames_dir = output_dir / "temp_video_frames"
+            temp_frames_dir.mkdir(exist_ok=True)
+            
+            enhanced_output_dir = output_dir / "temp_video_enhanced"
+            
+            # Remove enhanced directory if it exists from previous run
+            if enhanced_output_dir.exists():
+                import shutil as sh
+                sh.rmtree(enhanced_output_dir)
+            
+            # Extract frames from the video
+            video_clip = VideoFileClip(str(output_path))
+            frame_count = int(video_clip.fps * video_clip.duration)
+            
+            logger.info(f"Extracting {frame_count} frames from video for enhancement")
+            
+            frame_paths = []
+            for i, frame in enumerate(video_clip.iter_frames()):
+                frame_path = temp_frames_dir / f"frame_{i:06d}.png"
+                Image.fromarray(frame).save(frame_path)
+                frame_paths.append(frame_path)
+            
+            video_clip.close()
+            logger.info(f"Saved {len(frame_paths)} frames for enhancement")
+            
+            # Enhance all frames using Real-ESRGAN
+            command = [
+                'python',
+                'G:/My Drive/scripts/faceoff/external/Real-ESRGAN/inference_realesrgan.py',
+                '-n', 'RealESRGAN_x4plus',
+                '-i', str(temp_frames_dir),
+                '-o', str(enhanced_output_dir),
+                '--outscale', '4',
+                '--tile', '256',
+                '--face_enhance'
+            ]
+
+            try:
+                # Run the command and wait for it to complete
+                subprocess.run(command, check=True)
+                
+                # Load enhanced frames
+                enhanced_frames = []
+                
+                if not enhanced_output_dir.exists():
+                    logger.error(f"Enhanced frames directory not found: {enhanced_output_dir}")
+                    logger.warning("Returning non-enhanced video")
+                else:
+                    for i in range(len(frame_paths)):
+                        enhanced_frame_path = enhanced_output_dir / f"frame_{i:06d}_out.png"
+                        if enhanced_frame_path.exists():
+                            enhanced_frames.append(np.array(Image.open(enhanced_frame_path)))
+                        else:
+                            logger.warning(f"Enhanced frame {i} not found at {enhanced_frame_path}")
+                    
+                    # Create enhanced video - be lenient with frame count (Real-ESRGAN sometimes produces +/- 1-2 frames)
+                    expected_frames = len(frame_paths)
+                    actual_frames = len(enhanced_frames)
+                    frame_diff = abs(actual_frames - expected_frames)
+                    
+                    if enhanced_frames and frame_diff <= 2:
+                        if frame_diff > 0:
+                            logger.warning(f"Frame count mismatch. Expected {expected_frames}, got {actual_frames}. Adjusting...")
+                            # If we have too many frames, trim them
+                            if actual_frames > expected_frames:
+                                enhanced_frames = enhanced_frames[:expected_frames]
+                            # If we have too few frames, duplicate the last frame
+                            elif actual_frames < expected_frames:
+                                while len(enhanced_frames) < expected_frames:
+                                    enhanced_frames.append(enhanced_frames[-1])
+                        
+                        enhanced_clip = ImageSequenceClip(enhanced_frames, fps=fps)
+                        
+                        # Add audio back
+                        if audio:
+                            enhanced_clip = enhanced_clip.set_audio(audio)
+                        
+                        # Overwrite the original video with enhanced version
+                        enhanced_clip.write_videofile(str(output_path), codec="libx264", audio_codec="aac")
+                        logger.info(f"Enhanced video saved to {output_path} with {len(enhanced_frames)} frames")
+                    else:
+                        logger.warning(f"Frame count mismatch too large. Expected {expected_frames}, got {actual_frames}")
+                        logger.warning("Keeping original video")
+                    
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to enhance video using Real-ESRGAN: {e}")
+                logger.warning("Returning non-enhanced video")
+            finally:
+                # Clean up temporary frames
+                import shutil as sh
+                try:
+                    sh.rmtree(temp_frames_dir)
+                    logger.info("Cleaned up temporary frame files")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temporary frames: {e}")
+                
+                try:
+                    if enhanced_output_dir.exists():
+                        sh.rmtree(enhanced_output_dir)
+                        logger.info("Cleaned up enhanced frame files")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up enhanced frames: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Enhancement initialization failed: {e}")
+            logger.warning("Returning non-enhanced video")
+    
     return None, str(output_path)
 
 def _process_gif(processor, source_image, dest_path, output_dir, enhance):
@@ -166,16 +302,114 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance):
             swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
         result_frames.append(swapped)
 
-    # Apply Real-ESRGAN enhancement to each frame if enabled
-    if enhance:
-        logger.info("Enhancement enabled. Applying Real-ESRGAN to frames.")
-        result_frames = [processor.enhance_image(frame) for frame in result_frames]
-
-    # Reassemble frames into a GIF with original durations
+    # Reassemble frames into a GIF first
     output_path = Path(output_dir) / f"swapped_{Path(dest_path).stem}.gif"
     result_images = [Image.fromarray(f) for f in result_frames]  # Ensure frames are in RGB
     result_images[0].save(output_path, save_all=True, append_images=result_images[1:], loop=0, duration=frame_durations)
     logger.info("GIF saved at: %s", output_path)
+
+    # Apply Real-ESRGAN enhancement if enabled
+    if enhance:
+        logger.info("Enhancement enabled. Applying Real-ESRGAN to GIF frames.")
+        
+        # Free up GPU memory before running Real-ESRGAN
+        import gc
+        torch.cuda.empty_cache()
+        gc.collect()
+        logger.info("Cleared GPU cache before enhancement")
+        
+        try:
+            # Create a temporary directory for enhanced frames
+            temp_frames_dir = output_dir / "temp_gif_frames"
+            temp_frames_dir.mkdir(exist_ok=True)
+            
+            enhanced_output_dir = output_dir / "temp_gif_enhanced"
+            
+            # Remove enhanced directory if it exists from previous run
+            if enhanced_output_dir.exists():
+                import shutil as sh
+                sh.rmtree(enhanced_output_dir)
+            
+            # Save each frame as a separate image
+            frame_paths = []
+            for i, frame in enumerate(result_frames):
+                frame_path = temp_frames_dir / f"frame_{i:04d}.png"
+                Image.fromarray(frame).save(frame_path)
+                frame_paths.append(frame_path)
+            
+            logger.info(f"Saved {len(frame_paths)} frames for enhancement")
+            
+            # Enhance all frames using Real-ESRGAN
+            command = [
+                'python',
+                'G:/My Drive/scripts/faceoff/external/Real-ESRGAN/inference_realesrgan.py',
+                '-n', 'RealESRGAN_x4plus',
+                '-i', str(temp_frames_dir),
+                '-o', str(enhanced_output_dir),
+                '--outscale', '4',
+                '--tile', '256',
+                '--face_enhance'
+            ]
+
+            try:
+                # Run the command and wait for it to complete
+                subprocess.run(command, check=True)
+                
+                # Load enhanced frames - Real-ESRGAN saves with _out suffix by default
+                enhanced_frames = []
+                
+                if not enhanced_output_dir.exists():
+                    logger.error(f"Enhanced frames directory not found: {enhanced_output_dir}")
+                    logger.warning("Returning non-enhanced GIF")
+                else:
+                    for i in range(len(frame_paths)):
+                        # Real-ESRGAN adds _out suffix by default
+                        enhanced_frame_path = enhanced_output_dir / f"frame_{i:04d}_out.png"
+                        if enhanced_frame_path.exists():
+                            enhanced_img = Image.open(enhanced_frame_path)
+                            logger.info(f"Loaded enhanced frame {i}: size={enhanced_img.size}")
+                            enhanced_frames.append(enhanced_img)
+                        else:
+                            logger.warning(f"Enhanced frame {i} not found at {enhanced_frame_path}, using original")
+                            enhanced_frames.append(Image.fromarray(result_frames[i]))
+                    
+                    # Create enhanced GIF
+                    if enhanced_frames and len(enhanced_frames) == len(result_frames):
+                        # Scale durations if frames are upscaled
+                        enhanced_frames[0].save(
+                            output_path, 
+                            save_all=True, 
+                            append_images=enhanced_frames[1:], 
+                            loop=0, 
+                            duration=frame_durations
+                        )
+                        logger.info(f"Enhanced GIF saved to {output_path} with {len(enhanced_frames)} frames")
+                    else:
+                        logger.warning(f"Frame count mismatch or no enhanced frames. Expected {len(result_frames)}, got {len(enhanced_frames)}")
+                        logger.warning("Keeping original GIF")
+                    
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to enhance GIF using Real-ESRGAN: {e}")
+                logger.warning("Returning non-enhanced GIF")
+            finally:
+                # Clean up temporary frames
+                import shutil as sh
+                try:
+                    sh.rmtree(temp_frames_dir)
+                    logger.info("Cleaned up temporary frame files")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temporary frames: {e}")
+                
+                try:
+                    if enhanced_output_dir.exists():
+                        sh.rmtree(enhanced_output_dir)
+                        logger.info("Cleaned up enhanced frame files")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up enhanced frames: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Enhancement initialization failed: {e}")
+            logger.warning("Returning non-enhanced GIF")
 
     # Cleanup temporary frame files
     for frame_path in frame_paths:
