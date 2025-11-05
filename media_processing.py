@@ -766,17 +766,17 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_s
                 shutil.rmtree(enhanced_output_dir)
             
             # Save each frame as a separate image and track paths
-            frame_paths = []
+            enhancement_frame_paths = []
             for i, frame in enumerate(result_frames):
                 frame_path = temp_frames_dir / f"frame_{i:04d}.png"
                 Image.fromarray(frame).save(frame_path)
-                frame_paths.append(frame_path)
+                enhancement_frame_paths.append(frame_path)
             
             # Enhance frames - use multi-GPU if available
             if len(device_ids) > 1:
                 logger.info("Using multi-GPU GIF enhancement with %d GPUs", len(device_ids))
                 enhanced_frames = _apply_realesrgan_enhancement_multi_gpu(
-                    frame_paths,
+                    enhancement_frame_paths,
                     output_dir,
                     media_type="gif",
                     device_ids=device_ids,
@@ -827,13 +827,22 @@ def _process_gif(processor, source_image, dest_path, output_dir, enhance, tile_s
             except Exception as e:
                 logger.warning("Failed to clean up enhanced frames: %s", e)
 
-    # Cleanup temporary frame files
+    # Cleanup temporary frame files extracted from original GIF
+    logger.info("Cleaning up %d temporary frame files...", len(frame_paths))
+    cleanup_count = 0
     for frame_path in frame_paths:
         try:
-            Path(frame_path).unlink()
-            logger.info("Deleted temporary frame: %s", frame_path)
+            frame_file = Path(frame_path)
+            if frame_file.exists():
+                frame_file.unlink()
+                cleanup_count += 1
+                logger.debug("Deleted temporary frame: %s", frame_path)
+            else:
+                logger.debug("Frame file already deleted: %s", frame_path)
         except Exception as e:
             logger.warning("Failed to delete temporary frame %s: %s", frame_path, e)
+    
+    logger.info("Cleaned up %d/%d temporary frame files", cleanup_count, len(frame_paths))
 
     return None, str(output_path)  # Return only the GIF path
 

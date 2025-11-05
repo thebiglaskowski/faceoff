@@ -23,17 +23,17 @@ MAX_VIDEO_DURATION_SEC = 300  # Maximum video duration (5 minutes)
 MAX_IMAGE_PIXELS = 4096 * 4096  # Maximum image resolution (4K)
 MAX_GIF_FRAMES = 500  # Maximum GIF frames
 
-def get_gpu_memory_info() -> str:
+def get_gpu_memory_info() -> list:
     """
     Get GPU memory usage information for all available GPUs.
-    Returns formatted string with VRAM usage.
+    Returns list of formatted strings, one per GPU.
     """
     if not torch.cuda.is_available():
-        return "🖥️ GPU: Not available (using CPU)"
+        return ["🖥️ GPU: Not available (using CPU)"]
     
     try:
         gpu_count = torch.cuda.device_count()
-        info_lines = [f"🎮 Found {gpu_count} GPU(s):\n"]
+        gpu_info_list = []
         
         # Try to get info for all GPUs using nvidia-smi
         try:
@@ -57,12 +57,13 @@ def get_gpu_memory_info() -> str:
                     # Get PyTorch allocation info
                     allocated_gb = torch.cuda.memory_allocated(int(idx)) / (1024**3)
                     
-                    info_lines.append(
-                        f"GPU {idx}: {name}\n"
-                        f"  📊 VRAM: {used_gb:.1f}GB / {total_gb:.1f}GB ({usage_pct:.1f}%)\n"
-                        f"  💚 Free: {free_gb:.1f}GB | PyTorch: {allocated_gb:.2f}GB\n"
+                    gpu_info_list.append(
+                        f"🎮 GPU {idx}: {name}\n"
+                        f"📊 VRAM: {used_gb:.1f}GB / {total_gb:.1f}GB ({usage_pct:.1f}%)\n"
+                        f"💚 Free: {free_gb:.1f}GB\n"
+                        f"🔧 PyTorch: {allocated_gb:.2f}GB"
                     )
-                return "".join(info_lines)
+                return gpu_info_list
         except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
             pass
         
@@ -71,16 +72,17 @@ def get_gpu_memory_info() -> str:
             gpu_name = torch.cuda.get_device_name(i)
             allocated_gb = torch.cuda.memory_allocated(i) / (1024**3)
             reserved_gb = torch.cuda.memory_reserved(i) / (1024**3)
-            info_lines.append(
-                f"GPU {i}: {gpu_name}\n"
-                f"  🔧 PyTorch: {allocated_gb:.2f}GB allocated, {reserved_gb:.2f}GB reserved\n"
+            gpu_info_list.append(
+                f"🎮 GPU {i}: {gpu_name}\n"
+                f"🔧 PyTorch: {allocated_gb:.2f}GB allocated\n"
+                f"📦 Reserved: {reserved_gb:.2f}GB"
             )
         
-        return "".join(info_lines)
+        return gpu_info_list
         
     except Exception as e:
         logger.error("Failed to get GPU info: %s", e)
-        return "⚠️ GPU info unavailable"
+        return ["⚠️ GPU info unavailable"]
 
 def get_available_gpus() -> list:
     """Get list of available GPU options for dropdown."""
@@ -593,8 +595,13 @@ def process_input(src_img, dest_img, dest_vid, enhance, quality_preset="Balanced
         # Validate destination image
         validate_image_resolution(str(media_path))
     elif dest_vid is not None:
-        media_path = inputs_dir / f"target_video_{timestamp}{Path(dest_vid.name).suffix}"
-        shutil.copy(dest_vid.name, media_path)
+        # Handle both string paths (from gr.Video) and file objects (from gr.File)
+        if isinstance(dest_vid, str):
+            source_file = dest_vid
+        else:
+            source_file = dest_vid.name
+        media_path = inputs_dir / f"target_video_{timestamp}{Path(source_file).suffix}"
+        shutil.copy(source_file, media_path)
         # Validate destination media file
         validate_file_size(str(media_path))
     else:
@@ -677,15 +684,6 @@ def process_input(src_img, dest_img, dest_vid, enhance, quality_preset="Balanced
 with gr.Blocks(title="FaceOff - Face Swapper") as demo:
     gr.Markdown("## FaceOff - AI Face Swapper")
     gr.Markdown("Swap faces from a source image to destination images, GIFs, or videos with optional AI enhancement.")
-    
-    # GPU Memory Monitor
-    gpu_info = gr.Textbox(label="GPU Status", value=get_gpu_memory_info(), lines=4, interactive=False)
-    refresh_gpu_btn = gr.Button("🔄 Refresh GPU Info", size="sm")
-    
-    refresh_gpu_btn.click(
-        fn=get_gpu_memory_info,
-        outputs=[gpu_info]
-    )
 
     with gr.Tabs():
         with gr.Tab("Image"):
@@ -780,9 +778,10 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
                     source_faces_gallery_gif = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
                 with gr.Column():
                     target_gif_file = gr.File(label="Target GIF", file_types=[".gif"])
+                    target_gif_preview = gr.Image(label="Preview", visible=False, show_label=True)
                     target_faces_gallery_gif = gr.Gallery(label="Target Faces (First Frame)", columns=4, height="auto", visible=False)
                 with gr.Column():
-                    result_gif = gr.Image(label="Swapped Result")
+                    result_gif = gr.Image(label="Swapped Result", show_label=True)
             
             # Face mapping controls for GIF
             with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
@@ -860,10 +859,10 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
                     face_info_vid = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
                     source_faces_gallery_vid = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
                 with gr.Column():
-                    target_vid = gr.File(label="Target Video", file_types=[".mp4", ".webp"])
+                    target_vid = gr.Video(label="Target Video", sources=None, autoplay=True)
                     target_faces_gallery_vid = gr.Gallery(label="Target Faces (First Frame)", columns=4, height="auto", visible=False)
                 with gr.Column():
-                    result_vid = gr.Video(label="Swapped Result")
+                    result_vid = gr.Video(label="Swapped Result", autoplay=True)
             
             # Face mapping controls for Video
             with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
@@ -1026,6 +1025,26 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
             batch_status = gr.Textbox(label="Batch Processing Status", lines=3, interactive=False)
             run_batch_btn = gr.Button("🚀 Run Batch Processing", variant="primary", size="lg")
     
+    # GPU Memory Monitor (at bottom) - dynamically create boxes for each GPU
+    gr.Markdown("---")
+    gr.Markdown("### 🖥️ GPU Status Monitor")
+    
+    # Get initial GPU info to determine number of GPUs
+    initial_gpu_info = get_gpu_memory_info()
+    gpu_textboxes = []
+    
+    with gr.Row():
+        for idx, info in enumerate(initial_gpu_info):
+            gpu_textbox = gr.Textbox(
+                label=f"GPU {idx}" if len(initial_gpu_info) > 1 else "GPU Status",
+                value=info,
+                lines=4,
+                interactive=False
+            )
+            gpu_textboxes.append(gpu_textbox)
+    
+    refresh_gpu_btn = gr.Button("🔄 Refresh GPU Info", size="sm")
+    
     # Show/hide quality dropdown based on enhancement toggle
     enhance_toggle.change(
         lambda x: gr.update(visible=x),
@@ -1154,6 +1173,20 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
         outputs=[face_mapping_status, current_mappings]
     )
     
+    # GIF preview handler - show uploaded GIF
+    def show_gif_preview(file):
+        if file is None:
+            return gr.update(visible=False, value=None)
+        # Extract file path
+        file_path = file.name if hasattr(file, 'name') else file
+        return gr.update(visible=True, value=file_path)
+    
+    target_gif_file.change(
+        show_gif_preview,
+        inputs=[target_gif_file],
+        outputs=[target_gif_preview]
+    )
+    
     # GIF face mapping event handlers
     detect_faces_btn_gif.click(
         detect_faces_gif_video,
@@ -1261,6 +1294,19 @@ with gr.Blocks(title="FaceOff - Face Swapper") as demo:
         inputs=[batch_source, batch_targets, batch_enhance, batch_quality, batch_confidence, batch_compare, batch_gpu_selection],
         outputs=[batch_results, batch_status],
         show_progress='full'
+    )
+    
+    # GPU refresh button handler - updates all GPU textboxes
+    def refresh_all_gpus():
+        gpu_info_list = get_gpu_memory_info()
+        # Pad with empty strings if fewer GPUs than textboxes
+        while len(gpu_info_list) < len(gpu_textboxes):
+            gpu_info_list.append("")
+        return gpu_info_list[:len(gpu_textboxes)]
+    
+    refresh_gpu_btn.click(
+        fn=refresh_all_gpus,
+        outputs=gpu_textboxes
     )
 
 demo.launch(share=True)
