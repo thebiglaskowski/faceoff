@@ -83,15 +83,15 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Unified Interface (Recommended)
+### Unified Interface
 
 ```powershell
-python faceoff_unified.py
+python main.py
 ```
 
 Opens at <http://127.0.0.1:7860/>
 
-The unified interface provides three tabs:
+The unified interface provides four tabs:
 
 - **Image Tab**: Face swap for static images
 - **GIF Tab**: Face swap for animated GIFs with frame preservation
@@ -207,20 +207,43 @@ Edit `config.json` to customize settings:
 
 ```
 faceoff/
-├── faceoff_unified.py      # Main unified interface (RECOMMENDED)
-├── media_processing.py     # Core processing logic
-├── media_utils.py          # MediaProcessor class
-├── config.py               # Configuration loader
-├── logging_utils.py        # Logging setup
-├── enhancement_utils.py    # Enhancement processor
-├── config.json             # Configuration file
-├── inputs/                 # Temporary input files
-├── outputs/                # Processed outputs
-├── models/                 # Model files
-│   └── buffalo_l/         # InsightFace models
-├── external/              # External dependencies
-│   └── Real-ESRGAN/       # Enhancement engine
-└── tests/                 # Test files
+├── main.py                    # Application entry point
+├── config.json                # Configuration settings
+├── config.py                  # Configuration loader
+├── logging_utils.py           # Logging setup
+├── inswapper_128.onnx         # Face swapper model
+├── environment.yml            # Conda environment specification
+├── core/                      # Core functionality
+│   ├── __init__.py
+│   ├── gpu_manager.py         # GPU device management
+│   ├── face_processor.py      # Face detection and processing
+│   └── media_processor.py     # Media file handling
+├── processing/                # Media processing modules
+│   ├── __init__.py
+│   ├── orchestrator.py        # Processing coordination
+│   ├── enhancement.py         # Real-ESRGAN enhancement
+│   ├── image_processing.py    # Image face swapping
+│   ├── video_processing.py    # Video face swapping
+│   └── gif_processing.py      # GIF face swapping
+├── ui/                        # User interface
+│   ├── __init__.py
+│   └── app.py                 # Gradio web interface
+├── utils/                     # Utility modules
+│   ├── __init__.py
+│   ├── constants.py           # Model options and constants
+│   └── validation.py          # Input validation
+├── models/                    # Model files
+│   └── buffalo_l/             # InsightFace models
+├── external/                  # External dependencies
+│   └── Real-ESRGAN/           # Enhancement engine
+├── inputs/                    # Temporary input files
+├── outputs/                   # Processed outputs
+├── temp/                      # Temporary processing files
+└── tests/                     # Test files
+    ├── __init__.py
+    ├── conftest.py
+    ├── test_config.py
+    └── ...
 ```
 
 ## Changelog
