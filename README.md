@@ -13,10 +13,18 @@ Read more at [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://t
   - 🎞️ Animated GIFs
   - 🎬 Videos (MP4, WEBP) with audio preservation
   
-- **AI Enhancement**: Optional Real-ESRGAN upscaling with 3 quality presets:
-  - ⚡ **Fast**: 2x upscale, faster processing (Tile 512)
-  - ⚖️ **Balanced**: 4x upscale, good quality/speed balance (Tile 256) - Recommended
-  - 💎 **Quality**: 4x upscale, maximum quality (Tile 128) - Slower but best results
+- **AI Enhancement**: Optional Real-ESRGAN upscaling with 6 model options:
+  - 🎯 **RealESRGAN_x4plus**: General purpose - Best for photos (Default)
+  - 🎨 **RealESRGAN_x4plus_anime_6B**: Optimized for anime/illustration content
+  - 💎 **RealESRGAN_x4plus (Conservative)**: Less aggressive enhancement
+  - 🔧 **realesr-general-x4v3**: General purpose with denoise control
+  - 🎬 **realesr-animevideov3**: Specialized for anime videos
+  - ⚡ **RealESRGAN_x2plus**: 2x upscale for faster processing
+
+- **Advanced Enhancement Controls**:
+  - Model selection per processing task
+  - Denoise strength control (0-1) for compatible models
+  - Automatic quality optimization based on selected model
 
 - **Smart Processing**:
   - Automatic GPU memory management
@@ -48,7 +56,7 @@ Sarah Connor?
 
 1. **FFmpeg** - [Download and install FFmpeg](https://ffmpeg.org/download.html)
 2. **CUDA >= 10.1** - [Download and install CUDA](https://developer.nvidia.com/cuda-10.1-download-archive-base)
-3. **Python 3.8+** - Anaconda/Miniconda recommended
+3. **Python 3.10** - Anaconda/Miniconda recommended
 
 ### Setup Instructions
 
@@ -58,7 +66,7 @@ git clone https://github.com/thebiglaskowski/faceoff.git
 cd faceoff
 
 # Create conda environment
-conda create -n faceoff python=3.8 -y
+conda create -n faceoff python=3.10 -y
 conda activate faceoff
 
 # Install PyTorch with CUDA support
@@ -84,34 +92,40 @@ python faceoff_unified.py
 Opens at <http://127.0.0.1:7860/>
 
 The unified interface provides three tabs:
+
 - **Image Tab**: Face swap for static images
 - **GIF Tab**: Face swap for animated GIFs with frame preservation
 - **Video Tab**: Face swap for videos with audio preservation
+- **Batch Tab**: Process multiple files at once
 
 #### Enhancement Options
 
 1. **Enable Enhancement**: Check the "Enable Enhancement (Real-ESRGAN)" checkbox
-2. **Select Quality Preset**:
-   - **Fast (2x, Tile 512)**: Fastest processing, 2x upscaling - Use for quick previews or when processing many videos
-   - **Balanced (4x, Tile 256)**: Recommended - 4x upscaling with good speed/quality balance
-   - **Quality (4x, Tile 128)**: Best quality, slowest - Use for final renders
-
-### Legacy Individual Apps
-
-For backward compatibility, individual apps are still available:
-
-```powershell
-# Image processing only
-python faceoff.py  # Port 5000
-
-# GIF processing only
-python faceoff_gif.py  # Port 5001
-
-# Video processing only
-python faceoff_video.py  # Port 5002
-```
+2. **Select Model**:
+   - **RealESRGAN_x4plus**: Best general-purpose model for photos
+   - **RealESRGAN_x4plus_anime_6B**: Optimized for anime/illustration
+   - **RealESRGAN_x4plus (Conservative)**: More subtle enhancement
+   - **realesr-general-x4v3**: Includes denoise strength control (0-1 slider)
+   - **realesr-animevideov3**: Best for anime videos
+   - **RealESRGAN_x2plus**: Faster 2x upscaling
+3. **Adjust Denoise** (only for realesr-general-x4v3): Control noise reduction strength from 0 (none) to 1 (maximum)
 
 ## Performance Tips
+
+### GPU Memory Optimization
+
+- **8GB VRAM**: Use any model except anime_6B (which requires more memory)
+- **6GB VRAM**: Use RealESRGAN_x2plus or x4plus models
+- **4GB VRAM or less**: Disable enhancement or upgrade GPU
+
+### Processing Time Estimates
+
+For a 10-second 30fps video (300 frames):
+
+- **No Enhancement**: ~30 seconds
+- **With Enhancement (any model)**: ~10-20 minutes depending on model and GPU
+
+## Configuration
 
 ### GPU Memory Optimization
 
@@ -122,10 +136,9 @@ python faceoff_video.py  # Port 5002
 ### Processing Time Estimates
 
 For a 10-second 30fps video (300 frames):
+
 - **No Enhancement**: ~30 seconds
-- **Fast (2x)**: ~5-8 minutes
-- **Balanced (4x)**: ~10-15 minutes
-- **Quality (4x)**: ~20-30 minutes
+- **With Enhancement (any model)**: ~10-20 minutes depending on model and GPU
 
 *Times vary based on GPU, video resolution, and scene complexity*
 
@@ -133,7 +146,7 @@ For a 10-second 30fps video (300 frames):
 
 ### CUDA Out of Memory Error
 
-**Solution**: Use a faster quality preset or lower resolution input
+**Solution**: Use RealESRGAN_x2plus model or lower resolution input
 
 ```powershell
 # Check GPU memory
@@ -145,9 +158,10 @@ nvidia-smi
 **Issue**: Video/GIF returned without enhancement
 
 **Solutions**:
+
 1. Check terminal for error messages
 2. Verify Real-ESRGAN weights exist in `external/Real-ESRGAN/`
-3. Try "Fast" preset to reduce memory usage
+3. Try RealESRGAN_x2plus model to reduce memory usage
 4. Ensure CUDA is properly installed
 
 ### Video Has No Audio
@@ -212,18 +226,20 @@ faceoff/
 ## Changelog
 
 ### v2.0.0 (Current)
-- ✅ **Unified Interface**: All three modes (Image/GIF/Video) in single app
-- ✅ **Enhanced Processing**: Real-ESRGAN enhancement for all media types
-- ✅ **Quality Presets**: Fast/Balanced/Quality options for user control
-- ✅ **Code Optimization**: Reduced duplicate code, improved performance
+
+- ✅ **Unified Interface**: All four modes (Image/GIF/Video/Batch) in single app
+- ✅ **Advanced Model Selection**: 6 Real-ESRGAN models with specialized purposes
+- ✅ **Denoise Control**: Fine-tune noise reduction for compatible models
+- ✅ **Modular Architecture**: Clean, maintainable codebase with processing/ui separation
 - ✅ **Audio Preservation**: Videos maintain original audio after enhancement
-- ✅ **Smart Memory Management**: Automatic GPU cache clearing and tiling
-- ✅ **Frame Handling**: Intelligent frame count matching for enhanced videos
+- ✅ **Unique Filenames**: Timestamp-based naming prevents output overwrites
+- ✅ **Multi-GPU Support**: Leverage multiple GPUs for faster processing
 
 ### v1.0.0 (Legacy)
+
 - Basic face swapping for images, GIFs, and videos
-- Separate apps for each media type
-- CodeFormer enhancement (deprecated)
+- Single model enhancement option
+- Legacy individual app files (deprecated)
 
 ## Roadmap
 
@@ -231,12 +247,14 @@ Future enhancements planned:
 
 - [ ] Progress bars showing enhancement progress for videos/GIFs
 - [ ] Multiple face selection (choose which face to swap if multiple detected)
-- [ ] Batch processing mode (process multiple files at once)
+- [x] Batch processing mode (process multiple files at once) - **COMPLETED**
 - [ ] Face confidence threshold controls
 - [ ] Video preview before enhancement
 - [ ] Output format options (codec, resolution, compression)
 - [ ] Side-by-side comparison view
 - [ ] Processing history and favorites
+- [x] Multiple Real-ESRGAN model options - **COMPLETED**
+- [x] Denoise strength control - **COMPLETED**
 
 ## Special Thanks To
 
