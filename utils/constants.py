@@ -45,21 +45,11 @@ MODEL_OPTIONS = {
 # Default model
 DEFAULT_MODEL = "RealESRGAN_x4plus (General - Best for Photos)"
 
-# Enhancement quality presets
-QUALITY_PRESETS = {
-    "Fast (2x, Tile 512)": {
-        "tile_size": 512,
-        "outscale": 2
-    },
-    "Balanced (4x, Tile 256)": {
-        "tile_size": 256,
-        "outscale": 4
-    },
-    "Quality (4x, Tile 128)": {
-        "tile_size": 128,
-        "outscale": 4
-    }
-}
+# Default enhancement settings
+DEFAULT_TILE_SIZE = 256  # Good balance of speed and VRAM usage (128-512)
+DEFAULT_OUTSCALE = 4  # Standard upscaling factor (2 or 4)
+DEFAULT_PRE_PAD = 0  # Pre-padding to reduce edge artifacts (0-20)
+DEFAULT_USE_FP32 = False  # Use FP32 precision (more VRAM but slightly better quality)
 
 # Face detection settings
 DEFAULT_FACE_CONFIDENCE = 0.5  # Minimum confidence threshold for face detection

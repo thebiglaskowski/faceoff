@@ -4,7 +4,5 @@
   "default_output_dir": "outputs",
   "cuda_provider": "CUDAExecutionProvider",
   "face_analysis_name": "buffalo_l",
-  "face_analysis_det_size": [640, 640],
-  "real_esrgan_scaling_factor": 4,
-  "real_esrgan_weight_path": "models/realesrgan/weights/RealESRGAN_x4plus.pth"
+  "face_analysis_det_size": [640, 640]
 }

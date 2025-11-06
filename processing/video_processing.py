@@ -10,7 +10,7 @@ from pathlib import Path
 from PIL import Image
 from typing import List, Optional, Tuple
 
-from core.face_processor import filter_faces_by_confidence, sort_faces_by_position
+from core.face_processor import filter_faces_by_confidence, sort_faces_by_position, FaceTracker
 from core.media_processor import MediaProcessor
 from processing.enhancement import enhance_frames_single_gpu, enhance_frames_multi_gpu
 
@@ -29,7 +29,9 @@ def process_video(
     device_ids: Optional[List[int]] = None,
     face_mappings: Optional[List[Tuple[int, int]]] = None,
     model_name: str = "RealESRGAN_x4plus",
-    denoise_strength: float = 0.5
+    denoise_strength: float = 0.5,
+    use_fp32: bool = False,
+    pre_pad: int = 0
 ) -> Tuple[None, Optional[str]]:
     """
     Process video files with face swapping.
@@ -40,14 +42,16 @@ def process_video(
         dest_path: Path to destination video
         output_dir: Output directory for results
         enhance: Whether to apply Real-ESRGAN enhancement
-        tile_size: Tile size for enhancement
-        outscale: Upscaling factor for enhancement
+        tile_size: Tile size for enhancement (128-512, lower = less VRAM)
+        outscale: Upscaling factor for enhancement (2 or 4)
         face_confidence: Minimum face detection confidence
         device_ids: List of GPU device IDs
         face_mappings: Optional list of (source_face_idx, dest_face_idx) tuples.
                       If None, uses default (first source face to all destination faces)
         model_name: Real-ESRGAN model to use for enhancement
         denoise_strength: Denoise strength (0-1, only for realesr-general-x4v3)
+        use_fp32: Use FP32 precision instead of FP16
+        pre_pad: Pre-padding size to reduce edge artifacts
                       
     Returns:
         Tuple of (None, output_path)
@@ -83,6 +87,46 @@ def process_video(
         
         logger.info("Source faces detected (after filtering): %d", len(processor_src_faces[0]))
         
+        # Detect faces in first frame to establish reference positions
+        reference_faces = processors[0].get_faces(frames[0])
+        reference_faces = filter_faces_by_confidence(reference_faces, face_confidence)
+        reference_faces = sort_faces_by_position(reference_faces)
+        logger.info("Reference frame has %d faces for tracking", len(reference_faces))
+        
+        def match_faces_to_reference(current_faces, reference_faces):
+            """Match current faces to reference frame using IoU for stable IDs."""
+            if not current_faces or not reference_faces:
+                return current_faces
+            
+            from core.face_processor import calculate_iou
+            
+            matched_faces = [None] * len(reference_faces)
+            matched_indices = set()  # Track which current faces have been matched
+            
+            for ref_idx, ref_face in enumerate(reference_faces):
+                best_iou = 0.0
+                best_match_idx = -1
+                
+                for curr_idx, curr_face in enumerate(current_faces):
+                    if curr_idx in matched_indices:
+                        continue
+                    iou = calculate_iou(ref_face.bbox, curr_face.bbox)
+                    if iou > best_iou and iou >= 0.3:
+                        best_iou = iou
+                        best_match_idx = curr_idx
+                
+                if best_match_idx >= 0:
+                    matched_faces[ref_idx] = current_faces[best_match_idx]
+                    matched_indices.add(best_match_idx)
+            
+            # Keep None as placeholders to maintain stable indices!
+            stable_faces = matched_faces
+            unmatched = [f for idx, f in enumerate(current_faces) if idx not in matched_indices]
+            if unmatched:
+                stable_faces.extend(sort_faces_by_position(unmatched))
+            
+            return stable_faces
+        
         def process_frame_multi_gpu(args):
             frame_idx, frame = args
             # Distribute frames round-robin across GPUs
@@ -92,18 +136,22 @@ def process_video(
             
             dst_faces = proc.get_faces(frame)
             dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
-            dst_faces = sort_faces_by_position(dst_faces)
+            
+            # Match to reference frame for stable IDs
+            dst_faces = match_faces_to_reference(dst_faces, reference_faces)
+            
             swapped = frame.copy()
             
             # Apply face mappings or default behavior
             if face_mappings:
                 for src_idx, dst_idx in face_mappings:
-                    if src_idx < len(proc_src_faces) and dst_idx < len(dst_faces):
+                    # Check bounds and ensure target face exists (not None from tracking)
+                    if src_idx < len(proc_src_faces) and dst_idx < len(dst_faces) and dst_faces[dst_idx] is not None:
                         swapped = proc.swapper.get(swapped, dst_faces[dst_idx], proc_src_faces[src_idx], paste_back=True)
             else:
                 # Default: swap first source face to all destination faces
                 for face in dst_faces:
-                    if proc_src_faces:
+                    if proc_src_faces and face is not None:  # Skip None placeholders
                         swapped = proc.swapper.get(swapped, face, proc_src_faces[0], paste_back=True)
             return swapped
         
@@ -129,21 +177,29 @@ def process_video(
         src_faces = sort_faces_by_position(src_faces)
         logger.info("Source faces detected (after filtering): %d", len(src_faces))
         
+        # Initialize face tracker for stable face IDs across frames
+        face_tracker = FaceTracker(iou_threshold=0.3)
+        
         def process_frame(frame):
             dst_faces = processor.get_faces(frame)
             dst_faces = filter_faces_by_confidence(dst_faces, face_confidence)
-            dst_faces = sort_faces_by_position(dst_faces)
+            
+            # Use face tracker to maintain stable IDs across frames
+            dst_faces = face_tracker.track_faces(dst_faces)
+            
             swapped = frame.copy()
             
             # Apply face mappings or default behavior
             if face_mappings:
                 for src_idx, dst_idx in face_mappings:
-                    if src_idx < len(src_faces) and dst_idx < len(dst_faces):
+                    # Check bounds and ensure target face exists (not None from tracking)
+                    if src_idx < len(src_faces) and dst_idx < len(dst_faces) and dst_faces[dst_idx] is not None:
                         swapped = processor.swapper.get(swapped, dst_faces[dst_idx], src_faces[src_idx], paste_back=True)
             else:
                 # Default: swap first source face to all destination faces
                 for face in dst_faces:
-                    swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
+                    if face is not None:  # Skip None placeholders
+                        swapped = processor.swapper.get(swapped, face, src_faces[0], paste_back=True)
             return swapped
         
         max_workers = 4
@@ -211,7 +267,9 @@ def process_video(
                     tile_size=tile_size,
                     outscale=outscale,
                     model_name=model_name,
-                    denoise_strength=denoise_strength
+                    denoise_strength=denoise_strength,
+                    use_fp32=use_fp32,
+                    pre_pad=pre_pad
                 )
             else:
                 result = enhance_frames_single_gpu(
@@ -224,7 +282,9 @@ def process_video(
                     outscale=outscale,
                     gpu_id=device_ids[0] if device_ids else 0,
                     model_name=model_name,
-                    denoise_strength=denoise_strength
+                    denoise_strength=denoise_strength,
+                    use_fp32=use_fp32,
+                    pre_pad=pre_pad
                 )
             
             if result:

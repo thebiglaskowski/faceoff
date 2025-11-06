@@ -25,7 +25,9 @@ def process_image(
     device_ids: Optional[List[int]] = None,
     face_mappings: Optional[List[Tuple[int, int]]] = None,
     model_name: str = "RealESRGAN_x4plus",
-    denoise_strength: float = 0.5
+    denoise_strength: float = 0.5,
+    use_fp32: bool = False,
+    pre_pad: int = 0
 ) -> Tuple[Optional[str], None]:
     """
     Process a single image with face swapping.
@@ -36,13 +38,15 @@ def process_image(
         dest_path: Path to destination image
         output_dir: Output directory for results
         enhance: Whether to apply Real-ESRGAN enhancement
-        tile_size: Tile size for enhancement
-        outscale: Upscaling factor for enhancement
+        tile_size: Tile size for enhancement (128-512, lower = less VRAM)
+        outscale: Upscaling factor for enhancement (2 or 4)
         face_confidence: Minimum face detection confidence
         device_ids: List of GPU device IDs (only first is used for images)
         face_mappings: Optional list of (source_idx, dest_idx) tuples
         model_name: Real-ESRGAN model to use for enhancement
         denoise_strength: Denoise strength (0-1, only for realesr-general-x4v3)
+        use_fp32: Use FP32 precision instead of FP16
+        pre_pad: Pre-padding size to reduce edge artifacts
         face_mappings: Optional list of (source_face_idx, dest_face_idx) tuples.
                       If None, uses default (first source face to all destination faces)
                       
@@ -118,6 +122,6 @@ def process_image(
     
     # Apply enhancement if requested
     if enhance:
-        enhance_image_single_gpu(output_path, output_dir, tile_size, outscale, gpu_id, model_name, denoise_strength)
+        enhance_image_single_gpu(output_path, output_dir, tile_size, outscale, gpu_id, model_name, denoise_strength, use_fp32, pre_pad)
     
     return str(output_path), None

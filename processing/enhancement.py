@@ -1,15 +1,15 @@
 """
 Image and video enhancement using Real-ESRGAN and GFPGAN.
 
-This module consolidates enhancement functionality from:
-- enhancement_utils.py (EnhancementProcessor class)
-- media_processing.py (Real-ESRGAN CLI wrapper functions)
+This module provides CLI wrapper functions for batch enhancement using
+the Real-ESRGAN inference script with GFPGAN face enhancement.
 """
 import gc
 import logging
 import numpy as np
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
@@ -19,115 +19,6 @@ import torch
 
 logger = logging.getLogger("FaceOff")
 
-# Import Real-ESRGAN and GFPGAN
-try:
-    from realesrgan import RealESRGANer
-    from gfpgan import GFPGANer
-    MODELS_AVAILABLE = True
-except ImportError:
-    logger.warning("Real-ESRGAN or GFPGAN not available. Enhancement will be disabled.")
-    MODELS_AVAILABLE = False
-
-
-class EnhancementProcessor:
-    """
-    Image enhancement using Real-ESRGAN with integrated GFPGAN face enhancement.
-    
-    This class provides a Python API for enhancement (in-memory processing).
-    For batch processing of frames, use the CLI wrapper functions instead.
-    """
-    
-    def __init__(self, device: str = "cuda", tile_size: int = 256, outscale: int = 4):
-        """
-        Initialize enhancement processor.
-        
-        Args:
-            device: Device to use ("cuda" or "cpu")
-            tile_size: Tile size for processing (smaller = less VRAM, slower)
-            outscale: Upscaling factor (2 or 4)
-        """
-        self.device = device if torch.cuda.is_available() else "cpu"
-        self.tile_size = tile_size
-        self.outscale = outscale
-        self.realesrganer = None
-        self.gfpganer = None
-        
-        if MODELS_AVAILABLE:
-            self._init_real_esrgan()
-            self._init_gfpgan()
-            
-            # Set integrated face enhancement on RealESRGANer
-            if self.realesrganer and self.gfpganer:
-                self.realesrganer.face_enhance = True
-                self.realesrganer.face_enhancer = self.gfpganer
-                logger.info("Integrated face enhancement enabled")
-    
-    def _init_real_esrgan(self) -> None:
-        """Initialize Real-ESRGAN model."""
-        try:
-            weight_path = "models/realesrgan/weights/RealESRGAN_x4plus.pth"
-            if not Path(weight_path).exists():
-                raise FileNotFoundError(f"RealESRGAN weight not found: {weight_path}")
-            
-            logger.info("Loading Real-ESRGAN from %s (device: %s)", weight_path, self.device)
-            self.realesrganer = RealESRGANer(
-                scale=4,
-                model_path=weight_path,
-                tile=self.tile_size,
-                tile_pad=10,
-                pre_pad=0,
-                half=True if self.device == "cuda" else False,
-                device=self.device
-            )
-            logger.info("Real-ESRGAN initialized successfully")
-            
-        except Exception as e:
-            logger.error("Failed to initialize Real-ESRGAN: %s", e)
-            self.realesrganer = None
-    
-    def _init_gfpgan(self) -> None:
-        """Initialize GFPGAN model for face restoration."""
-        try:
-            weight_path = "models/gfpgan/weights/GFPGANv1.4.pth"
-            if not Path(weight_path).exists():
-                raise FileNotFoundError(f"GFPGAN weight not found: {weight_path}")
-            
-            logger.info("Loading GFPGAN from %s", weight_path)
-            self.gfpganer = GFPGANer(
-                model_path=weight_path,
-                upscale=1,
-                arch='clean',
-                channel_multiplier=2,
-                bg_upsampler=None,
-                device=self.device
-            )
-            logger.info("GFPGAN initialized successfully")
-            
-        except Exception as e:
-            logger.error("Failed to initialize GFPGAN: %s", e)
-            self.gfpganer = None
-    
-    def enhance(self, image: np.ndarray) -> Optional[np.ndarray]:
-        """
-        Enhance a single image.
-        
-        Args:
-            image: Input image as numpy array (BGR format)
-            
-        Returns:
-            Enhanced image as numpy array, or None if enhancement failed
-        """
-        if not self.realesrganer:
-            logger.error("Real-ESRGAN not initialized")
-            return None
-        
-        try:
-            enhanced_image, _ = self.realesrganer.enhance(image, outscale=self.outscale)
-            return enhanced_image
-        except Exception as e:
-            logger.error("Enhancement failed: %s", e)
-            return None
-
 
 def apply_realesrgan_cli(
     input_path: Union[str, Path],
@@ -136,7 +27,9 @@ def apply_realesrgan_cli(
     outscale: int = 4,
     gpu_id: int = 0,
     model_name: str = "RealESRGAN_x4plus",
-    denoise_strength: float = 0.5
+    denoise_strength: float = 0.5,
+    use_fp32: bool = False,
+    pre_pad: int = 0
 ) -> bool:
     """
     Apply Real-ESRGAN enhancement using the CLI wrapper.
@@ -147,11 +40,13 @@ def apply_realesrgan_cli(
     Args:
         input_path: Path to input file or directory
         output_dir: Output directory for enhanced results
-        tile_size: Tile size for processing
-        outscale: Upscaling factor
+        tile_size: Tile size for processing (128-512, lower = less VRAM)
+        outscale: Upscaling factor (2 or 4)
         gpu_id: GPU device ID
         model_name: Real-ESRGAN model to use
         denoise_strength: Denoise strength (0-1, only for realesr-general-x4v3)
+        use_fp32: Use FP32 precision instead of FP16 (more VRAM, better quality)
+        pre_pad: Pre-padding size to reduce edge artifacts (0-20)
         
     Returns:
         True if successful, False otherwise
@@ -162,7 +57,7 @@ def apply_realesrgan_cli(
         gc.collect()
     
     command = [
-        'python',
+        sys.executable,  # Use the same Python interpreter that's running this script
         'G:/My Drive/scripts/faceoff/external/Real-ESRGAN/inference_realesrgan.py',
         '-n', model_name,
         '-i', str(input_path),
@@ -175,19 +70,36 @@ def apply_realesrgan_cli(
     
     # Add denoise strength only for models that support it
     if model_name == "realesr-general-x4v3":
-        command.extend(['--denoise_strength', str(denoise_strength)])
+        command.extend(['-dn', str(denoise_strength)])
     
-    logger.info("Running Real-ESRGAN (model=%s) on GPU %d: tile=%d, outscale=%d", 
-                model_name, gpu_id, tile_size, outscale)
+    # Add FP32 flag if requested
+    if use_fp32:
+        command.append('--fp32')
+    
+    # Add pre-padding if specified
+    if pre_pad > 0:
+        command.extend(['--pre_pad', str(pre_pad)])
+    
+    logger.info("Running Real-ESRGAN (model=%s) on GPU %d: tile=%d, outscale=%d, fp32=%s, pre_pad=%d", 
+                model_name, gpu_id, tile_size, outscale, use_fp32, pre_pad)
     if model_name == "realesr-general-x4v3":
         logger.info("Denoise strength: %.2f", denoise_strength)
     
+    # Log the full command for debugging
+    logger.info("Full command: %s", ' '.join(command))
+    
     try:
-        subprocess.run(command, check=True, capture_output=True)
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
         logger.info("✅ Enhancement complete on GPU %d", gpu_id)
+        if result.stdout:
+            logger.debug("Real-ESRGAN stdout: %s", result.stdout)
         return True
     except subprocess.CalledProcessError as e:
         logger.error("Enhancement failed on GPU %d: %s", gpu_id, e)
+        if e.stdout:
+            logger.error("stdout: %s", e.stdout)
+        if e.stderr:
+            logger.error("stderr: %s", e.stderr)
         return False
 
 
@@ -198,7 +110,9 @@ def enhance_image_single_gpu(
     outscale: int = 4,
     gpu_id: int = 0,
     model_name: str = "RealESRGAN_x4plus",
-    denoise_strength: float = 0.5
+    denoise_strength: float = 0.5,
+    use_fp32: bool = False,
+    pre_pad: int = 0
 ) -> Optional[Path]:
     """
     Enhance a single image file using Real-ESRGAN.
@@ -206,6 +120,13 @@ def enhance_image_single_gpu(
     Args:
         input_path: Path to input image
         output_dir: Output directory
+        tile_size: Tile size for processing (128-512, lower = less VRAM)
+        outscale: Upscaling factor (2 or 4)
+        gpu_id: GPU device ID
+        model_name: Real-ESRGAN model to use
+        denoise_strength: Denoise strength (0-1, only for realesr-general-x4v3)
+        use_fp32: Use FP32 precision instead of FP16
+        pre_pad: Pre-padding size to reduce edge artifacts
         tile_size: Tile size for processing
         outscale: Upscaling factor
         gpu_id: GPU device ID
@@ -219,17 +140,32 @@ def enhance_image_single_gpu(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    if not apply_realesrgan_cli(input_path, output_dir, tile_size, outscale, gpu_id, model_name, denoise_strength):
+    if not apply_realesrgan_cli(input_path, output_dir, tile_size, outscale, gpu_id, model_name, denoise_strength, use_fp32, pre_pad):
         return None
     
     # Real-ESRGAN saves with _out suffix
     enhanced_path = output_dir / f"{input_path.stem}_out.png"
     
     if enhanced_path.exists():
-        # Replace original with enhanced version
-        shutil.move(str(enhanced_path), str(input_path))
-        logger.info("Enhanced image saved to %s", input_path)
-        return input_path
+        # Replace original with enhanced version (with retry for file locking)
+        import time
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                # Delete target file first if it exists
+                if input_path.exists():
+                    input_path.unlink()
+                time.sleep(0.1)  # Brief delay to ensure file is released
+                shutil.move(str(enhanced_path), str(input_path))
+                logger.info("Enhanced image saved to %s", input_path)
+                return input_path
+            except (PermissionError, FileExistsError) as e:
+                if attempt < max_retries - 1:
+                    logger.warning("File locked, retrying... (attempt %d/%d)", attempt + 1, max_retries)
+                    time.sleep(0.5)
+                else:
+                    logger.error("Failed to move enhanced file after %d attempts: %s", max_retries, e)
+                    return None
     else:
         logger.warning("Enhanced image not found at %s", enhanced_path)
         return None
@@ -245,7 +181,9 @@ def enhance_frames_single_gpu(
     outscale: int = 4,
     gpu_id: int = 0,
     model_name: str = "RealESRGAN_x4plus",
-    denoise_strength: float = 0.5
+    denoise_strength: float = 0.5,
+    use_fp32: bool = False,
+    pre_pad: int = 0
 ) -> Optional[Union[Tuple[List, ImageSequenceClip], List[Image.Image]]]:
     """
     Enhance video or GIF frames using single GPU.
@@ -256,11 +194,13 @@ def enhance_frames_single_gpu(
         media_type: "video" or "gif"
         fps: Frames per second (for video)
         audio: Audio track (for video)
-        tile_size: Tile size for processing
-        outscale: Upscaling factor
+        tile_size: Tile size for processing (128-512, lower = less VRAM)
+        outscale: Upscaling factor (2 or 4)
         gpu_id: GPU device ID
         model_name: Real-ESRGAN model to use
         denoise_strength: Denoise strength (0-1, only for realesr-general-x4v3)
+        use_fp32: Use FP32 precision instead of FP16
+        pre_pad: Pre-padding size to reduce edge artifacts
         
     Returns:
         For video: (frames, enhanced_clip)
@@ -276,7 +216,7 @@ def enhance_frames_single_gpu(
         shutil.rmtree(enhanced_dir)
     
     # Run enhancement
-    if not apply_realesrgan_cli(frames_dir, enhanced_dir, tile_size, outscale, gpu_id, model_name, denoise_strength):
+    if not apply_realesrgan_cli(frames_dir, enhanced_dir, tile_size, outscale, gpu_id, model_name, denoise_strength, use_fp32, pre_pad):
         return None
     
     # Load enhanced frames
@@ -339,7 +279,9 @@ def enhance_frames_multi_gpu(
     tile_size: int = 256,
     outscale: int = 4,
     model_name: str = "RealESRGAN_x4plus",
-    denoise_strength: float = 0.5
+    denoise_strength: float = 0.5,
+    use_fp32: bool = False,
+    pre_pad: int = 0
 ) -> Optional[Union[Tuple[List, ImageSequenceClip], List[Image.Image]]]:
     """
     Enhance frames using multiple GPUs for parallel processing.
@@ -348,6 +290,16 @@ def enhance_frames_multi_gpu(
         frame_paths: List of frame paths to enhance
         output_dir: Output directory
         media_type: "video" or "gif"
+        device_ids: List of GPU device IDs to use
+        fps: Frames per second (for video)
+        audio: Audio track (for video)
+        frame_durations: Frame durations (for GIF)
+        tile_size: Tile size for processing (128-512, lower = less VRAM)
+        outscale: Upscaling factor (2 or 4)
+        model_name: Real-ESRGAN model to use
+        denoise_strength: Denoise strength (0-1, only for realesr-general-x4v3)
+        use_fp32: Use FP32 precision instead of FP16
+        pre_pad: Pre-padding size to reduce edge artifacts
         device_ids: List of GPU device IDs
         fps: Frames per second (for video)
         audio: Audio track (for video)
@@ -411,7 +363,7 @@ def enhance_frames_multi_gpu(
     def enhance_on_gpu(args):
         gpu_idx, gpu_id, temp_dir, enhanced_dir = args
         logger.info("GPU %d: Enhancing %d frames...", gpu_id, len(chunks[gpu_idx]))
-        success = apply_realesrgan_cli(temp_dir, enhanced_dir, tile_size, outscale, gpu_id, model_name, denoise_strength)
+        success = apply_realesrgan_cli(temp_dir, enhanced_dir, tile_size, outscale, gpu_id, model_name, denoise_strength, use_fp32, pre_pad)
         if success:
             logger.info("✅ GPU %d: Enhancement complete", gpu_id)
         return success

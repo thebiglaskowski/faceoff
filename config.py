@@ -17,17 +17,8 @@ class Config:
         """
         Validate the configuration file to ensure required keys are present.
         """
-        required_keys = ["real_esrgan_scaling_factor"]
-        missing_keys = [key for key in required_keys if key not in self.config]
-        if missing_keys:
-            raise KeyError(f"Missing required configuration keys: {', '.join(missing_keys)}")
-
-    def get_real_esrgan_scaling_factor(self) -> int:
-        """
-        Retrieve the Real-ESRGAN scaling factor from the configuration.
-        Defaults to 4 if not specified.
-        """
-        return self.config.get("real_esrgan_scaling_factor", 4)
+        # No required keys currently - config is optional
+        pass
 
     def get(self, key: str, default=None):
         """

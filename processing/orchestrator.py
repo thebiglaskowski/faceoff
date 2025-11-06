@@ -61,7 +61,9 @@ def process_media(
     gpu_selection: Optional[str] = None,
     face_mappings: Optional[List[Tuple[int, int]]] = None,
     model_name: str = "RealESRGAN_x4plus",
-    denoise_strength: float = 0.5
+    denoise_strength: float = 0.5,
+    use_fp32: bool = False,
+    pre_pad: int = 0
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Process media with face swapping and optional enhancement.
@@ -72,13 +74,15 @@ def process_media(
         media_type: Type of media ("image", "video", or "gif")
         output_dir: Output directory for results
         enhance: Whether to apply Real-ESRGAN enhancement
-        tile_size: Tile size for enhancement
-        outscale: Upscaling factor for enhancement
+        tile_size: Tile size for enhancement (128-512, lower = less VRAM)
+        outscale: Upscaling factor for enhancement (2 or 4)
         face_confidence: Minimum confidence threshold for face detection
         gpu_selection: GPU selection string
         face_mappings: List of (source_idx, target_idx) tuples for face mapping
         model_name: Real-ESRGAN model to use for enhancement
         denoise_strength: Denoise strength (0-1, only for realesr-general-x4v3)
+        use_fp32: Use FP32 precision instead of FP16
+        pre_pad: Pre-padding size to reduce edge artifacts
         
     Returns:
         Tuple of (result_path, log_message)
@@ -109,6 +113,9 @@ def process_media(
     # Parse GPU selection
     device_ids = parse_gpu_selection(gpu_selection)
     
+    # Log face mappings received
+    logger.info("process_media received face_mappings: %s", face_mappings)
+    
     # Initialize primary processor
     logger.info("Initializing MediaProcessor with device(s): %s", device_ids)
     primary_device = device_ids[0] if device_ids else 0
@@ -120,19 +127,22 @@ def process_media(
             return process_image(
                 processor, source_image, dest_path, output_path,
                 enhance, tile_size, outscale, face_confidence,
-                device_ids, face_mappings, model_name, denoise_strength
+                device_ids, face_mappings, model_name, denoise_strength,
+                use_fp32, pre_pad
             )
         elif media_type == "video":
             return process_video(
                 processor, source_image, dest_path, output_path,
                 enhance, tile_size, outscale, face_confidence,
-                device_ids, face_mappings, model_name, denoise_strength
+                device_ids, face_mappings, model_name, denoise_strength,
+                use_fp32, pre_pad
             )
         elif media_type == "gif":
             return process_gif(
                 processor, source_image, dest_path, output_path,
                 enhance, tile_size, outscale, face_confidence,
-                device_ids, face_mappings, model_name, denoise_strength
+                device_ids, face_mappings, model_name, denoise_strength,
+                use_fp32, pre_pad
             )
         else:
             raise ValueError(f"Unsupported media type: {media_type}")
