@@ -7,22 +7,25 @@ import numpy as np
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from typing import List, Tuple, Optional
-from utils.constants import DEFAULT_FACE_CONFIDENCE
+from utils.config_manager import config
 
 logger = logging.getLogger("FaceOff")
 
 
-def filter_faces_by_confidence(faces, threshold: float = DEFAULT_FACE_CONFIDENCE):
+def filter_faces_by_confidence(faces, threshold: float = None):
     """
     Filter faces by detection confidence threshold.
     
     Args:
         faces: List of detected faces
-        threshold: Minimum confidence threshold (0.0-1.0)
+        threshold: Minimum confidence threshold (0.0-1.0), uses config default if None
         
     Returns:
         Filtered list of faces
     """
+    if threshold is None:
+        threshold = config.face_confidence_threshold
+    
     if not faces:
         return faces
     filtered = [f for f in faces if (f.det_score if hasattr(f, 'det_score') else 1.0) >= threshold]
@@ -133,6 +136,10 @@ class FaceTracker:
         
         # For each previous face, find best match in current frame
         for prev_idx, prev_face in enumerate(self.previous_faces):
+            # Skip if previous face was None (disappeared in previous frame)
+            if prev_face is None:
+                continue
+                
             best_iou = 0.0
             best_match_idx = -1
             
@@ -166,19 +173,20 @@ class FaceTracker:
 class FaceProcessor:
     """Manages face detection and extraction operations."""
     
-    def __init__(self, device_id: int = 0, confidence: float = DEFAULT_FACE_CONFIDENCE):
+    def __init__(self, device_id: int = 0, confidence: float = None):
         """
         Initialize face processor.
         
         Args:
             device_id: GPU device ID
-            confidence: Minimum face detection confidence
+            confidence: Minimum face detection confidence, uses config default if None
         """
         from core.media_processor import MediaProcessor
         
         self.device_id = device_id
-        self.confidence = confidence
-        self._processor = MediaProcessor(device_id=device_id)
+        self.confidence = confidence if confidence is not None else config.face_confidence_threshold
+        # CRITICAL: Disable ONNX optimization - it creates corrupted model files
+        self._processor = MediaProcessor(device_id=device_id, optimize_models=False)
         logger.info("FaceProcessor initialized on device %d", device_id)
     
     def detect_faces_info(self, image_path: str) -> str:

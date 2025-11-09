@@ -1,8 +1,0 @@
-{
-  "inswapper_model_path": "inswapper_128.onnx",
-  "buffalo_model_path": "models/buffalo_l",
-  "default_output_dir": "outputs",
-  "cuda_provider": "CUDAExecutionProvider",
-  "face_analysis_name": "buffalo_l",
-  "face_analysis_det_size": [640, 640]
-}

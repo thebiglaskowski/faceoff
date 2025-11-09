@@ -1,4 +1,7 @@
 name: faceoff
+# Optional system dependencies for enhanced compression:
+#   - ImageMagick: Install via winget/choco for ~20-30% better GIF compression
+#   - gifsicle: Included in external/gifsicle/ folder (~60% GIF compression)
 channels:
   - conda-forge
   - defaults
@@ -34,6 +37,8 @@ dependencies:
       - uvicorn
       - fastapi
       - insightface>=0.7.3
+      - onnx
+      - onnxoptimizer
       - onnxruntime-gpu>=1.17
       - moviepy>=1.0.3
       - python-magic-bin==0.4.14

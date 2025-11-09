@@ -1,0 +1,19 @@
+{
+  "name": "Anime Style",
+  "description": "Optimized for anime and cartoon content.",
+  "created": "2025-11-07T17:42:30.139169",
+  "settings": {
+    "enhance": true,
+    "tile_size": 256,
+    "outscale": 4,
+    "model_name": "RealESRGAN_x4plus_anime_6B",
+    "denoise_strength": 0.5,
+    "use_fp32": false,
+    "pre_pad": 10,
+    "restore_faces": false,
+    "restoration_weight": 0.0,
+    "face_confidence": 0.6,
+    "adaptive_detection": true,
+    "detection_scale": 1.0
+  }
+}

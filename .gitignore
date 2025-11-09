@@ -5,7 +5,10 @@ __pycache__/
 *.pyd
 *.pkl
 *.h5
+
+# --- Logs (all log files including rotated backups) ---
 *.log
+*.log.*
 
 # --- Virtual environments ---
 .venv/
@@ -20,9 +23,16 @@ ENV/
 inputs/
 outputs/
 temp/
+temp_gif_frames/
+temp_gif_enhanced/
 
-# --- Edit history logs ---
-app.log
+# --- Cache directories ---
+cache/
+*.cache
+tensorrt_cache/
+
+# --- Tests (internal testing files, not to be committed) ---
+tests/
 
 # --- Config/environment for local machine only ---
 *.env
@@ -32,6 +42,9 @@ app.log
 models/**/*.pth
 models/**/*.pt
 models/**/*.onnx
+
+# GFPGAN weights (large model files)
+gfpgan/
 
 # But keep your **main ONNX swapper** (if under 100MB) by explicitly negating
 !inswapper_128.onnx

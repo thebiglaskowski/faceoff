@@ -1,0 +1,1623 @@
+<!-- Creator     : groff version 1.23.0 -->
+<!-- CreationDate: Fri Feb 23 22:30:59 2024 -->
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta name="generator" content="groff -Thtml, see www.gnu.org">
+<meta http-equiv="Content-Type" content="text/html; charset=US-ASCII">
+<meta name="Content-Style" content="text/css">
+<style type="text/css">
+       html    { background: white; color: black }
+       p       { margin-top: 0; margin-bottom: 0; vertical-align: top }
+       pre     { margin-top: 0; margin-bottom: 0; vertical-align: top }
+       table   { margin-top: 0; margin-bottom: 0; vertical-align: top }
+       h1      { text-align: center }
+</style>
+<title>GIFSICLE</title>
+
+</head>
+<body>
+
+<h1 align="center">GIFSICLE</h1>
+
+<a href="#NAME">NAME</a><br>
+<a href="#SYNOPSIS">SYNOPSIS</a><br>
+<a href="#DESCRIPTION">DESCRIPTION</a><br>
+<a href="#CONCEPT INDEX">CONCEPT INDEX</a><br>
+<a href="#COMMAND LINE">COMMAND LINE</a><br>
+<a href="#OPTIONS">OPTIONS</a><br>
+<a href="#Mode Options">Mode Options</a><br>
+<a href="#General Options">General Options</a><br>
+<a href="#Frame Selections">Frame Selections</a><br>
+<a href="#Frame Change Options">Frame Change Options</a><br>
+<a href="#Image Options">Image Options</a><br>
+<a href="#Extension Options">Extension Options</a><br>
+<a href="#Animation Options">Animation Options</a><br>
+<a href="#Image Transformation Options">Image Transformation Options</a><br>
+<a href="#Color Options">Color Options</a><br>
+<a href="#EXAMPLES">EXAMPLES</a><br>
+<a href="#BUGS">BUGS</a><br>
+<a href="#SEE ALSO">SEE ALSO</a><br>
+<a href="#AUTHORS">AUTHORS</a><br>
+
+<hr>
+
+
+<h2>NAME
+<a name="NAME"></a>
+</h2>
+
+
+<p style="margin-left:9%; margin-top: 1em">gifsicle -
+manipulates GIF images and animations</p>
+
+<h2>SYNOPSIS
+<a name="SYNOPSIS"></a>
+</h2>
+
+
+<p style="margin-left:9%; margin-top: 1em"><b>gifsicle</b>
+[options, frames, and filenames]...</p>
+
+<h2>DESCRIPTION
+<a name="DESCRIPTION"></a>
+</h2>
+
+
+<p style="margin-left:9%; margin-top: 1em"><b>gifsicle</b>
+creates, edits, manipulates, and prints information about
+GIF images and animations.</p>
+
+<p style="margin-left:9%; margin-top: 1em"><b>Gifsicle</b>
+normally processes input GIF files according to its command
+line options and writes the result to the standard output.
+The <b>-i</b> option, for example, tells
+<b>gifsicle</b> to interlace its inputs:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+-i &lt; pic.gif &gt; interlaced-pic.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">By default,
+<b>gifsicle</b> combines two or more input files into a
+&ldquo;flipbook&rdquo; animation:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+pic1.gif pic2.gif pic3.gif &gt; animation.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">Use options like
+<b>--delay</b>, <b>--loopcount</b>,
+and <b>--optimize</b> to tune your
+animations.</p>
+
+<p style="margin-left:9%; margin-top: 1em">To modify GIF
+files in place, use the <b>--batch</b> option.
+With <b>--batch</b>, <b>gifsicle</b> will modify
+the files you specify instead of writing a new file to the
+standard output. To interlace all the GIFs in the current
+directory, you could say:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+--batch -i *.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">New users may
+want to skip to the Examples section at the end.</p>
+
+<h2>CONCEPT INDEX
+<a name="CONCEPT INDEX"></a>
+</h2>
+
+
+<p style="margin-left:9%; margin-top: 1em">Concepts are on
+the left, relevant <b>gifsicle</b> options are on the
+right.</p>
+
+<table width="100%" border="0" rules="none" frame="void"
+       cellspacing="0" cellpadding="0">
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Animations, changing</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p>frame selections, frame changes, etc.</p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>&nbsp;&nbsp;&nbsp; disposal</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--disposal</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p><b>&nbsp;&nbsp;&nbsp;</b> looping</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--loopcount</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p><b>&nbsp;&nbsp;&nbsp;</b> portions of</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p>frame selections</p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>&nbsp;&nbsp;&nbsp; smaller</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--optimize</b>,
+<b>--colors</b>, <b>--lossy</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p><b>&nbsp;&nbsp;&nbsp;</b> speed</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--delay</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Bad output</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--careful</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Background color</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--background</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Colors, changing</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--change-color</b>,
+<b>--use-colormap</b>,
+<b>--dither</b>,
+<b>--transform-colormap</b></p> </td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p><b>&nbsp;&nbsp;&nbsp;</b> reducing number</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--colors</b>,
+<b>--dither</b>, <b>--gamma</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Comments</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--comment</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Extensions</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--extension</b>,
+<b>--app-extension</b>,
+<b>--extension-info</b></p> </td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>File size</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--optimize</b>,
+<b>--unoptimize</b>,
+<b>--colors</b>, <b>--lossy</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Image transformations</p></td>
+<td width="5%"></td>
+<td width="59%">
+</td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>&nbsp;&nbsp;&nbsp; cropping</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--crop</b>,
+<b>--crop-transparency</b></p> </td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p><b>&nbsp;&nbsp;&nbsp;</b> flipping</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--flip-*</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p><b>&nbsp;&nbsp;&nbsp;</b> resizing</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--resize</b>,
+<b>--scale</b></p> </td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p><b>&nbsp;&nbsp;&nbsp;</b> rotating</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--rotate-*</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Grayscale</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--use-colormap</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Interlacing</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--interlace</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Positioning frames</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--position</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Screen, logical</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--logical-screen</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Selecting frames</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p>frame selections (like <b>&rsquo;#0&rsquo;</b>)</p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Transparency</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--transparent</b></p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="27%">
+
+
+<p>Warnings</p></td>
+<td width="5%"></td>
+<td width="59%">
+
+
+<p><b>--no-warnings</b></p></td></tr>
+</table>
+
+<h2>COMMAND LINE
+<a name="COMMAND LINE"></a>
+</h2>
+
+
+
+<p style="margin-left:9%; margin-top: 1em"><b>gifsicle</b>&rsquo;s
+command line consists of GIF input files and options. Most
+options start with a dash (-) or plus (+); frame
+selections, a kind of option, start with a number sign (#).
+Anything else is a GIF input file.</p>
+
+<p style="margin-left:9%; margin-top: 1em"><b>gifsicle</b>
+reads and processes GIF input files in order. If no GIF
+input file is given, or you give the special filename
+&lsquo;-&rsquo;, it reads from the standard input.</p>
+
+<p style="margin-left:9%; margin-top: 1em"><b>gifsicle</b>
+exits with status 0 if there were no errors and status 1
+otherwise.</p>
+
+<h2>OPTIONS
+<a name="OPTIONS"></a>
+</h2>
+
+
+<p style="margin-left:9%; margin-top: 1em">Every option has
+a long form,
+&lsquo;<b>--long-descriptive-name</b>&rsquo;.
+You don&rsquo;t need to type the whole long descriptive
+name, just enough to make it unambiguous.</p>
+
+<p style="margin-left:9%; margin-top: 1em">Some options
+also have a short form, &lsquo;<b>-X</b>&rsquo;. You
+can combine short options if they don&rsquo;t take
+arguments: &lsquo;<b>-IIb</b>&rsquo; is the same as
+&lsquo;<b>-I -I -b</b>&rsquo;. But be
+careful with options that do take arguments:
+&lsquo;<b>-cblah</b>&rsquo; means
+&lsquo;<b>-c</b> blah&rsquo;, not &lsquo;<b>-c
+-b -l -a -h</b>&rsquo;.</p>
+
+<p style="margin-left:9%; margin-top: 1em">Many options
+also have a converse,
+&lsquo;<b>--no-option</b>&rsquo;, which
+turns off the option. You can turn off a short option
+&lsquo;<b>-X</b>&rsquo; by saying
+&lsquo;<b>+X</b>&rsquo; instead.</p>
+
+<h3>Mode Options
+<a name="Mode Options"></a>
+</h3>
+
+
+<p style="margin-left:9%; margin-top: 1em">Mode options
+tell <b>gifsicle</b> what kind of output to generate. There
+can be at most one, and it must precede any GIF inputs.
+<b><br>
+--merge</b>, <b>-m</b></p>
+
+<p style="margin-left:15%;">Combine all GIF inputs into one
+file with multiple frames and write that file to the
+standard output. This is the default mode.</p>
+
+<p style="margin-left:9%;"><b>--batch</b>,
+<b>-b</b></p>
+
+<p style="margin-left:15%;">Modify each GIF input in place
+by reading and writing to the same filename. (GIFs read from
+the standard input are written to the standard output.)</p>
+
+<p style="margin-left:9%;"><b>--explode</b>,
+<b>-e</b></p>
+
+<p style="margin-left:15%;">Create an output GIF for each
+frame of each input file. The output GIFs are named
+&lsquo;xxx.000&rsquo;, &lsquo;xxx.001&rsquo;, and so on,
+where &lsquo;xxx&rsquo; is the name of the input file (or
+whatever you specified with
+&lsquo;<b>--output</b>&rsquo;) and the numeric
+extension is the frame number.</p>
+
+
+<p style="margin-left:9%;"><b>--explode-by-name</b>,
+<b>-E</b></p>
+
+<p style="margin-left:15%;">Same as
+<b>--explode</b>, but write any named frames to
+files &lsquo;xxx.<i>name</i>&rsquo; instead of
+&lsquo;xxx.<i>frame-number</i>&rsquo;. Frames are named
+using the &lsquo;<b>--name</b>&rsquo;
+option.</p>
+
+<h3>General Options
+<a name="General Options"></a>
+</h3>
+
+
+<p style="margin-left:9%; margin-top: 1em">General options
+control the information <b>gifsicle</b> prints and where it
+writes its output. The info options and
+<b>--verbose</b> can be turned off with
+&lsquo;<b>--no-X</b>&rsquo;. <b><br>
+--info</b>, <b>-I</b></p>
+
+<p style="margin-left:15%;">Print a human-readable
+description of each input GIF to the standard output, or
+whatever file you specify with <b>-o</b>. This option
+suppresses normal output, and cannot be combined with mode
+options like <b>--batch</b>. If you give two
+<b>--info</b> or <b>-I</b> options,
+however, information is printed to standard error, and
+normal output takes place as usual.</p>
+
+
+<p style="margin-left:9%;"><b>--color-info</b>,
+<b>--cinfo</b></p>
+
+<p style="margin-left:15%;">Like <b>--info</b>,
+but also print information about input files&rsquo;
+colormaps.</p>
+
+
+<p style="margin-left:9%;"><b>--extension-info</b>,
+<b>--xinfo</b></p>
+
+<p style="margin-left:15%;">Like <b>--info</b>,
+but also print any unrecognized GIF extensions in a
+<b>hexdump</b>(1)-like format.</p>
+
+
+<p style="margin-left:9%;"><b>--size-info</b>,
+<b>--sinfo</b></p>
+
+<p style="margin-left:15%;">Like <b>--info</b>,
+but also print information about compressed image sizes.</p>
+
+<p style="margin-left:9%;"><b>--help</b>,
+<b>-h</b></p>
+
+<p style="margin-left:15%;">Print usage information and
+exit.</p>
+
+<p style="margin-left:9%;"><b>-o</b> <i>file</i>
+<b><br>
+--output</b> <i>file</i></p>
+
+<p style="margin-left:15%;">Send output to <i>file</i>. The
+special filename &lsquo;-&rsquo; means the standard
+output.</p>
+
+<p style="margin-left:9%;"><b>--verbose</b>,
+<b>-V</b></p>
+
+<p style="margin-left:15%;">Print progress information
+(files read and written) to standard error.</p>
+
+
+<p style="margin-left:9%;"><b>--no-warnings</b>,
+<b>-w</b></p>
+
+<p style="margin-left:15%;">Suppress all warning
+messages.</p>
+
+
+<p style="margin-left:9%;"><b>--no-ignore-errors</b></p>
+
+<p style="margin-left:15%;">Exit with status 1 when
+encountering a very erroneous GIF. Default is to muddle
+on.</p>
+
+
+<p style="margin-left:9%;"><b>--version</b></p>
+
+<p style="margin-left:15%;">Print the version number and
+some short non-warranty information and exit.</p>
+
+
+<p style="margin-left:9%;"><b>--careful</b></p>
+
+<p style="margin-left:15%;">Write slightly larger GIFs that
+avoid bugs in some other GIF implementations. Some Java and
+Internet Explorer versions cannot display the correct,
+minimal GIFs that Gifsicle produces. Use the
+<b>--careful</b> option if you are having
+problems with a particular image.</p>
+
+
+<p style="margin-left:9%;"><b>--conserve-memory</b></p>
+
+<p style="margin-left:15%;">Conserve memory usage at the
+expense of processing time. This may be useful if you are
+processing large GIFs on a computer without very much
+memory. Or say
+<b>--no-conserve-memory</b>.</p>
+
+
+<p style="margin-left:9%;"><b>--nextfile</b></p>
+
+<p style="margin-left:15%;">Allow input files to contain
+multiple concatenated GIF images. If a filename appears
+multiple times on the command line, <b>gifsicle</b> will
+read a new image from the file each time. This option can
+help scripts avoid the need for temporary files. For
+example, to create an animated GIF with three frames with
+different delays, you might run &quot;<b>gifsicle
+--nextfile -d10 - -d20 -
+-d30 - &gt; out.gif</b>&quot; and write the
+three GIF images, in sequence, to <b>gifsicle</b>&rsquo;s
+standard input.</p>
+
+
+<p style="margin-left:9%;"><b>--multifile</b></p>
+
+<p style="margin-left:15%;">Like
+<b>--nextfile</b>, but read <i>as many GIF
+images as possible</i> from each file. This option is
+intended for scripts. For example, to merge an unknown
+number of GIF images into a single animation, run
+&quot;<b>gifsicle --multifile - &gt;
+out.gif</b>&quot; and write the GIF images, in sequence, to
+<b>gifsicle</b>&rsquo;s standard input. Any frame selections
+apply only to the last file in the concatenation.</p>
+
+<h3>Frame Selections
+<a name="Frame Selections"></a>
+</h3>
+
+
+<p style="margin-left:9%; margin-top: 1em">A frame
+selection tells <b>gifsicle</b> which frames to use from the
+current input file. They are useful only for animations, as
+non-animated GIFs only have one frame. Here are the
+acceptable forms for frame specifications.</p>
+
+<table width="100%" border="0" rules="none" frame="void"
+       cellspacing="0" cellpadding="0">
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="13%">
+
+
+<p><b>#</b><i>num</i></p></td>
+<td width="4%"></td>
+<td width="74%">
+
+
+<p>Select frame <i>num</i>. (The first frame is
+&lsquo;<b>#0</b>&rsquo;. Negative numbers count backwards
+from the last frame, which is &lsquo;<b>#-1</b>&rsquo;.)</p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="13%">
+
+
+<p><b>#</b><i>num1</i><b>-</b><i>num2</i></p></td>
+<td width="4%"></td>
+<td width="74%">
+
+
+<p>Select frames <i>num1</i> through <i>num2</i>.</p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="13%">
+
+
+<p><b>#</b><i>num1</i><b>-</b></p></td>
+<td width="4%"></td>
+<td width="74%">
+
+
+<p>Select frames <i>num1</i> through the last frame.</p></td></tr>
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="13%">
+
+
+<p><b>#</b><i>name</i></p></td>
+<td width="4%"></td>
+<td width="74%">
+
+
+<p>Select the frame named <i>name</i>.</p></td></tr>
+</table>
+
+<p style="margin-left:9%; margin-top: 1em">The
+&lsquo;#&rsquo; character has special meaning for many
+shells, so you generally need to quote it.</p>
+
+<p style="margin-left:9%; margin-top: 1em">For example,</p>
+
+<p style="margin-left:15%;"><b>gifsicle happy.gif
+&quot;#0&quot;</b></p>
+
+<p style="margin-left:9%;">uses the first frame from
+happy.gif;</p>
+
+<p style="margin-left:15%;"><b>gifsicle happy.gif
+&quot;#0-2&quot;</b></p>
+
+<p style="margin-left:9%;">uses its first three frames;
+and</p>
+
+<p style="margin-left:15%;"><b>gifsicle happy.gif
+&quot;#-1-0&quot;</b></p>
+
+<p style="margin-left:9%;">uses its frames in reverse order
+(starting from frame #-1 -- the last frame
+-- and ending at frame #0 -- the
+first).</p>
+
+<p style="margin-left:9%; margin-top: 1em">The action
+performed with the selected frames depends on the current
+mode. In merge mode, only the selected frames are merged
+into the output GIF. In batch mode, only the selected frames
+are modified; other frames remain unchanged. In explode
+mode, only the selected frames are exploded into output
+GIFs.</p>
+
+<h3>Frame Change Options
+<a name="Frame Change Options"></a>
+</h3>
+
+
+<p style="margin-left:9%; margin-top: 1em">Frame change
+options insert new frames into an animation or replace or
+delete frames that already exist. Some things --
+for example, changing one frame in an animation
+-- are difficult to express with frame
+selections, but easy with frame changes. <b><br>
+--delete</b> <i>frames</i>
+[<i>frames</i>...]</p>
+
+<p style="margin-left:15%;">Delete <i>frames</i> from the
+input GIF.</p>
+
+
+<p style="margin-left:9%;"><b>--insert-before</b>
+<i>frame other-GIFs</i></p>
+
+<p style="margin-left:15%;">Insert <i>other-GIFs</i> before
+<i>frame</i> in the input GIF.</p>
+
+<p style="margin-left:9%;"><b>--append</b>
+<i>other-GIFs</i></p>
+
+<p style="margin-left:15%;">Append <i>other-GIFs</i> to the
+input GIF.</p>
+
+<p style="margin-left:9%;"><b>--replace</b>
+<i>frames other-GIFs</i></p>
+
+<p style="margin-left:15%;">Replace <i>frames</i> from the
+input GIF with <i>other-GIFs</i>.</p>
+
+<p style="margin-left:9%;"><b>--done</b></p>
+
+<p style="margin-left:15%;">Complete the current set of
+frame changes.</p>
+
+<p style="margin-left:9%; margin-top: 1em">The
+<i>frames</i> arguments are frame selections (see above).
+These arguments always refer to frames from the
+<i>original</i> input GIF. So, if &lsquo;a.gif&rsquo; has 3
+frames and &lsquo;b.gif&rsquo; has one, this command</p>
+
+<p style="margin-left:15%;"><b>gifsicle a.gif
+--delete &quot;#0&quot; --replace
+&quot;#2&quot; b.gif</b></p>
+
+<p style="margin-left:9%;">will produce an output animation
+with 2 frames: &lsquo;a.gif&rsquo; frame 1, then
+&lsquo;b.gif&rsquo;.</p>
+
+<p style="margin-left:9%; margin-top: 1em">The
+<i>other-GIFs</i> arguments are any number of GIF input
+files and frame selections. These images are combined in
+merge mode and added to the input GIF. The <i>other-GIFs</i>
+last until the next frame change option, so this command
+replaces the first frame of &lsquo;in.gif&rsquo; with the
+merge of &lsquo;a.gif&rsquo; and &lsquo;b.gif&rsquo;:</p>
+
+<p style="margin-left:15%;"><b>gifsicle -b in.gif
+--replace &quot;#0&quot; a.gif b.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">This command,
+however, replaces the first frame of &lsquo;in.gif&rsquo;
+with &lsquo;a.gif&rsquo; and then processes
+&lsquo;b.gif&rsquo; separately:</p>
+
+<p style="margin-left:15%;"><b>gifsicle -b in.gif
+--replace &quot;#0&quot; a.gif
+--done b.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">Warning: You
+shouldn&rsquo;t use both frame selections and frame changes
+on the same input GIF.</p>
+
+<h3>Image Options
+<a name="Image Options"></a>
+</h3>
+
+
+<p style="margin-left:9%; margin-top: 1em">Image options
+modify input images -- by changing their
+interlacing, transparency, and cropping, for example. Image
+options have three forms:
+&lsquo;<b>--X</b>&rsquo;,
+&lsquo;<b>--no-X</b>&rsquo;, and
+&lsquo;<b>--same-X</b>&rsquo;. The
+&lsquo;<b>--X</b>&rsquo; form selects a value
+for the feature, the
+&lsquo;<b>--no-X</b>&rsquo; form turns off
+the feature, and the
+&lsquo;<b>--same-X</b>&rsquo; form means
+that the feature&rsquo;s value is copied from each input.
+The default is always
+&lsquo;<b>--same-X</b>&rsquo;. For
+example, <b>-background=</b>&quot;#0000FF&quot; sets
+the background color to blue,
+<b>--no-background</b> turns the
+background color off (by setting it to 0), and
+<b>--same-background</b> uses input
+images&rsquo; existing background colors. You can give each
+option multiple times; for example,</p>
+
+<p style="margin-left:15%;"><b>gifsicle -b -O2
+-i a.gif --same-interlace b.gif
+c.gif</b></p>
+
+<p style="margin-left:9%;">will make &lsquo;a.gif&rsquo;
+interlaced, but leave &lsquo;b.gif&rsquo; and
+&lsquo;c.gif&rsquo; interlaced only if they were already.
+<b><br>
+-B</b> <i>color</i> <b><br>
+--background</b> <i>color</i></p>
+
+<p style="margin-left:15%;">Set the output GIF&rsquo;s
+background to <i>color</i>. The argument can have the same
+forms as in the <b>--transparent</b> option
+below.</p>
+
+<p style="margin-left:9%;"><b>--crop</b>
+<i>x1</i>,<i>y1</i>-<i>x2</i>,<i>y2</i> <b><br>
+--crop</b>
+<i>x1</i>,<i>y1</i>+<i>width</i>x<i>height</i></p>
+
+<p style="margin-left:15%;">Crop the following input frames
+to a smaller rectangular area. The top-left corner of this
+rectangle is (<i>x1</i>,<i>y1</i>); you can give either the
+lower-right corner, (<i>x2</i>,<i>y2</i>), or the width and
+height of the rectangle. In the
+<i>x1</i>,<i>y1</i>+<i>width</i>x<i>height</i> form,
+<i>width</i> and <i>height</i> can be zero or negative. A
+zero dimension means the cropping area goes to the edge of
+the image; a negative dimension brings the cropping area
+that many pixels back from the image edge. For example,
+<b>--crop</b> 2,2+-2x-2 will shave 2 pixels off
+each side of the input image. Cropping takes place before
+any rotation, flipping, resizing, or positioning.</p>
+
+
+<p style="margin-left:9%;"><b>--crop-transparency</b></p>
+
+<p style="margin-left:15%;">Crop any transparent borders
+off the following input frames. This happens after any
+cropping due to the <b>--crop</b> option. It
+works on the raw input images; for example, any transparency
+options have not yet been applied.</p>
+
+
+<p style="margin-left:9%;"><b>--flip-horizontal
+<br>
+--flip-vertical</b></p>
+
+<p style="margin-left:15%;">Flip the following frames
+horizontally or vertically.</p>
+
+<table width="100%" border="0" rules="none" frame="void"
+       cellspacing="0" cellpadding="0">
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="3%">
+
+
+<p><b>-i</b></p></td>
+<td width="88%">
+</td></tr>
+</table>
+
+
+<p style="margin-left:9%; margin-top: 1em"><b>--interlace</b></p>
+
+<p style="margin-left:15%;">Turn interlacing on.</p>
+
+<p style="margin-left:9%;"><b>-S</b>
+<i>width</i>x<i>height</i> <b><br>
+--logical-screen</b>
+<i>width</i>x<i>height</i></p>
+
+<p style="margin-left:15%;">Set the output logical screen
+to <i>width</i>x<i>height</i>.
+<b>--no-logical-screen</b> sets the
+output logical screen to the size of the largest output
+frame, while
+<b>--same-logical-screen</b> sets
+the output logical screen to the largest input logical
+screen. <b>--screen</b> is a synonym for
+<b>--logical-screen</b>.</p>
+
+<p style="margin-left:9%;"><b>-p</b>
+<i>x</i>,<i>y</i> <b><br>
+--position</b> <i>x</i>,<i>y</i></p>
+
+<p style="margin-left:15%;">Set the following frames&rsquo;
+positions to (<i>x</i>,<i>y</i>).
+<b>--no-position</b> means
+<b>--position</b> 0,0. Normally,
+<b>--position</b> <i>x</i>,<i>y</i> places every
+succeeding frame exactly at <i>x</i>,<i>y</i>. However, if
+an entire animation is input, <i>x</i>,<i>y</i> is treated
+as the position for the animation.</p>
+
+
+<p style="margin-left:9%;"><b>--rotate-90
+<br>
+--rotate-180 <br>
+--rotate-270</b></p>
+
+<p style="margin-left:15%;">Rotate the following frames by
+90, 180, or 270 degrees.
+<b>--no-rotate</b> turns off any
+rotation.</p>
+
+<p style="margin-left:9%;"><b>-t</b> <i>color</i>
+<b><br>
+--transparent</b> <i>color</i></p>
+
+<p style="margin-left:15%;">Make <i>color</i> transparent
+in the following frames. <i>Color</i> can be a colormap
+index (0-255), a hexadecimal color specification (like
+&quot;#FF00FF&quot; for magenta), or slash- or
+comma-separated red, green and blue values (each between 0
+and 255).</p>
+
+<h3>Extension Options
+<a name="Extension Options"></a>
+</h3>
+
+
+<p style="margin-left:9%; margin-top: 1em">Extension
+options add non-visual information to the output GIF. This
+includes names, comments, and generic extensions. <b><br>
+--app-extension</b> <i>app-name
+extension</i></p>
+
+<p style="margin-left:15%;">Add an application extension
+named <i>app-name</i> and with the value
+<i>extension</i> to the output GIF.
+<b>--no-app-extensions</b> removes
+application extensions from the input images.</p>
+
+<p style="margin-left:9%;"><b>-c</b> <i>text</i>
+<b><br>
+--comment</b> <i>text</i></p>
+
+<p style="margin-left:15%;">Add a comment, <i>text</i>, to
+the output GIF. The comment will be placed before the next
+frame in the stream. <b>--no-comments</b>
+removes comments from the input images.</p>
+
+<p style="margin-left:9%;"><b>--extension</b>
+<i>number extension</i></p>
+
+<p style="margin-left:15%;">Add an extension numbered
+<i>number</i> and with the value <i>extension</i> to the
+output GIF. <i>Number</i> can be in decimal, octal, hex, or
+it can be a single character like &lsquo;n&rsquo;, whose
+ASCII value is used.
+<b>--no-extensions</b> (or <b>+x</b>)
+removes extensions from the input images.</p>
+
+<p style="margin-left:9%;"><b>-n</b> <i>text</i>
+<b><br>
+--name</b> <i>text</i></p>
+
+<p style="margin-left:15%;">Set the next frame&rsquo;s name
+to <i>text</i>. This name is stored as an extension in the
+output GIF (extension number 0xCE, followed by the
+characters of the frame name).
+<b>--no-names</b> removes name extensions
+from the input images.</p>
+
+<h3>Animation Options
+<a name="Animation Options"></a>
+</h3>
+
+
+<p style="margin-left:9%; margin-top: 1em">Animation
+options apply to GIF animations, or to individual frames in
+GIF animations. As with image options, most animation
+options have three forms,
+&lsquo;<b>--X</b>&rsquo;,
+&lsquo;<b>--no-X</b>&rsquo;, and
+&lsquo;<b>--same-X</b>&rsquo;, and you can
+give animation options multiple times; for example,</p>
+
+<p style="margin-left:15%;"><b>gifsicle -b a.gif
+-d50 &quot;#0&quot; &quot;#1&quot; -d100
+&quot;#2&quot; &quot;#3&quot;</b></p>
+
+<p style="margin-left:9%;">sets the delays of frames 0 and
+1 to 50, and frames 2 and 3 to 100. <b><br>
+-d</b> <i>time</i> <b><br>
+--delay</b> <i>time</i></p>
+
+<p style="margin-left:15%;">Set the delay between frames to
+<i>time</i> in hundredths of a second.</p>
+
+<p style="margin-left:9%;"><b>-D</b> <i>method</i>
+<b><br>
+--disposal</b> <i>method</i></p>
+
+<p style="margin-left:15%;">Set the disposal method for the
+following frames to <i>method</i>. A frame&rsquo;s disposal
+method determines how a viewer should remove the frame when
+it&rsquo;s time to display the next. <i>Method</i> can be a
+number between 0 and 7 (although only 0 through 3 are
+generally meaningful), or one of these names: <b>none</b>
+(leave the frame visible for future frames to build upon),
+<b>asis</b> (same as &quot;none&quot;), <b>background</b>
+(or <b>bg</b>) (replace the frame with the background), or
+<b>previous</b> (replace the frame with the area from the
+previous displayed frame).
+<b>--no-disposal</b> means
+<b>--disposal</b>=<b>none</b>.</p>
+
+<p style="margin-left:9%;"><b>-l</b>[<i>count</i>]
+<b><br>
+--loopcount</b>[=<i>count</i>]</p>
+
+<p style="margin-left:15%;">Set the Netscape loop extension
+to <i>count</i>. <i>Count</i> is an integer, or
+<b>forever</b> to loop endlessly. If you supply a
+<b>--loopcount</b> option without specifying
+<i>count</i>, Gifsicle will use <b>forever</b>.
+<b>--no-loopcount</b> (the default) turns
+off looping.</p>
+
+<p style="margin-left:15%; margin-top: 1em">Set the loop
+count to one less than the number of times you want the
+animation to run. An animation with
+<b>--no-loopcount</b> will show every
+frame once; <b>--loopcount</b>=1 will loop once,
+thus showing every frame twice; and so forth. Note that
+<b>--loopcount</b>=0 is equivalent to
+<b>--loopcount</b>=forever, not
+<b>--no-loopcount</b>.</p>
+
+<p style="margin-left:9%;"><b>-O</b>[<i>level</i>]
+<b><br>
+--optimize</b>[=<i>level</i>]</p>
+
+<p style="margin-left:15%;">Attempt to shrink the file
+sizes of GIF animations. <i>Level</i> determines how much
+optimization is done; higher levels take longer, but may
+have better results. There are currently three levels:</p>
+
+<table width="100%" border="0" rules="none" frame="void"
+       cellspacing="0" cellpadding="0">
+<tr valign="top" align="left">
+<td width="15%"></td>
+<td width="4%">
+
+
+<p><b>-O1</b></p></td>
+<td width="3%"></td>
+<td width="78%">
+
+
+<p>Store only the changed portion of each image. This is
+the default.</p></td></tr>
+<tr valign="top" align="left">
+<td width="15%"></td>
+<td width="4%">
+
+
+<p><b>-O2</b></p></td>
+<td width="3%"></td>
+<td width="78%">
+
+
+<p>Store only the changed portion of each image, and use
+transparency.</p> </td></tr>
+<tr valign="top" align="left">
+<td width="15%"></td>
+<td width="4%">
+
+
+<p><b>-O3</b></p></td>
+<td width="3%"></td>
+<td width="78%">
+
+
+<p>Try several optimization methods (usually slower,
+sometimes better results).</p></td></tr>
+</table>
+
+<p style="margin-left:15%; margin-top: 1em">Other
+optimization flags provide finer-grained control. <b><br>
+-Okeep-empty</b></p>
+
+<p style="margin-left:22%;">Preserve empty transparent
+frames (they are dropped by default).</p>
+
+<p style="margin-left:15%; margin-top: 1em">You may also be
+interested in other options for shrinking GIFs, such as
+<b>-k</b>, <b>--lossy</b>, and
+<b>--no-extensions</b>. Note that
+<b>-O</b> does not guarantee to shrink file size, and
+in rare cases, even <b>-O3</b> may actually enlarge
+file size.</p>
+
+<table width="100%" border="0" rules="none" frame="void"
+       cellspacing="0" cellpadding="0">
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="3%">
+
+
+<p><b>-U</b></p></td>
+<td width="88%">
+</td></tr>
+</table>
+
+
+<p style="margin-left:9%; margin-top: 1em"><b>--unoptimize</b></p>
+
+<p style="margin-left:15%;">Unoptimize GIF animations into
+an easy-to-edit form.</p>
+
+<p style="margin-left:15%; margin-top: 1em">GIF animations
+are often optimized (see <b>--optimize</b>) to
+make them smaller and faster to load, which unfortunately
+makes them difficult to edit.
+<b>--unoptimize</b> changes optimized input GIFs
+into unoptimized GIFs, where each frame is a faithful
+representation of what a user would see at that point in the
+animation.</p>
+
+<h3>Image Transformation Options
+<a name="Image Transformation Options"></a>
+</h3>
+
+
+<p style="margin-left:9%; margin-top: 1em">Image
+transformation options apply to entire GIFs as they are read
+or written. They can be turned off with
+&lsquo;<b>--no-option</b>&rsquo;. <b><br>
+--resize</b> <i>width</i>x<i>height</i></p>
+
+<p style="margin-left:15%;">Resize the output GIF to the
+given <i>width</i> and <i>height</i>. If <i>width</i> or
+<i>height</i> is an underscore &lsquo;_&rsquo;, that
+dimension is chosen so that the aspect ratio remains
+unchanged. Resizing happens after all input frames have been
+combined and before optimization. Resizing uses logical
+screen dimensions; if the input stream has an unusual
+logical screen (many GIF displayers ignore logical screens),
+you may want to provide
+<b>--no-logical-screen</b> (or
+<b>+S</b>) to reset it so <b>gifsicle</b> uses image
+dimensions instead. See also
+<b>--resize-method</b>.</p>
+
+
+<p style="margin-left:9%;"><b>--resize-width</b>
+<i>width</i> <b><br>
+--resize-height</b> <i>height</i></p>
+
+<p style="margin-left:15%;">Resize to a given width or
+height, preserving aspect ratio. Equivalent to
+<b>--resize</b> <i>width</i>x_ or
+<b>--resize</b> _x<i>height</i>.</p>
+
+
+<p style="margin-left:9%;"><b>--resize-fit</b>
+<i>width</i>x<i>height</i> <b><br>
+--resize-touch</b>
+<i>width</i>x<i>height</i></p>
+
+<p style="margin-left:15%;">Resize the output GIF to fit
+within a rectangle with dimensions
+<i>width</i>x<i>height</i>. The aspect ratio remains
+unchanged. The <b>--resize-fit</b> option
+only shrinks the image&mdash;no resize is performed if the
+GIF already fits within the rectangle. Either <i>width</i>
+or <i>height</i> may be an underscore &lsquo;_&rsquo;, which
+leaves that dimension unconstrained.</p>
+
+
+<p style="margin-left:9%;"><b>--resize-fit-width</b>
+<i>width</i> <b><br>
+--resize-fit-height</b>
+<i>height</i> <b><br>
+--resize-touch-width</b>
+<i>width</i> <b><br>
+--resize-touch-height</b>
+<i>height</i></p>
+
+<p style="margin-left:15%;">Like
+<b>--resize-fit</b> and
+<b>--resize-touch</b>, but constrains only
+one dimension.</p>
+
+<p style="margin-left:9%;"><b>--scale</b>
+<i>Xfactor</i>[x<i>Yfactor</i>]</p>
+
+<p style="margin-left:15%;">Scale the output GIF&rsquo;s
+width and height by <i>Xfactor</i> and <i>Yfactor</i>. If
+<i>Yfactor</i> is not given, it defaults to <i>Xfactor</i>.
+Scaling happens after all input frames have been combined
+and before optimization.</p>
+
+
+<p style="margin-left:9%;"><b>--resize-method</b>
+<i>method</i></p>
+
+<p style="margin-left:15%;">Set the method used to resize
+images. The &lsquo;sample&rsquo; method runs very quickly,
+but when shrinking images, it produces noisy results. The
+&lsquo;mix&rsquo; method is somewhat slower, but produces
+better-looking results. The default method is currently
+&lsquo;mix&rsquo;.</p>
+
+<p style="margin-left:15%; margin-top: 1em">Details: The
+resize methods differ most when shrinking images. The
+&lsquo;sample&rsquo; method is a point sampler: each pixel
+position in the output image maps to exactly one pixel
+position in the input. When shrinking, full rows and columns
+from the input are dropped. The other methods use all input
+pixels, which generally produces better-looking images. The
+&lsquo;box&rsquo; method, a box sampler, is faster than the
+more complex filters and produces somewhat sharper results,
+but there will be anomalies when shrinking images by a small
+amount in one dimension. (Some output pixels will correspond
+to exactly 1 input row or column, while others will
+correspond to exactly 2 input rows or columns.) The
+&lsquo;mix&rsquo; method is a full bilinear interpolator.
+This is slower and produces somewhat blurrier results, but
+avoids anomalies.</p>
+
+<p style="margin-left:15%; margin-top: 1em">Gifsicle also
+supports more complex resamplers, including Catmull-Rom
+cubic resampling (&lsquo;catrom&rsquo;), the
+Mitchell-Netravali filter (&lsquo;mitchell&rsquo;), a
+2-lobed Lanczos filter (&lsquo;lanczos2&rsquo;), and a
+3-lobed Lanczos filter (&lsquo;lanczos3&rsquo;). These
+filters are slower still, but can give sharper, better
+results.</p>
+
+
+<p style="margin-left:9%;"><b>--resize-colors</b>
+<i>n</i></p>
+
+<p style="margin-left:15%;">Allow Gifsicle to add
+intermediate colors when resizing images. Normally,
+Gifsicle&rsquo;s resize algorithms use input images&rsquo;
+color palettes without changes. When shrinking images with
+very few colors (e.g., pure black-and-white images), adding
+intermediate colors can improve the results. Example:
+<b>--resize-colors</b> <i>64</i> allows
+Gifsicle to add intermediate colors for images that have
+fewer than 64 input colors.</p>
+
+<h3>Color Options
+<a name="Color Options"></a>
+</h3>
+
+
+<p style="margin-left:9%; margin-top: 1em">Color options
+apply to entire GIFs as they are read or written. They can
+be turned off with
+&lsquo;<b>--no-option</b>&rsquo;. <b><br>
+-k</b> <i>num</i> <b><br>
+--colors</b> <i>num</i></p>
+
+<p style="margin-left:15%;">Reduce the number of distinct
+colors in each output GIF to <i>num</i> or less. <i>Num</i>
+must be between 2 and 256. This can be used to shrink output
+GIFs or eliminate any local color tables.</p>
+
+<p style="margin-left:15%; margin-top: 1em">Normally, an
+adaptive group of colors is chosen from the existing color
+table. You can affect this process with the
+<b>--color-method</b> option or by giving
+your own colormap with
+<b>--use-colormap</b>. Gifsicle may need
+to add an additional color (making <i>num</i>+1 in all) if
+there is transparency in the image.</p>
+
+
+<p style="margin-left:9%;"><b>--color-method</b>
+<i>method</i></p>
+
+<p style="margin-left:15%;">Determine how a smaller
+colormap is chosen. &lsquo;<b>diversity</b>&rsquo;, the
+default, is <b>xv</b>(1)&rsquo;s diversity algorithm, which
+uses a strict subset of the existing colors and generally
+produces good results.
+&lsquo;<b>blend-diversity</b>&rsquo; is a modification
+of this: some color values are blended from groups of
+existing colors. &lsquo;<b>median-cut</b>&rsquo; is
+the median cut algorithm described by Heckbert.
+<b>--method</b> is a synonym for
+<b>--color-method</b>.</p>
+
+<table width="100%" border="0" rules="none" frame="void"
+       cellspacing="0" cellpadding="0">
+<tr valign="top" align="left">
+<td width="9%"></td>
+<td width="3%">
+
+
+<p><b>-f</b></p></td>
+<td width="88%">
+</td></tr>
+</table>
+
+
+<p style="margin-left:9%; margin-top: 1em"><b>--dither</b>[=<i>method</i>]</p>
+
+<p style="margin-left:15%;">When
+<b>--dither</b> is on and the colormap is
+changed, combinations of colors are used to approximate
+missing colors. This looks better, but makes bigger files
+and can cause animation artifacts, so it is off by
+default.</p>
+
+<p style="margin-left:15%; margin-top: 1em">Specify a
+dithering algorithm with the optional <i>method</i>
+argument. The default, &lsquo;<b>floyd-steinberg</b>&rsquo;,
+uses Floyd-Steinberg error diffusion. This usually looks
+best, but can cause animation artifacts, because dithering
+choices will vary from frame to frame. Gifsicle also
+supports ordered dithering algorithms that avoid animation
+artifacts. The &lsquo;<b>ro64</b>&rsquo; mode uses a large,
+random-looking pattern and generally produces good results.
+The &lsquo;<b>o3</b>&rsquo;, &lsquo;<b>o4</b>&rsquo;, and
+&lsquo;<b>o8</b>&rsquo; modes use smaller, more regular
+patterns. The &lsquo;<b>ordered</b>&rsquo; mode chooses a
+good ordered dithering algorithm. For special effects, try
+the halftone modes &lsquo;<b>halftone</b>&rsquo;,
+&lsquo;<b>squarehalftone</b>&rsquo;, and
+&lsquo;<b>diagonal</b>&rsquo;. Some modes take optional
+parameters using commas. The halftone modes take a cell size
+and a color limit: &lsquo;<b>halftone,10,3</b>&rsquo;
+creates 10-pixel wide halftone cells where each cell uses up
+to 3 colors.</p>
+
+<p style="margin-left:9%;"><b>--gamma</b>
+<i>gamma</i></p>
+
+<p style="margin-left:15%;">Set the gamma correction to
+<i>gamma</i>, which can be a real number or
+&lsquo;<b>srgb</b>&rsquo;. Roughly speaking, higher numbers
+exaggerate shadows and lower numbers exaggerate highlights.
+The default is the function defined by the standard sRGB
+color space, which usually works well. (Its effects are
+similar to <b>--gamma</b>=2.2.) Gifsicle uses
+gamma correction when choosing a color palette
+(<b>--colors</b>) and when dithering
+(<b>--dither</b>).</p>
+
+
+<p style="margin-left:9%;"><b>--lossy</b>[=<i>lossiness</i>]</p>
+
+<p style="margin-left:15%;">Alter image colors to shrink
+output file size at the cost of artifacts and noise.
+<i>Lossiness</i> determines how many artifacts are allowed;
+higher values can result in smaller file sizes, but cause
+more artifacts. The default <i>lossiness</i> is 20.</p>
+
+
+<p style="margin-left:9%;"><b>--change-color</b>
+<i>color1 color2</i></p>
+
+<p style="margin-left:15%;">Change <i>color1</i> to
+<i>color2</i> in the following input GIFs. (The <i>color</i>
+arguments have the same forms as in the <b>-t</b>
+option.) Change multiple colors by giving the option
+multiple times. Color changes don&rsquo;t interfere with one
+another, so you can safely swap two colors with
+&lsquo;<b>--change-color</b> <i>color1
+color2</i> <b>--change-color</b> <i>color2
+color1</i>&rsquo;. They all take effect as an input GIF is
+read. <b>--no-change-color</b>
+cancels all color changes.</p>
+
+
+<p style="margin-left:9%;"><b>--transform-colormap</b>
+<i>command</i></p>
+
+<p style="margin-left:15%;"><i>Command</i> should be a
+shell command that reads from standard input and writes to
+standard output. Each colormap in the output GIF is
+translated into text colormap format (see
+<b>--use-colormap</b> below) and piped to
+the command. The output that command generates (which should
+also be in text colormap format) will replace the input
+colormap. The replacement doesn&rsquo;t consider color
+matching, so pixels that used color slot <i>n</i> in the
+input will still use color slot <i>n</i> in the output.</p>
+
+
+<p style="margin-left:9%;"><b>--use-colormap</b>
+<i>colormap</i></p>
+
+<p style="margin-left:15%;">Change the image to use
+<i>colormap</i>. Each pixel in the image is changed to the
+closest match in <i>colormap</i> (or, if
+<b>--dither</b> is on, to a dithered combination
+of colors in <i>colormap</i>). <i>Colormap</i> can be
+<b>web</b> for the 216-color &ldquo;Web-safe palette&rdquo;;
+<b>gray</b> for grayscale; <b>bw</b> for black-and-white; or
+the name of a file. That file should either be a text file
+(the format is described below) or a GIF file, whose global
+colormap will be used. If
+<b>--colors</b>=<i>N</i> is also given, an
+<i>N</i>-sized subset of <i>colormap</i> will be
+used.</p>
+
+<p style="margin-left:15%; margin-top: 1em">Text colormap
+files use this format:</p>
+
+<p style="margin-left:15%; margin-top: 1em">; each
+non-comment line represents one color, &quot;red green
+blue&quot; <br>
+; each component should be between 0 and 255 <br>
+0 0 0 ; like this <br>
+255 255 255 <br>
+; or use web hex notation <br>
+#ffffff ; like this</p>
+
+<h2>EXAMPLES
+<a name="EXAMPLES"></a>
+</h2>
+
+
+<p style="margin-left:9%;">First, let&rsquo;s create an
+animation, &lsquo;anim.gif&rsquo;:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+a.gif b.gif c.gif d.gif &gt; anim.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">This animation
+will move very quickly: since we didn&rsquo;t specify a
+delay, a browser will cycle through the frames as fast as it
+can. Let&rsquo;s slow it down and pause .5 seconds between
+frames, using the <b>--delay</b> option.</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+--delay 50 a.gif b.gif c.gif d.gif &gt;
+anim.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">If we also want
+the GIF to loop three times, we can use
+<b>--loopcount</b>:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+-d 50 --loop=3 a.gif b.gif c.gif d.gif
+&gt; anim.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">(Rather than
+type <b>--delay</b> again, we used its short
+form, <b>-d</b>. Many options have short forms; you
+can see them by running &lsquo;<b>gifsicle
+--help</b>&rsquo;. We also abbreviated
+<b>--loopcount</b> to <b>--loop</b>,
+which is OK since no other option starts with
+&lsquo;loop&rsquo;.)</p>
+
+<p style="margin-left:9%; margin-top: 1em">To explode
+&lsquo;anim.gif&rsquo; into its component frames:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+--explode anim.gif <br>
+ls anim.gif*</b> <br>
+anim.gif anim.gif.000 anim.gif.001 anim.gif.002
+anim.gif.003</p>
+
+<p style="margin-left:9%; margin-top: 1em">To optimize
+&lsquo;anim.gif&rsquo;:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+-b -O2 anim.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">To change the
+second frame of &lsquo;anim.gif&rsquo; to
+&lsquo;x.gif&rsquo;:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+-b --unoptimize -O2 anim.gif
+--replace &quot;#1&quot; x.gif</b></p>
+
+
+<p style="margin-left:9%; margin-top: 1em"><b>--unoptimize</b>
+is used since &lsquo;anim.gif&rsquo; was optimized in the
+last step. Editing individual frames in optimized GIFs is
+dangerous without <b>--unoptimize</b>; frames
+following the changed frame could be corrupted by the
+change. Of course, this might be what you want.</p>
+
+<p style="margin-left:9%; margin-top: 1em">Note that
+<b>--unoptimize</b> and
+<b>--optimize</b> can be on simultaneously.
+<b>--unoptimize</b> affects <i>input</i> GIF
+files, while <b>--optimize</b> affects
+<i>output</i> GIF files.</p>
+
+<p style="margin-left:9%; margin-top: 1em">To print
+information about the first and fourth frames of
+&lsquo;anim.gif&rsquo;:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+-I &quot;#0&quot; &quot;#3&quot; &lt; anim.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">To make black
+the transparent color in all the GIFs in the current
+directory, and also print information about each:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+-bII --trans &quot;#000000&quot;
+*.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">Giving
+<b>-I</b> twice forces normal output to occur. With
+only one <b>-I</b>, the GIFs would not be
+modified.</p>
+
+<p style="margin-left:9%; margin-top: 1em">To change
+&lsquo;anim.gif&rsquo; to use a 64-color subset of the
+Web-safe palette:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+-b --colors=64
+--use-col=web anim.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">To make a
+dithered black-and-white version of
+&lsquo;anim.gif&rsquo;:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+--dither --use-col=bw anim.gif
+&gt; anim-bw.gif</b></p>
+
+<p style="margin-left:9%; margin-top: 1em">To overlay one
+GIF atop another -- producing a one-frame output
+GIF that looks like the superposition of the two inputs
+-- use <b>gifsicle</b> twice:</p>
+
+<p style="margin-left:15%; margin-top: 1em"><b>gifsicle
+bottom.gif top.gif | gifsicle -U &quot;#1&quot; &gt;
+result.gif</b></p>
+
+<h2>BUGS
+<a name="BUGS"></a>
+</h2>
+
+
+<p style="margin-left:9%; margin-top: 1em">Some optimized
+output GIFs may appear incorrectly on some GIF
+implementations (for example, Java&rsquo;s); see the
+<b>--careful</b> option.</p>
+
+<p style="margin-left:9%; margin-top: 1em">Please email
+suggestions, additions, patches and bugs to
+ekohler@gmail.com.</p>
+
+<h2>SEE ALSO
+<a name="SEE ALSO"></a>
+</h2>
+
+
+<p style="margin-left:9%; margin-top: 1em">For a tutorial
+on GIF images and animations, you might try some of the
+resources listed on-line at webreference.com: <br>
+
+http://www.webreference.com/authoring/graphics/animation.html</p>
+
+<h2>AUTHORS
+<a name="AUTHORS"></a>
+</h2>
+
+
+<p style="margin-left:9%; margin-top: 1em">Eddie Kohler
+&lt;ekohler@gmail.com&gt; <br>
+http://www.read.seas.harvard.edu/&#732;kohler/ <br>
+He wrote it.</p>
+
+<p style="margin-left:9%; margin-top: 1em">Anne Dudfield
+&lt;annied@frii.com&gt; <br>
+http://www.frii.com/&#732;annied/ <br>
+She named it.</p>
+
+<p style="margin-left:9%; margin-top: 1em">Hans
+Dinsen-Hansen &lt;dino@danbbs.dk&gt; <br>
+http://www.danbbs.dk/&#732;dino/ <br>
+Adaptive tree method for GIF writing.</p>
+
+<p style="margin-left:9%; margin-top: 1em">Kornel Lesinski
+<b><br>
+--lossy</b> option.</p>
+
+
+<p style="margin-left:9%; margin-top: 1em">http://www.lcdf.org/gifsicle/
+<br>
+The <b>gifsicle</b> home page.</p>
+<hr>
+</body>
+</html>

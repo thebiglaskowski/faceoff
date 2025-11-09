@@ -17,6 +17,8 @@ from typing import List, Optional, Tuple, Union
 from moviepy.editor import ImageSequenceClip
 import torch
 
+from utils.temp_manager import get_temp_manager
+
 logger = logging.getLogger("FaceOff")
 
 
@@ -174,7 +176,7 @@ def enhance_image_single_gpu(
 def enhance_frames_single_gpu(
     frames_dir: Union[str, Path],
     output_dir: Union[str, Path],
-    media_type: str,
+    media_type: str = "video",
     fps: Optional[float] = None,
     audio = None,
     tile_size: int = 256,
@@ -183,7 +185,9 @@ def enhance_frames_single_gpu(
     model_name: str = "RealESRGAN_x4plus",
     denoise_strength: float = 0.5,
     use_fp32: bool = False,
-    pre_pad: int = 0
+    pre_pad: int = 0,
+    maintain_dimensions: bool = False,
+    original_size: Optional[Tuple[int, int]] = None
 ) -> Optional[Union[Tuple[List, ImageSequenceClip], List[Image.Image]]]:
     """
     Enhance video or GIF frames using single GPU.
@@ -256,6 +260,27 @@ def enhance_frames_single_gpu(
             while len(enhanced_frames) < expected_frames:
                 enhanced_frames.append(enhanced_frames[-1])
     
+    # Resize back to original dimensions if requested
+    if maintain_dimensions and original_size and outscale > 1:
+        original_width, original_height = original_size
+        logger.info("Resizing enhanced frames from %dx (scale=%dx) back to original %dx%d", 
+                   original_width * outscale, outscale, original_width, original_height)
+        
+        resized_frames = []
+        for frame in enhanced_frames:
+            if media_type == "gif":
+                # PIL Image
+                resized_frame = frame.resize((original_width, original_height), Image.Resampling.LANCZOS)
+                resized_frames.append(resized_frame)
+            else:  # video
+                # NumPy array
+                frame_img = Image.fromarray(frame)
+                resized_frame = frame_img.resize((original_width, original_height), Image.Resampling.LANCZOS)
+                resized_frames.append(np.array(resized_frame))
+        
+        enhanced_frames = resized_frames
+        logger.info("✅ Resized %d frames to original dimensions", len(enhanced_frames))
+    
     # Return format depends on media type
     if media_type == "video":
         enhanced_clip = ImageSequenceClip(enhanced_frames, fps=fps)
@@ -300,14 +325,6 @@ def enhance_frames_multi_gpu(
         denoise_strength: Denoise strength (0-1, only for realesr-general-x4v3)
         use_fp32: Use FP32 precision instead of FP16
         pre_pad: Pre-padding size to reduce edge artifacts
-        device_ids: List of GPU device IDs
-        fps: Frames per second (for video)
-        audio: Audio track (for video)
-        frame_durations: Frame durations (for GIF)
-        tile_size: Tile size for processing
-        outscale: Upscaling factor
-        model_name: Real-ESRGAN model to use
-        denoise_strength: Denoise strength (0-1, only for realesr-general-x4v3)
         
     Returns:
         For video: (frames, enhanced_clip)
@@ -329,7 +346,7 @@ def enhance_frames_multi_gpu(
             denoise_strength=denoise_strength
         )
     
-    logger.info("🚀 Multi-GPU Enhancement: %d frames across %d GPUs", len(frame_paths), len(device_ids))
+    logger.info("Multi-GPU Enhancement: %d frames across %d GPUs", len(frame_paths), len(device_ids))
     
     # Split frames into chunks for each GPU
     chunks = [[] for _ in device_ids]
@@ -339,12 +356,16 @@ def enhance_frames_multi_gpu(
     
     logger.info("Split frames: %s", [len(chunk) for chunk in chunks])
     
-    # Create temporary directories for each GPU
+    # Create temporary directories for each GPU using temp manager
+    temp_manager = get_temp_manager()
+    base_temp_dir = temp_manager.get_temp_dir(media_type) / f"multigpu_enhance_{Path(frame_paths[0]).parent.stem}"
+    base_temp_dir.mkdir(exist_ok=True, parents=True)
+    
     temp_dirs = []
     enhanced_dirs = []
     for gpu_idx in range(len(device_ids)):
-        temp_dir = output_dir / f"temp_{media_type}_gpu{gpu_idx}_frames"
-        enhanced_dir = output_dir / f"temp_{media_type}_gpu{gpu_idx}_enhanced"
+        temp_dir = base_temp_dir / f"gpu{gpu_idx}_frames"
+        enhanced_dir = base_temp_dir / f"gpu{gpu_idx}_enhanced"
         temp_dir.mkdir(exist_ok=True, parents=True)
         
         if enhanced_dir.exists():
@@ -402,13 +423,13 @@ def enhance_frames_multi_gpu(
             logger.error("Enhanced frame not found: %s", enhanced_frame_path)
             return None
     
-    # Clean up temporary directories
-    for temp_dir in temp_dirs + enhanced_dirs:
-        try:
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir)
-        except Exception as e:
-            logger.warning("Failed to clean up %s: %s", temp_dir, e)
+    # Clean up temporary directories (remove entire base temp directory)
+    try:
+        if base_temp_dir.exists():
+            shutil.rmtree(base_temp_dir)
+            logger.info("Cleaned up multi-GPU temp directory: %s", base_temp_dir.name)
+    except Exception as e:
+        logger.warning("Failed to clean up multi-GPU temp directory: %s", e)
     
     logger.info("✅ Multi-GPU enhancement complete: %d frames", len(enhanced_frames))
     

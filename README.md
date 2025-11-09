@@ -1,36 +1,39 @@
 # FaceOff
 
-**Unified AI Face Swapper - Image | GIF | Video**
+**Production-Ready AI Face Swapper - Image | GIF | Video**
 
-Swap faces from a source image to a destination medium (image, GIF, or video) with optional AI enhancement using Real-ESRGAN. All features available in a single, unified Gradio interface.
+High-performance face swapping with GPU acceleration, intelligent caching, and optional Real-ESRGAN enhancement. Built for reliability and scale with comprehensive configuration management.
 
 Read more at [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://thebiglaskowski.com/posts/face-swapping-with-ai/)
 
 ## ✨ Features
 
-- **Face Swapping**: Swap faces from source image to:
-  - 🖼️ Images (PNG, JPG, WEBP)
-  - 🎞️ Animated GIFs
-  - 🎬 Videos (MP4, WEBP) with audio preservation
-  
-- **AI Enhancement**: Optional Real-ESRGAN upscaling with 6 model options:
-  - 🎯 **RealESRGAN_x4plus**: General purpose - Best for photos (Default)
-  - 🎨 **RealESRGAN_x4plus_anime_6B**: Optimized for anime/illustration content
-  - 💎 **RealESRGAN_x4plus (Conservative)**: Less aggressive enhancement
-  - 🔧 **realesr-general-x4v3**: General purpose with denoise control
+### Core Capabilities
+
+- **Universal Face Swapping**: Swap faces from source image to:
+  - 🖼️ **Images** (PNG, JPG, WEBP, BMP)
+  - 🎞️ **Animated GIFs** with frame preservation
+  - 🎬 **Videos** (MP4, WEBP, AVI, MOV) with audio preservation
+  - 📦 **Batch Processing** for multiple files simultaneously
+
+- **AI Enhancement**: 6 Real-ESRGAN models for quality upscaling:
+  - 🎯 **RealESRGAN_x4plus**: Best for photorealistic images (Default)
+  - 🎨 **RealESRGAN_x4plus_anime_6B**: Optimized for anime/illustrations
+  - 💎 **RealESRNet_x4plus**: Conservative enhancement, fewer artifacts
+  - 🔧 **realesr-general-x4v3**: With adjustable denoise control (0-1)
   - 🎬 **realesr-animevideov3**: Specialized for anime videos
-  - ⚡ **RealESRGAN_x2plus**: 2x upscale for faster processing
+  - ⚡ **RealESRGAN_x2plus**: Fast 2x upscaling
 
-- **Advanced Enhancement Controls**:
-  - Model selection per processing task
-  - Denoise strength control (0-1) for compatible models
-  - Automatic quality optimization based on selected model
+### Performance & Reliability
 
-- **Smart Processing**:
-  - Automatic GPU memory management
-  - Frame-by-frame enhancement for GIFs and videos
-  - Audio preservation in enhanced videos
-  - Automatic cleanup of temporary files
+- **TensorRT Optimization**: Automatic model acceleration with persistent caching
+- **Intelligent Memory Management**: Auto cache clearing, OOM recovery, dynamic batch sizing
+- **Async Pipeline**: 3-stage overlapped processing (detection → swap → enhancement)
+- **Multi-GPU Support**: Distribute workload across multiple CUDA devices
+- **Logging Rotation**: Size-based log rotation with configurable retention
+- **YAML Configuration**: Centralized settings with runtime validation
+
+📖 **Documentation**: See [IMPROVEMENTS.md](IMPROVEMENTS.md) for detailed feature documentation and [CONFIG_README.md](CONFIG_README.md) for configuration guide
 
 ## Demo Videos
 
@@ -54,32 +57,61 @@ Sarah Connor?
 
 ### Prerequisites
 
-1. **FFmpeg** - [Download and install FFmpeg](https://ffmpeg.org/download.html)
-2. **CUDA >= 10.1** - [Download and install CUDA](https://developer.nvidia.com/cuda-10.1-download-archive-base)
-3. **Python 3.10** - Anaconda/Miniconda recommended
+1. **Visual Studio 2022** with C++ Build Tools:
+   - [Download Visual Studio 2022](https://visualstudio.microsoft.com/vs/)
+   - Install "Desktop development with C++" workload
+   - **Important**: Use **Developer PowerShell for VS 2022** for all installation steps
+
+2. **FFmpeg** - [Download and install FFmpeg](https://ffmpeg.org/download.html)
+
+3. **CUDA >= 10.1** - [Download and install CUDA](https://developer.nvidia.com/cuda-10.1-download-archive-base)
+
+4. **TensorRT** (Optional, for GPU acceleration):
+   - [Download TensorRT](https://developer.nvidia.com/tensorrt) 
+   - Follow NVIDIA's installation guide for your CUDA version
+   - Provides 2-3x faster face detection performance
+
+5. **Python 3.10** - Anaconda/Miniconda recommended
 
 ### Setup Instructions
 
+⚠️ **Important**: Open **Developer PowerShell for VS 2022** before proceeding with installation.
+
+1. **Clone Repository**:
 ```powershell
-# Clone the repository
 git clone https://github.com/thebiglaskowski/faceoff.git
 cd faceoff
+```
 
-# Create conda environment
+2. **Create Environment**:
+```powershell
 conda create -n faceoff python=3.10 -y
 conda activate faceoff
+```
 
-# Install PyTorch with CUDA support
+3. **Install PyTorch with CUDA**:
+```powershell
 pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 -f https://download.pytorch.org/whl/torch_stable.html
+```
 
-# Install dependencies
+4. **Install Dependencies**:
+```powershell
 pip install -r requirements.txt
 ```
 
-4. **Download Models**:
-   - Download [inswapper_128.onnx](https://huggingface.co/thebiglaskowski/inswapper_128.onnx/tree/main) and place in project root
-   - Download [buffalo_l models](https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip) and extract to `models/buffalo_l/`
-   - Real-ESRGAN weights will download automatically on first use
+5. **Download Models**:
+   - [inswapper_128.onnx](https://huggingface.co/thebiglaskowski/inswapper_128.onnx/tree/main) → place in project root
+   - [buffalo_l models](https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip) → extract to `models/buffalo_l/`
+   - Real-ESRGAN weights download automatically on first use
+
+6. **Optional: Install gifsicle for better GIF compression**:
+   - [Download gifsicle for Windows](https://www.lcdf.org/gifsicle/)
+   - Extract `gifsicle.exe` to `external/gifsicle/` folder
+   - Provides ~60% better GIF compression than default PIL optimization
+
+7. **Configure** (Optional):
+   - Copy `config.example.yaml` to `config.yaml` (auto-created with defaults if missing)
+   - Edit settings as needed - see [CONFIG_README.md](CONFIG_README.md) for details
 
 ## Usage
 
@@ -91,200 +123,286 @@ python main.py
 
 Opens at <http://127.0.0.1:7860/>
 
-The unified interface provides four tabs:
+The unified interface provides:
 
-- **Image Tab**: Face swap for static images
-- **GIF Tab**: Face swap for animated GIFs with frame preservation
-- **Video Tab**: Face swap for videos with audio preservation
-- **Batch Tab**: Process multiple files at once
+- **Image Tab**: Single image face swapping
+- **GIF Tab**: Animated GIF processing with frame preservation
+- **Video Tab**: Video processing with audio preservation
+- **Batch Tab**: Process multiple files simultaneously
 
-#### Enhancement Options
+### Enhancement Options
 
-1. **Enable Enhancement**: Check the "Enable Enhancement (Real-ESRGAN)" checkbox
-2. **Select Model**:
-   - **RealESRGAN_x4plus**: Best general-purpose model for photos
-   - **RealESRGAN_x4plus_anime_6B**: Optimized for anime/illustration
-   - **RealESRGAN_x4plus (Conservative)**: More subtle enhancement
-   - **realesr-general-x4v3**: Includes denoise strength control (0-1 slider)
-   - **realesr-animevideov3**: Best for anime videos
-   - **RealESRGAN_x2plus**: Faster 2x upscaling
-3. **Adjust Denoise** (only for realesr-general-x4v3): Control noise reduction strength from 0 (none) to 1 (maximum)
+All tabs support optional Real-ESRGAN enhancement:
 
-## Performance Tips
+1. **Enable Enhancement**: Check the enhancement checkbox
+2. **Select Model**: Choose based on content type (photo/anime/video)
+3. **Adjust Denoise**: For `realesr-general-x4v3` model only (0 = none, 1 = maximum)
+4. **Process**: Enhanced output automatically saved
 
-### GPU Memory Optimization
+## Performance & Configuration
 
-- **8GB VRAM**: Use any model except anime_6B (which requires more memory)
-- **6GB VRAM**: Use RealESRGAN_x2plus or x4plus models
-- **4GB VRAM or less**: Disable enhancement or upgrade GPU
+### GPU Memory Requirements
+
+- **12GB+ VRAM**: All models, full resolution
+- **8GB VRAM**: All models except anime_6B, standard settings recommended
+- **6GB VRAM**: Use x2plus or x4plus models, consider lower tile sizes
+- **4GB VRAM**: Disable enhancement or use minimal settings
 
 ### Processing Time Estimates
 
-For a 10-second 30fps video (300 frames):
+10-second 1080p video (300 frames):
 
-- **No Enhancement**: ~30 seconds
-- **With Enhancement (any model)**: ~10-20 minutes depending on model and GPU
+- **Face swap only**: ~30-60 seconds
+- **With enhancement**: ~10-20 minutes (GPU-dependent)
 
-## Configuration
+*Actual times vary based on GPU, resolution, scene complexity, and selected model*
 
-### GPU Memory Optimization
+### Configuration
 
-- **8GB VRAM**: Use "Balanced" preset (Tile 256) or "Fast" preset (Tile 512)
-- **6GB VRAM**: Use "Fast" preset only
-- **4GB VRAM or less**: Disable enhancement or upgrade GPU
+FaceOff uses `config.yaml` for all settings. See [CONFIG_README.md](CONFIG_README.md) for comprehensive documentation.
 
-### Processing Time Estimates
+**Quick customization:**
+```yaml
+# GPU settings
+gpu:
+  batch_size: 4              # Frames processed per batch
+  tensorrt_enabled: true     # Use TensorRT acceleration
+  
+# Model cache
+model_cache:
+  tensorrt_cache_enabled: true
+  preload_on_startup: false
+  
+# Memory management  
+memory:
+  auto_clear_cache: true
+  clear_cache_threshold_mb: 1024
+  reduce_batch_on_oom: true
+```
 
-For a 10-second 30fps video (300 frames):
-
-- **No Enhancement**: ~30 seconds
-- **With Enhancement (any model)**: ~10-20 minutes depending on model and GPU
-
-*Times vary based on GPU, video resolution, and scene complexity*
+The config system includes validation, defaults, and automatic migration. Changes take effect on next run.
 
 ## Troubleshooting
 
-### CUDA Out of Memory Error
+### CUDA Out of Memory
 
-**Solution**: Use RealESRGAN_x2plus model or lower resolution input
+**Symptoms**: `RuntimeError: CUDA out of memory` during processing
 
-```powershell
-# Check GPU memory
-nvidia-smi
-```
+**Solutions**:
+- Use `RealESRGAN_x2plus` model (lower memory requirements)
+- Reduce `batch_size` in `config.yaml`
+- Process shorter videos or lower resolution inputs
+- Close other GPU applications
+- Check GPU memory: `nvidia-smi`
 
 ### Enhancement Not Applied
 
-**Issue**: Video/GIF returned without enhancement
+**Symptoms**: Output returned without enhancement, no quality improvement
 
 **Solutions**:
-
-1. Check terminal for error messages
-2. Verify Real-ESRGAN weights exist in `external/Real-ESRGAN/`
-3. Try RealESRGAN_x2plus model to reduce memory usage
-4. Ensure CUDA is properly installed
+1. Check terminal/logs for error messages (`app.log`)
+2. Verify Real-ESRGAN weights downloaded to `external/Real-ESRGAN/weights/`
+3. Try `RealESRGAN_x2plus` model to reduce memory usage
+4. Ensure CUDA toolkit is properly installed
+5. Check TensorRT cache isn't corrupted: delete `cache/tensorrt/` folder
 
 ### Video Has No Audio
 
-**Issue**: Output video is silent
+**Symptoms**: Output video is silent
 
-**Solution**: Ensure input video has audio track - enhancement automatically preserves audio
-
-### Module Not Found Errors
-
-**Solution**: Ensure all dependencies are installed
-
-```powershell
-pip install -r requirements.txt
-```
+**Solutions**:
+- Verify input video has audio track (check with media player)
+- Check FFmpeg is installed and in PATH
+- Review `app.log` for audio encoding errors
+- Ensure FFmpeg supports input codec (MP4/H.264 recommended)
 
 ### Face Not Detected
 
-**Issue**: "No faces detected" error
+**Symptoms**: "No faces detected in source/target" error
 
 **Solutions**:
+
 1. Ensure face is clearly visible and front-facing
-2. Try better lighting in source image
-3. Use higher resolution input
-4. Verify buffalo_l models are properly installed
+2. Improve lighting and image quality
+3. Use higher resolution input (minimum 640px recommended)
+4. Verify buffalo_l models installed in `models/buffalo_l/`
+5. Adjust `confidence_threshold` in `config.yaml` (lower = more permissive)
 
-## Configuration
+### Module Import Errors
 
-Edit `config.json` to customize settings:
+**Symptoms**: `ModuleNotFoundError` or import errors
 
-```json
-{
-  "inswapper_model_path": "inswapper_128.onnx",
-  "buffalo_model_path": "models/buffalo_l",
-  "default_output_dir": "outputs",
-  "cuda_provider": "CUDAExecutionProvider",
-  "face_analysis_det_size": [640, 640],
-  "real_esrgan_scaling_factor": 4
-}
+**Solutions**:
+```powershell
+# Reinstall dependencies
+pip install -r requirements.txt --force-reinstall
+
+# Verify Python environment
+conda activate faceoff
+python --version  # Should show 3.10.x
 ```
+
+### TensorRT Build Failures
+
+**Symptoms**: TensorRT engine build errors or warnings
+
+**Solutions**:
+- Delete TensorRT cache: remove `cache/tensorrt/` directory
+- Disable TensorRT in `config.yaml`: set `tensorrt_enabled: false`
+- Update CUDA drivers to latest version
+- Check compatibility: CUDA >= 10.1, TensorRT 8.x recommended
 
 ## Project Structure
 
-```
+```text
 faceoff/
-├── main.py                    # Application entry point
-├── config.json                # Configuration settings
-├── config.py                  # Configuration loader
-├── logging_utils.py           # Logging setup
-├── inswapper_128.onnx         # Face swapper model
-├── environment.yml            # Conda environment specification
-├── core/                      # Core functionality
-│   ├── __init__.py
-│   ├── gpu_manager.py         # GPU device management
-│   ├── face_processor.py      # Face detection and processing
-│   └── media_processor.py     # Media file handling
-├── processing/                # Media processing modules
-│   ├── __init__.py
-│   ├── orchestrator.py        # Processing coordination
-│   ├── enhancement.py         # Real-ESRGAN enhancement
-│   ├── image_processing.py    # Image face swapping
-│   ├── video_processing.py    # Video face swapping
-│   └── gif_processing.py      # GIF face swapping
-├── ui/                        # User interface
-│   ├── __init__.py
-│   └── app.py                 # Gradio web interface
-├── utils/                     # Utility modules
-│   ├── __init__.py
-│   ├── constants.py           # Model options and constants
-│   └── validation.py          # Input validation
-├── models/                    # Model files
-│   └── buffalo_l/             # InsightFace models
-├── external/                  # External dependencies
-│   └── Real-ESRGAN/           # Enhancement engine
-├── inputs/                    # Temporary input files
-├── outputs/                   # Processed outputs
-├── temp/                      # Temporary processing files
-└── tests/                     # Test files
-    ├── __init__.py
-    ├── conftest.py
-    ├── test_config.py
-    └── ...
+├── main.py                      # Application entry point
+├── config.yaml                  # Main configuration file (YAML)
+├── requirements.txt             # Python dependencies
+├── environment.yml              # Conda environment spec
+├── inswapper_128.onnx          # Face swapper model (download separately)
+│
+├── core/                        # Core functionality
+│   ├── gpu_manager.py          # Multi-GPU device management
+│   ├── face_processor.py       # Face detection and alignment
+│   └── media_processor.py      # Media file handling with model init
+│
+├── processing/                  # Media processing pipeline
+│   ├── orchestrator.py         # Processing coordination
+│   ├── async_pipeline.py       # 3-stage async pipeline
+│   ├── model_optimizer.py      # TensorRT optimization
+│   ├── enhancement.py          # Real-ESRGAN enhancement
+│   ├── image_processing.py     # Image face swapping
+│   ├── video_processing.py     # Video face swapping
+│   ├── gif_processing.py       # GIF face swapping
+│   ├── face_restoration.py     # GFPGAN face restoration
+│   └── resolution_adaptive.py  # Adaptive resolution handling
+│
+├── ui/                          # User interface
+│   ├── app.py                  # Gradio web interface
+│   ├── components/             # UI component modules
+│   └── helpers/                # UI helper utilities
+│
+├── utils/                       # Utilities
+│   ├── config_manager.py       # Config loader with validation
+│   ├── constants.py            # Model options and constants
+│   ├── validation.py           # Input validation
+│   ├── logging_setup.py        # Logging configuration with rotation
+│   ├── memory_manager.py       # GPU memory management
+│   ├── compression.py          # Media compression utilities
+│   ├── temp_manager.py         # Temporary file management
+│   ├── progress.py             # Progress tracking
+│   ├── model_cache.py          # TensorRT cache management
+│   └── preset_manager.py       # Settings preset management
+│
+├── presets/                     # Processing presets
+│   ├── Balanced.json           # Balanced quality/speed preset
+│   ├── High Quality.json       # Maximum quality preset
+│   ├── Fast Preview.json       # Speed-optimized preset
+│   └── Anime Style.json        # Anime/illustration preset
+│
+├── models/                      # Model storage
+│   └── buffalo_l/              # InsightFace face analysis models
+│
+├── external/                    # External dependencies
+│   ├── Real-ESRGAN/            # Enhancement engine
+│   └── gifsicle/               # GIF compression tool (optional)
+│       └── gifsicle.exe        # Download from lcdf.org
+│
+# Runtime directories (auto-created, excluded from Git):
+├── cache/                       # TensorRT model cache
+├── inputs/                      # Uploaded source files
+├── outputs/                     # Generated results
+├── temp/                        # Temporary processing files
+└── .gradio/                     # Gradio UI cache
+```
+├── inputs/                      # Temporary input staging
+├── outputs/                     # Processed outputs
+├── temp/                        # Temporary processing files
+│
+├── tests/                       # Test suite
+│   ├── test_config.py          # Config system tests
+│   ├── test_improvements.py    # Feature validation
+│   └── conftest.py             # Pytest configuration
+│
+└── docs/                        # Documentation
+    ├── CONFIG_README.md        # Configuration guide
+    └── IMPROVEMENTS.md         # Feature documentation
 ```
 
-## Changelog
+## Version History
 
-### v2.0.0 (Current)
+### v2.5.0 (Current) - Performance & Reliability Release
 
-- ✅ **Unified Interface**: All four modes (Image/GIF/Video/Batch) in single app
-- ✅ **Advanced Model Selection**: 6 Real-ESRGAN models with specialized purposes
-- ✅ **Denoise Control**: Fine-tune noise reduction for compatible models
-- ✅ **Modular Architecture**: Clean, maintainable codebase with processing/ui separation
-- ✅ **Audio Preservation**: Videos maintain original audio after enhancement
-- ✅ **Unique Filenames**: Timestamp-based naming prevents output overwrites
-- ✅ **Multi-GPU Support**: Leverage multiple GPUs for faster processing
+**New Features:**
+- ✅ **TensorRT Model Caching**: Persistent engine cache with automatic optimization
+- ✅ **Async Processing Pipeline**: 3-stage overlapped processing (detection → swap → enhancement)
+- ✅ **Intelligent Memory Management**: Auto cache clearing, OOM recovery, dynamic batch sizing
+- ✅ **Logging Rotation**: Size-based log rotation with configurable retention (5 files @ 10MB)
+- ✅ **YAML Configuration**: Migrated from JSON to YAML with comprehensive validation
+- ✅ **Config Management**: Centralized `config_manager.py` with property-based access
+- ✅ **Enhanced Documentation**: Added `IMPROVEMENTS.md` and `CONFIG_README.md`
 
-### v1.0.0 (Legacy)
+**Improvements:**
+- 🚀 **Performance**: TensorRT acceleration, model preloading, batch optimization
+- 💾 **Memory**: Automatic CUDA cache management prevents OOM crashes
+- 🔧 **Reliability**: Graceful degradation, error recovery, comprehensive logging
+- 📝 **Maintainability**: Unified config system, modular architecture
+
+See [IMPROVEMENTS.md](IMPROVEMENTS.md) for detailed technical documentation.
+
+### v2.0.0 - Unified Interface
+
+- ✅ Unified Gradio interface (Image/GIF/Video/Batch tabs)
+- ✅ 6 Real-ESRGAN model options with specialized purposes
+- ✅ Denoise control for compatible models
+- ✅ Modular architecture with processing/ui separation
+- ✅ Audio preservation in enhanced videos
+- ✅ Multi-GPU support
+
+### v1.0.0 - Initial Release
 
 - Basic face swapping for images, GIFs, and videos
-- Single model enhancement option
-- Legacy individual app files (deprecated)
+- Single enhancement model option
+- Individual app files per media type (deprecated)
 
-## Roadmap
+## Credits & Acknowledgments
 
-Future enhancements planned:
+Built with excellent open-source projects:
 
-- [ ] Progress bars showing enhancement progress for videos/GIFs
-- [ ] Multiple face selection (choose which face to swap if multiple detected)
-- [x] Batch processing mode (process multiple files at once) - **COMPLETED**
-- [ ] Face confidence threshold controls
-- [ ] Video preview before enhancement
-- [ ] Output format options (codec, resolution, compression)
-- [ ] Side-by-side comparison view
-- [ ] Processing history and favorites
-- [x] Multiple Real-ESRGAN model options - **COMPLETED**
-- [x] Denoise strength control - **COMPLETED**
+- **[InsightFace](https://github.com/deepinsight/insightface)** - Face analysis and detection models
+- **[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)** - Image enhancement and upscaling
+- **[gifsicle](https://www.lcdf.org/gifsicle/)** - Efficient GIF optimization and compression
+- **[PyTorch](https://github.com/pytorch/pytorch)** - Deep learning framework
+- **[ONNX Runtime](https://github.com/microsoft/onnxruntime)** - Cross-platform inference
+- **[TensorRT](https://developer.nvidia.com/tensorrt)** - NVIDIA GPU acceleration
+- **[Gradio](https://github.com/gradio-app/gradio)** - Web interface framework
+- **[FFmpeg](https://github.com/FFmpeg/FFmpeg)** - Video/audio processing
+- **[ImageMagick](https://github.com/ImageMagick/ImageMagick)** - Image manipulation and conversion
+- **[CodeFormer](https://github.com/sczhou/CodeFormer)** - Face restoration reference
+- **[OpenAI GPT](https://github.com/openai)** - Development assistance
 
-## Special Thanks To
+## License
 
-- [FFMpeg](https://github.com/FFmpeg/FFmpeg)
-- [InsightFace](https://github.com/deepinsight/insightface)
-- [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)
-- [CodeFormer](https://github.com/sczhou/CodeFormer)
-- [Open-AI GPT](https://github.com/openai)
-- [PyTorch](https://github.com/pytorch/pytorch)
-- [Torchvision](https://github.com/pytorch/pytorch)
+This project is provided for educational and research purposes. Please respect all applicable licenses for the models and dependencies used.
+
+**Model Licenses:**
+- InsightFace models: Check [InsightFace license](https://github.com/deepinsight/insightface/blob/master/LICENSE)
+- Real-ESRGAN models: [BSD 3-Clause License](https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE)
+- inswapper_128.onnx: Check original model license
+
+**Use Responsibly:**
+- Only use on content you have permission to modify
+- Do not create misleading or harmful content
+- Respect privacy and consent
+- Follow all applicable laws and regulations
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/thebiglaskowski/faceoff/issues)
+- **Documentation**: See [CONFIG_README.md](CONFIG_README.md) and [IMPROVEMENTS.md](IMPROVEMENTS.md)
+- **Blog Post**: [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://thebiglaskowski.com/posts/face-swapping-with-ai/)
+
+---
+
+**Star ⭐ this repository if you find it useful!**

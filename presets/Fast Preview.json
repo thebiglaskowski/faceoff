@@ -1,0 +1,19 @@
+{
+  "name": "Fast Preview",
+  "description": "Quick processing for testing. Lower quality.",
+  "created": "2025-11-07T17:42:30.127699",
+  "settings": {
+    "enhance": true,
+    "tile_size": 128,
+    "outscale": 2,
+    "model_name": "RealESRGAN_x4plus",
+    "denoise_strength": 0.5,
+    "use_fp32": false,
+    "pre_pad": 0,
+    "restore_faces": false,
+    "restoration_weight": 0.0,
+    "face_confidence": 0.4,
+    "adaptive_detection": false,
+    "detection_scale": 1.0
+  }
+}

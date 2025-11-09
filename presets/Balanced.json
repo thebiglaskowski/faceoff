@@ -1,0 +1,19 @@
+{
+  "name": "Balanced",
+  "description": "Good quality with reasonable speed. Recommended default.",
+  "created": "2025-11-07T17:42:30.118760",
+  "settings": {
+    "enhance": true,
+    "tile_size": 256,
+    "outscale": 4,
+    "model_name": "RealESRGAN_x4plus",
+    "denoise_strength": 0.5,
+    "use_fp32": false,
+    "pre_pad": 10,
+    "restore_faces": true,
+    "restoration_weight": 0.5,
+    "face_confidence": 0.5,
+    "adaptive_detection": true,
+    "detection_scale": 1.0
+  }
+}

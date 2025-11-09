@@ -1,22 +1,34 @@
 """
 Gradio UI for FaceOff - AI Face Swapper application.
+Refactored with modular components for clean architecture.
 """
 import gradio as gr
 import logging
 import numpy as np
-import tempfile
 from pathlib import Path
 from PIL import Image
 
-from logging_utils import setup_logging
-from core.gpu_manager import GPUManager
-from core.face_processor import FaceProcessor, FaceMappingManager
+from utils.logging_setup import setup_logging
+from core.face_processor import FaceMappingManager
 from utils.validation import (
     validate_file_size, validate_image_resolution,
     validate_video_duration, validate_gif_frames, validate_media_type
 )
 from utils.constants import MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_TILE_SIZE, DEFAULT_OUTSCALE, DEFAULT_USE_FP32, DEFAULT_PRE_PAD
 from processing.orchestrator import process_media
+from utils.preset_manager import PresetManager, initialize_default_presets
+from utils.error_handler import ErrorHandler, FriendlyError
+
+# UI Components and Helpers
+from ui.components.image_tab import create_image_tab
+from ui.components.gif_tab import create_gif_tab
+from ui.components.video_tab import create_video_tab
+from ui.components.gallery_tab import create_gallery_tab, update_gallery, refresh_gallery
+from ui.helpers.gallery_utils import count_media_files, delete_file
+from ui.helpers.gpu_utils import get_gpu_status, refresh_gpu_info
+from ui.helpers.face_detection import detect_faces_simple, detect_faces_for_mapping, detect_faces_with_thumbnails
+from ui.helpers.face_mapping import add_face_mapping as helper_add_mapping, clear_face_mappings as helper_clear_mappings
+from ui.helpers.preview import show_gif_preview
 
 # Set up logging
 setup_logging()
@@ -25,446 +37,163 @@ logger = logging.getLogger("FaceOff")
 # Global state for face mappings
 face_mapping_manager = FaceMappingManager()
 
+# Initialize preset manager
+preset_manager = PresetManager()
+initialize_default_presets(preset_manager)
 
-def get_gpu_options():
-    """Get GPU dropdown options."""
-    return GPUManager.get_available_gpus()
-
-
-def get_gpu_status():
-    """Get GPU memory status for all GPUs."""
-    return GPUManager.get_memory_info()
-
-
-def refresh_gpu_info():
-    """Refresh GPU information display."""
-    gpu_info_list = get_gpu_status()
-    # Ensure we have at least one entry
-    if not gpu_info_list:
-        gpu_info_list = ["No GPU info available"]
-    return gpu_info_list
+# Create output directories on startup
+output_base = Path("outputs")
+output_base.mkdir(exist_ok=True)
+(output_base / "image").mkdir(exist_ok=True)
+(output_base / "gif").mkdir(exist_ok=True)
+(output_base / "video").mkdir(exist_ok=True)
+logger.info("Output directories initialized: outputs/image, outputs/gif, outputs/video")
 
 
-def detect_faces_from_upload(img, confidence=0.5):
-    """Detect faces when image is uploaded."""
-    if img is None:
-        return ""
-    try:
-        # Save temporarily
-        temp_path = Path("inputs") / "temp_detect.png"
-        temp_path.parent.mkdir(exist_ok=True)
-        img.save(temp_path)
-        
-        # Use FaceProcessor for detection
-        processor = FaceProcessor(device_id=0, confidence=confidence)
-        info = processor.detect_faces_info(str(temp_path))
-        
-        temp_path.unlink()
-        return info
-    except Exception as e:
-        logger.error("Face detection error: %s", e)
-        return f"❌ Error: {str(e)}"
+def get_preset_choices():
+    """Get list of available preset names for dropdown."""
+    presets = preset_manager.list_presets()
+    return [p['name'] for p in presets]
 
 
-def detect_and_extract_faces_ui(image_path: str, confidence: float):
-    """Detect and extract face thumbnails for UI display."""
-    try:
-        processor = FaceProcessor(device_id=0, confidence=confidence)
-        return processor.detect_and_extract_faces(image_path)
-    except Exception as e:
-        logger.error("Face extraction error: %s", e)
-        return [], f"❌ Error: {str(e)}"
+def get_default_preset():
+    """Get the default preset name (Balanced if available, otherwise first in list)."""
+    choices = get_preset_choices()
+    if "Balanced" in choices:
+        return "Balanced"
+    return choices[0] if choices else None
 
 
-def detect_faces_for_mapping(source_img, target_img, face_confidence):
-    """Detect faces in both images for mapping UI using exact same method as processing."""
-    if source_img is None or target_img is None:
-        return (
-            [], [],
-            "Upload both images first",
-            gr.update(choices=[]),
-            gr.update(choices=[]),
-            gr.update(visible=False),
-            gr.update(visible=False)
-        )
-    
-    from core.face_processor import FaceProcessor, sort_faces_by_position, filter_faces_by_confidence
-    import cv2
-    from PIL import ImageDraw, ImageFont
-    
-    processor = FaceProcessor(device_id=0, confidence=face_confidence)
-    
-    # Detect source faces using CV2 (same as processing)
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as src_tmp:
-        if source_img.mode != 'RGB':
-            source_img = source_img.convert('RGB')
-        source_img.save(src_tmp.name)
-        src_cv2 = cv2.imread(src_tmp.name)
-        src_cv2_rgb = cv2.cvtColor(src_cv2, cv2.COLOR_BGR2RGB)
-        
-        src_faces_raw = processor._processor.get_faces(src_cv2_rgb)
-        src_faces_raw = filter_faces_by_confidence(src_faces_raw, face_confidence)
-        src_faces_raw = sort_faces_by_position(src_faces_raw)
-        
-        # Extract thumbnails with index numbers
-        src_faces = []
-        for idx, face in enumerate(src_faces_raw):
-            bbox = face.bbox.astype(int)
-            x1, y1, x2, y2 = bbox[0], bbox[1], bbox[2], bbox[3]
-            padding = 20
-            h, w = src_cv2_rgb.shape[:2]
-            x1, y1 = max(0, x1 - padding), max(0, y1 - padding)
-            x2, y2 = min(w, x2 + padding), min(h, y2 + padding)
-            face_crop = src_cv2_rgb[y1:y2, x1:x2]
-            face_pil = Image.fromarray(face_crop)
-            
-            # Add index number overlay
-            draw = ImageDraw.Draw(face_pil)
-            font_size = max(24, int(face_pil.width * 0.15))
-            try:
-                font = ImageFont.truetype("arial.ttf", font_size)
-            except:
-                try:
-                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
-                except:
-                    font = ImageFont.load_default()
-            
-            text = str(idx)
-            try:
-                bbox_text = draw.textbbox((0, 0), text, font=font)
-                text_width = bbox_text[2] - bbox_text[0]
-                text_height = bbox_text[3] - bbox_text[1]
-            except:
-                text_width, text_height = draw.textsize(text, font=font)
-            
-            padding_text = 8
-            x, y = padding_text, padding_text
-            bg_rect = [x - 4, y - 4, x + text_width + 4, y + text_height + 4]
-            draw.rectangle(bg_rect, fill=(0, 0, 0, 180))
-            draw.text((x, y), text, fill=(255, 255, 255), font=font)
-            
-            src_faces.append(face_pil)
-    
-    # Detect target faces using CV2 (same as processing)
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tgt_tmp:
-        if target_img.mode != 'RGB':
-            target_img = target_img.convert('RGB')
-        target_img.save(tgt_tmp.name)
-        tgt_cv2 = cv2.imread(tgt_tmp.name)
-        tgt_cv2_rgb = cv2.cvtColor(tgt_cv2, cv2.COLOR_BGR2RGB)
-        
-        tgt_faces_raw = processor._processor.get_faces(tgt_cv2_rgb)
-        tgt_faces_raw = filter_faces_by_confidence(tgt_faces_raw, face_confidence)
-        tgt_faces_raw = sort_faces_by_position(tgt_faces_raw)
-        
-        # Extract thumbnails with index numbers
-        tgt_faces = []
-        for idx, face in enumerate(tgt_faces_raw):
-            bbox = face.bbox.astype(int)
-            x1, y1, x2, y2 = bbox[0], bbox[1], bbox[2], bbox[3]
-            padding = 20
-            h, w = tgt_cv2_rgb.shape[:2]
-            x1, y1 = max(0, x1 - padding), max(0, y1 - padding)
-            x2, y2 = min(w, x2 + padding), min(h, y2 + padding)
-            face_crop = tgt_cv2_rgb[y1:y2, x1:x2]
-            face_pil = Image.fromarray(face_crop)
-            
-            # Add index number overlay
-            draw = ImageDraw.Draw(face_pil)
-            font_size = max(24, int(face_pil.width * 0.15))
-            try:
-                font = ImageFont.truetype("arial.ttf", font_size)
-            except:
-                try:
-                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
-                except:
-                    font = ImageFont.load_default()
-            
-            text = str(idx)
-            try:
-                bbox_text = draw.textbbox((0, 0), text, font=font)
-                text_width = bbox_text[2] - bbox_text[0]
-                text_height = bbox_text[3] - bbox_text[1]
-            except:
-                text_width, text_height = draw.textsize(text, font=font)
-            
-            padding_text = 8
-            x, y = padding_text, padding_text
-            bg_rect = [x - 4, y - 4, x + text_width + 4, y + text_height + 4]
-            draw.rectangle(bg_rect, fill=(0, 0, 0, 180))
-            draw.text((x, y), text, fill=(255, 255, 255), font=font)
-            
-            tgt_faces.append(face_pil)
-    
-    if not src_faces or not tgt_faces:
-        status = f"⚠️ Detection failed - Source: {src_info}, Target: {tgt_info}"
-        return (
-            [], [],
-            status,
-            gr.update(choices=[]),
-            gr.update(choices=[]),
-            gr.update(visible=False),
-            gr.update(visible=False)
-        )
-    
-    src_choices = [f"Source Face {i}" for i in range(len(src_faces))]
-    tgt_choices = [f"Target Face {i}" for i in range(len(tgt_faces))]
-    status = f"✅ Detected {len(src_faces)} source face(s) and {len(tgt_faces)} target face(s)"
-    
-    return (
-        src_faces,
-        tgt_faces,
-        status,
-        gr.update(choices=src_choices, value=src_choices[0] if src_choices else None),
-        gr.update(choices=tgt_choices, value=tgt_choices[0] if tgt_choices else None),
-        gr.update(visible=True),
-        gr.update(visible=True)
-    )
-
-
-def detect_faces_gif_video(source_img, target_file, face_confidence):
-    """Detect faces in source image and sampled frames from GIF/Video to find all unique faces."""
-    if source_img is None or target_file is None:
-        return (
-            [], [],
-            "Upload both source and target file first",
-            gr.update(choices=[]),
-            gr.update(choices=[]),
-            gr.update(visible=False),
-            gr.update(visible=False)
-        )
-    
-    from moviepy.editor import VideoFileClip
-    from core.face_processor import FaceProcessor, sort_faces_by_position, filter_faces_by_confidence, calculate_iou
-    import cv2
-    import numpy as np
-    
-    # Detect source faces using CV2 (same as processing)
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as src_tmp:
-        if source_img.mode != 'RGB':
-            source_img = source_img.convert('RGB')
-        source_img.save(src_tmp.name)
-        src_cv2 = cv2.imread(src_tmp.name)
-        src_cv2_rgb = cv2.cvtColor(src_cv2, cv2.COLOR_BGR2RGB)
-        
-        processor = FaceProcessor(device_id=0, confidence=face_confidence)
-        src_faces_raw = processor._processor.get_faces(src_cv2_rgb)
-        src_faces_raw = filter_faces_by_confidence(src_faces_raw, face_confidence)
-        src_faces_raw = sort_faces_by_position(src_faces_raw)
-        
-        # Extract thumbnails from sorted faces
-        src_faces = []
-        for idx, face in enumerate(src_faces_raw):
-            bbox = face.bbox.astype(int)
-            x1, y1, x2, y2 = bbox[0], bbox[1], bbox[2], bbox[3]
-            padding = 20
-            h, w = src_cv2_rgb.shape[:2]
-            x1, y1 = max(0, x1 - padding), max(0, y1 - padding)
-            x2, y2 = min(w, x2 + padding), min(h, y2 + padding)
-            face_crop = src_cv2_rgb[y1:y2, x1:x2]
-            face_pil = Image.fromarray(face_crop)
-            
-            # Add index number overlay (same as detect_and_extract_faces)
-            from PIL import ImageDraw, ImageFont
-            draw = ImageDraw.Draw(face_pil)
-            font_size = max(24, int(face_pil.width * 0.15))
-            try:
-                font = ImageFont.truetype("arial.ttf", font_size)
-            except:
-                try:
-                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
-                except:
-                    font = ImageFont.load_default()
-            
-            text = str(idx)
-            try:
-                bbox_text = draw.textbbox((0, 0), text, font=font)
-                text_width = bbox_text[2] - bbox_text[0]
-                text_height = bbox_text[3] - bbox_text[1]
-            except:
-                text_width, text_height = draw.textsize(text, font=font)
-            
-            padding_text = 8
-            x, y = padding_text, padding_text
-            bg_rect = [x - 4, y - 4, x + text_width + 4, y + text_height + 4]
-            draw.rectangle(bg_rect, fill=(0, 0, 0, 180))
-            draw.text((x, y), text, fill=(255, 255, 255), font=font)
-            
-            src_faces.append(face_pil)
-        
-        src_info = f"✅ {len(src_faces)} face(s)"
-    
-    target_path = target_file.name if hasattr(target_file, 'name') else target_file
+def load_preset_settings(preset_name):
+    """Load preset and return settings as tuple for updating UI controls."""
+    if not preset_name:
+        return [gr.update() for _ in range(8)]  # Return no updates
     
     try:
-        # Get first frame - this will be the reference frame (same as processing)
-        # ONLY show faces from frame 0 to match processing exactly
-        first_frame_rgb = None
+        settings = preset_manager.load_preset(preset_name)
+        logger.info(f"Loaded preset: {preset_name}")
         
-        if target_path.lower().endswith('.gif'):
-            gif = Image.open(target_path)
-            first_frame = gif.convert('RGB')
-            first_frame_rgb = np.array(first_frame)
-            gif.close()
-        else:
-            clip = VideoFileClip(target_path)
-            first_frame_rgb = clip.get_frame(0)
-            clip.close()
+        # Get the model name from settings (check both 'model' and 'model_name' for compatibility)
+        model_name = settings.get('model') or settings.get('model_name', DEFAULT_MODEL)
+        logger.info(f"Preset model_name from settings: {model_name}")
         
-        # Detect faces in reference frame (frame 0) - this is what processing uses
-        reference_faces = processor._processor.get_faces(first_frame_rgb)
-        reference_faces = filter_faces_by_confidence(reference_faces, face_confidence)
-        reference_faces = sort_faces_by_position(reference_faces)
+        # The image_tab.py dropdowns use simple model names (e.g., "RealESRGAN_x4plus")
+        # not display names, so we use the model_name directly
+        logger.info(f"Using model name for dropdown: {model_name}")
         
-        final_faces = reference_faces
-        
-        logger.info("Face detection: %d faces in frame 0 (reference frame only)",
-                   len(reference_faces))
-        
-        # Now we need to get a good crop for each face from frame 0
-        tgt_faces = []
-        for idx, face in enumerate(final_faces):
-            # Extract thumbnail from frame 0
-            bbox = face.bbox.astype(int)
-            x1, y1, x2, y2 = bbox[0], bbox[1], bbox[2], bbox[3]
-            padding = 20
-            h, w = first_frame_rgb.shape[:2]
-            x1, y1 = max(0, x1 - padding), max(0, y1 - padding)
-            x2, y2 = min(w, x2 + padding), min(h, y2 + padding)
-            face_crop = first_frame_rgb[y1:y2, x1:x2]
-            face_pil = Image.fromarray(face_crop)
-            
-            # Add index number overlay
-            from PIL import ImageDraw, ImageFont
-            draw = ImageDraw.Draw(face_pil)
-            font_size = max(24, int(face_pil.width * 0.15))
-            try:
-                font = ImageFont.truetype("arial.ttf", font_size)
-            except:
-                try:
-                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
-                except:
-                    font = ImageFont.load_default()
-            
-            text = str(idx)
-            try:
-                bbox_text = draw.textbbox((0, 0), text, font=font)
-                text_width = bbox_text[2] - bbox_text[0]
-                text_height = bbox_text[3] - bbox_text[1]
-            except:
-                text_width, text_height = draw.textsize(text, font=font)
-            
-            padding_text = 8
-            x, y = padding_text, padding_text
-            bg_rect = [x - 4, y - 4, x + text_width + 4, y + text_height + 4]
-            draw.rectangle(bg_rect, fill=(0, 0, 0, 180))
-            draw.text((x, y), text, fill=(255, 255, 255), font=font)
-            
-            tgt_faces.append(face_pil)
-        
-        tgt_info = f"✅ {len(reference_faces)} face(s) in frame 0 (reference frame)"
-    
+        # Return updates for all relevant controls in order
+        # enhance, restore_faces, model, tile_size, outscale, use_fp32, pre_pad, restoration_weight
+        return [
+            gr.update(value=settings.get('enhance', False)),
+            gr.update(value=settings.get('restore_faces') or settings.get('restore', False)),
+            gr.update(value=model_name),  # Use model_name directly, not display name
+            gr.update(value=settings.get('tile_size', DEFAULT_TILE_SIZE)),
+            gr.update(value=settings.get('outscale', DEFAULT_OUTSCALE)),
+            gr.update(value=settings.get('use_fp32', DEFAULT_USE_FP32)),
+            gr.update(value=settings.get('pre_pad', DEFAULT_PRE_PAD)),
+            gr.update(value=settings.get('restoration_weight', 0.5)),
+        ]
     except Exception as e:
-        logger.error("Failed to extract first frame: %s", e)
+        logger.error(f"Error loading preset: {e}")
+        return [gr.update() for _ in range(8)]
+
+
+def save_current_preset(preset_name, enhance, restore, model_display_name, tile_size, outscale, use_fp32, pre_pad, restoration_weight):
+    """Save current settings as a new preset."""
+    if not preset_name or not preset_name.strip():
+        return gr.update(value="❌ Please enter a preset name"), gr.update()
+    
+    preset_name = preset_name.strip()
+    
+    try:
+        # Extract the actual model name from the display name
+        model_name = model_display_name
+        for display_name, model_info in MODEL_OPTIONS.items():
+            if display_name == model_display_name:
+                model_name = model_info.get('model_name', model_display_name)
+                break
+        
+        settings = {
+            'enhance': enhance,
+            'restore_faces': restore,  # Use consistent field name
+            'model_name': model_name,  # Store the actual model name, not display name
+            'tile_size': tile_size,
+            'outscale': outscale,
+            'use_fp32': use_fp32,
+            'pre_pad': pre_pad,
+            'restoration_weight': restoration_weight,
+        }
+        
+        preset_manager.save_preset(preset_name, settings, description="Custom user preset")
+        logger.info(f"Saved preset: {preset_name}")
+        
+        # Update dropdown with new preset list and status message
         return (
-            [], [],
-            f"⚠️ Failed to extract first frame: {str(e)}",
-            gr.update(choices=[]),
-            gr.update(choices=[]),
-            gr.update(visible=False),
-            gr.update(visible=False)
+            gr.update(value=f"✅ Saved preset: {preset_name}"),
+            gr.update(choices=get_preset_choices(), value=preset_name)
         )
+    except Exception as e:
+        logger.error(f"Error saving preset: {e}")
+        return gr.update(value=f"❌ Error: {str(e)}"), gr.update()
+
+
+def delete_selected_preset(preset_name):
+    """Delete the selected preset."""
+    if not preset_name:
+        return gr.update(value="❌ No preset selected"), gr.update()
     
-    if not src_faces or not tgt_faces:
-        status = f"⚠️ Detection failed - Source: {src_info}, Target: {tgt_info}"
+    try:
+        preset_manager.delete_preset(preset_name)
+        logger.info(f"Deleted preset: {preset_name}")
+        
+        new_choices = get_preset_choices()
         return (
-            [], [],
-            status,
-            gr.update(choices=[]),
-            gr.update(choices=[]),
-            gr.update(visible=False),
-            gr.update(visible=False)
+            gr.update(value=f"✅ Deleted preset: {preset_name}"),
+            gr.update(choices=new_choices, value=new_choices[0] if new_choices else None)
         )
-    
-    src_choices = [f"Source Face {i}" for i in range(len(src_faces))]
-    tgt_choices = [f"Target Face {i}" for i in range(len(tgt_faces))]
-    status = f"✅ Detected {len(src_faces)} source face(s) and {len(tgt_faces)} target face(s)"
-    
-    return (
-        src_faces,
-        tgt_faces,
-        status,
-        gr.update(choices=src_choices, value=src_choices[0] if src_choices else None),
-        gr.update(choices=tgt_choices, value=tgt_choices[0] if tgt_choices else None),
-        gr.update(visible=True),
-        gr.update(visible=True)
-    )
+    except Exception as e:
+        logger.error(f"Error deleting preset: {e}")
+        return gr.update(value=f"❌ Error: {str(e)}"), gr.update()
 
 
-def detect_faces_batch_source(source_img, face_confidence):
-    """Detect faces in batch source image."""
-    if source_img is None:
-        return (
-            [],
-            "Upload source image first",
-            gr.update(choices=[]),
-            gr.update(visible=False)
-        )
+def get_preset_info_text(preset_name):
+    """Get preset information for display."""
+    if not preset_name:
+        return "No preset selected"
     
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as src_tmp:
-        source_img.save(src_tmp.name)
-        src_faces, src_info = detect_and_extract_faces_ui(src_tmp.name, face_confidence)
-    
-    if not src_faces:
-        return (
-            [],
-            f"⚠️ No faces detected: {src_info}",
-            gr.update(choices=[]),
-            gr.update(visible=False)
-        )
-    
-    src_choices = [f"Source Face {i}" for i in range(len(src_faces))]
-    status = f"✅ Detected {len(src_faces)} source face(s)"
-    
-    return (
-        src_faces,
-        status,
-        gr.update(choices=src_choices, value=src_choices[0] if src_choices else None),
-        gr.update(visible=True)
-    )
+    try:
+        info = preset_manager.get_preset_info(preset_name)
+        description = info.get('description', 'No description')
+        created = info.get('created', 'Unknown')
+        settings = info.get('settings', {})
+        
+        # Get model name (check both 'model' and 'model_name')
+        model_name = settings.get('model') or settings.get('model_name', 'N/A')
+        
+        # Get restore faces setting (check both field names)
+        restore_faces = settings.get('restore_faces') or settings.get('restore', False)
+        
+        info_text = f"**{preset_name}**\n\n"
+        info_text += f"{description}\n\n"
+        info_text += f"_Created: {created}_\n\n"
+        info_text += "**Settings:**\n"
+        info_text += f"- Enhancement: {'Yes' if settings.get('enhance') else 'No'}\n"
+        info_text += f"- Face Restoration: {'Yes' if restore_faces else 'No'}\n"
+        info_text += f"- Model: {model_name}\n"
+        info_text += f"- Tile Size: {settings.get('tile_size', 'N/A')}\n"
+        info_text += f"- Upscale: {settings.get('outscale', 'N/A')}x\n"
+        info_text += f"- FP32: {'Yes' if settings.get('use_fp32') else 'No'}\n"
+        
+        return info_text
+    except Exception as e:
+        return f"Error loading preset info: {str(e)}"
 
 
-def add_face_mapping(source_idx, target_idx, current_mappings_text):
-    """Add a face mapping."""
-    if source_idx is None or target_idx is None:
-        return "⚠️ Select both source and target faces", current_mappings_text
-    
-    src_idx = int(source_idx.split()[-1])
-    tgt_idx = int(target_idx.split()[-1])
-    
-    face_mapping_manager.add(src_idx, tgt_idx)
-    
-    status = f"✅ Added mapping: Source {src_idx} → Target {tgt_idx}"
-    mappings_text = face_mapping_manager.get_display_text()
-    
-    return status, mappings_text
-
-
-def clear_face_mappings():
-    """Clear all face mappings."""
-    face_mapping_manager.clear()
-    return "Mappings cleared", "No mappings"
-
-
-def show_gif_preview(file):
-    """Show GIF preview when uploaded."""
-    if file is None:
-        return gr.update(visible=False, value=None)
-    file_path = file.name if hasattr(file, 'name') else file
-    return gr.update(visible=True, value=file_path)
-
-
-def process_input(source_image, target_image_path, target_video_path, enhance, confidence, gpu_selection=None, face_mappings=None, model_selection=None, denoise_strength=0.5, tile_size=None, outscale=None, use_fp32=False, pre_pad=0):
+def process_input(source_image, target_image_path=None, target_video_path=None, 
+                 enhance=False, confidence=0.5, gpu_selection=None, 
+                 face_mappings=None, model_selection=None, denoise_strength=0.5, 
+                 tile_size=None, outscale=None, use_fp32=None, pre_pad=None,
+                 restore_faces=False, restoration_weight=0.5):
     """
     Process input and route to appropriate media processing function.
     """
@@ -533,8 +262,8 @@ def process_input(source_image, target_image_path, target_video_path, enhance, c
         output_dir = Path("outputs")
         output_dir.mkdir(exist_ok=True)
         
-        logger.info("Processing %s with enhancement=%s, model=%s, denoise=%.2f, confidence=%.2f, tile=%d, outscale=%d, fp32=%s, prepad=%d",
-                   media_type, enhance, model_name, denoise_strength, confidence, tile_size, outscale, use_fp32, pre_pad)
+        logger.info("Processing %s with enhancement=%s, model=%s, denoise=%.2f, confidence=%.2f, tile=%d, outscale=%d, fp32=%s, prepad=%d, restore=%s, weight=%.2f",
+                   media_type, enhance, model_name, denoise_strength, confidence, tile_size, outscale, use_fp32, pre_pad, restore_faces, restoration_weight)
         
         result_img, result_vid = process_media(
             source_image=source_array,
@@ -550,7 +279,9 @@ def process_input(source_image, target_image_path, target_video_path, enhance, c
             model_name=model_name,
             denoise_strength=denoise_strength,
             use_fp32=use_fp32,
-            pre_pad=pre_pad
+            pre_pad=pre_pad,
+            restore_faces=restore_faces,
+            restoration_weight=restoration_weight
         )
         
         logger.info("Processing complete!")
@@ -562,106 +293,130 @@ def process_input(source_image, target_image_path, target_video_path, enhance, c
         else:
             return result_vid
     
+    except FriendlyError as fe:
+        # Display friendly error message
+        logger.error("="*40)
+        raise gr.Error(fe.format_message())
     except gr.Error:
         raise
     except Exception as e:
+        # Convert technical errors to friendly messages
+        context = {
+            'media_type': media_type if 'media_type' in locals() else 'unknown',
+            'enhance': enhance,
+            'tile_size': tile_size if tile_size else DEFAULT_TILE_SIZE,
+            'outscale': outscale if outscale else DEFAULT_OUTSCALE,
+            'restore_faces': restore_faces,
+            'use_fp32': use_fp32 if use_fp32 else DEFAULT_USE_FP32
+        }
+        friendly_error = ErrorHandler.handle_error(e, context)
         logger.error("Processing error: %s", e, exc_info=True)
         logger.error("="*40)
-        raise gr.Error(f"Processing error: {e}")
+        raise gr.Error(friendly_error.format_message())
 
 
-def process_batch(source, targets, enhance, confidence, compare, gpu, model_selection, denoise_strength, tile_size=None, outscale=None, use_fp32=False, pre_pad=0):
-    """
-    Process multiple files in batch mode.
-    """
-    import shutil
-    import zipfile
-    from datetime import datetime
+def add_face_mapping_wrapper(source_idx, target_idx, current_mappings_text):
+    """Wrapper to add face mapping using global manager."""
+    return helper_add_mapping(source_idx, target_idx, current_mappings_text, face_mapping_manager)
+
+
+def clear_face_mappings_wrapper():
+    """Wrapper to clear face mappings using global manager."""
+    return helper_clear_mappings(face_mapping_manager)
+
+
+def toggle_enhancement_controls(enabled):
+    """Toggle visibility of enhancement control rows."""
+    return [gr.update(visible=enabled)] * 3
+
+
+def show_delete_controls(evt: gr.SelectData):
+    """Show delete controls when a file is selected in the gallery."""
+    logger.info(f"Gallery selection event - index: {evt.index}, value type: {type(evt.value)}")
+    logger.info(f"Gallery selection value: {evt.value}")
     
-    if source is None or not targets:
-        raise gr.Error("Please upload source image and target files.")
+    if evt.index is None:
+        # No selection
+        return gr.update(visible=False), gr.update(visible=False), ""
     
-    # Use provided enhancement settings or defaults
-    if tile_size is None:
-        tile_size = DEFAULT_TILE_SIZE
-    if outscale is None:
-        outscale = DEFAULT_OUTSCALE
-    if use_fp32 is None:
-        use_fp32 = DEFAULT_USE_FP32
-    if pre_pad is None:
-        pre_pad = DEFAULT_PRE_PAD
+    # Extract filename from caption (format: "filename.ext\nYYYY-MM-DD HH:MM:SS")
+    selected_filename = None
     
-    try:
-        output_dir = Path("outputs") / f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        results = []
-        status_lines = [f"Processing {len(targets)} files..."]
-        
-        # Get face mappings
-        mappings = face_mapping_manager.get()
-        
-        # Use default enhancement settings
-        tile_size = DEFAULT_TILE_SIZE
-        outscale = DEFAULT_OUTSCALE
-        
-        # Parse model selection
-        if model_selection and model_selection in MODEL_OPTIONS:
-            model_name = MODEL_OPTIONS[model_selection]["model_name"]
-        else:
-            model_name = MODEL_OPTIONS[DEFAULT_MODEL]["model_name"]
-        
-        for idx, target_file in enumerate(targets, 1):
-            try:
-                target_path = target_file.name if hasattr(target_file, 'name') else target_file
-                media_type = validate_media_type(target_path)
-                
-                status_lines.append(f"\n[{idx}/{len(targets)}] Processing {Path(target_path).name}...")
-                
-                source_array = np.array(source)
-                
-                result_img, result_vid = process_media(
-                    source_image=source_array,
-                    dest_path=target_path,
-                    media_type=media_type,
-                    output_dir=str(output_dir),
-                    enhance=enhance,
-                    tile_size=tile_size,
-                    outscale=outscale,
-                    face_confidence=confidence,
-                    gpu_selection=gpu,
-                    face_mappings=mappings,
-                    model_name=model_name,
-                    denoise_strength=denoise_strength,
-                    use_fp32=use_fp32,
-                    pre_pad=pre_pad
-                )
-                
-                result_path = result_img if result_img else result_vid
-                results.append(result_path)
-                if result_path:
-                    status_lines.append(f"✅ Complete: {Path(result_path).name}")
-                else:
-                    status_lines.append("⚠️ No output generated")
-                
-            except Exception as e:
-                status_lines.append(f"❌ Failed: {e}")
-                logger.error("Batch item failed: %s", e)
-        
-        # Create ZIP file
-        zip_path = output_dir / "results.zip"
-        with zipfile.ZipFile(zip_path, 'w') as zipf:
-            for result in results:
-                if result and Path(result).exists():
-                    zipf.write(result, Path(result).name)
-        
-        status_lines.append(f"\n✅ Batch complete! {len(results)} files processed.")
-        
-        return str(zip_path), "\n".join(status_lines)
+    if isinstance(evt.value, dict):
+        # Get caption which contains the original filename
+        caption = evt.value.get('caption', '')
+        if caption:
+            # Caption format is "filename.ext\ntimestamp"
+            selected_filename = caption.split('\n')[0] if '\n' in caption else caption
+            logger.info(f"Extracted filename from caption: {selected_filename}")
     
-    except Exception as e:
-        logger.error("Batch processing failed: %s", e)
-        raise gr.Error(f"Batch processing failed: {e}")
+    if selected_filename:
+        return (
+            gr.update(value=selected_filename, visible=True),  # selected_file_display (just filename)
+            gr.update(visible=True),  # delete_btn
+            ""  # delete_status (clear previous messages)
+        )
+    else:
+        logger.warning("Could not extract filename from gallery selection")
+        return gr.update(visible=False), gr.update(visible=False), ""
+
+
+def delete_and_refresh(file_path: str, media_type_display: str, limit: str = "24"):
+    """Delete selected file and refresh the gallery."""
+    logger.info(f"Delete triggered - file_path: '{file_path}', media_type: '{media_type_display}'")
+    
+    if not file_path:
+        logger.warning("No file path provided for deletion")
+        return (
+            "❌ No file selected",  # delete_status
+            gr.update(),  # gallery (no change)
+            gr.update(),  # file_count_text (no change)
+            gr.update(visible=False),  # delete_btn (hide)
+            gr.update(visible=False)  # selected_file_display (hide)
+        )
+    
+    # Map display name to internal type
+    media_type_map = {
+        "Images": "image",
+        "GIFs": "gif",
+        "Videos": "video"
+    }
+    media_type = media_type_map.get(media_type_display, "image")
+    logger.info(f"Mapped media type: {media_type}")
+    
+    # Reconstruct the full path from filename
+    # file_path is just the filename (e.g., "swapped_1762607114989.png")
+    from pathlib import Path
+    output_base = Path("outputs")
+    full_file_path = str(output_base / media_type / file_path)
+    logger.info(f"Reconstructed full path: {full_file_path}")
+    
+    # Delete the file
+    _, message = delete_file(full_file_path, media_type)
+    logger.info(f"Delete result: {message}")
+    
+    # Refresh the gallery (returns tuple of gr.update() objects)
+    gallery_update, count_text_update = update_gallery(media_type_display, limit)
+    
+    # Return updates
+    return (
+        message,  # delete_status (plain string for Markdown)
+        gallery_update,  # gallery
+        count_text_update,  # file_count_text
+        gr.update(visible=False),  # delete_btn (hide after delete)
+        gr.update(visible=False)  # selected_file_display (hide after delete)
+    )
+
+
+def toggle_restoration_controls(enabled):
+    """Toggle visibility of face restoration controls."""
+    return gr.update(visible=enabled)
+
+
+def toggle_denoise_slider(model_choice):
+    """Show/hide denoise slider based on model selection."""
+    supports_denoise = MODEL_OPTIONS.get(model_choice, {}).get("supports_denoise", False)
+    return gr.update(visible=supports_denoise)
 
 
 def create_app():
@@ -672,753 +427,470 @@ def create_app():
         gr.Markdown("Swap faces from a source image to destination images, GIFs, or videos with optional AI enhancement.")
         
         with gr.Tabs():
-            # Image Tab
-            with gr.Tab("Image"):
-                with gr.Row():
-                    with gr.Column():
-                        source_img = gr.Image(type="pil", label="Source Image")
-                        face_info_img = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
-                        source_faces_gallery = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
-                    with gr.Column():
-                        target_img = gr.Image(type="pil", label="Target Image")
-                        target_faces_gallery = gr.Gallery(label="Target Faces", columns=4, height="auto", visible=False)
-                    with gr.Column():
-                        result_img = gr.Image(label="Swapped Result")
-                
-                # Face mapping controls
-                with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
-                    gr.Markdown("""
-                    **Instructions:**
-                    1. Upload both source and target images
-                    2. Click "Detect Faces" to preview detected faces
-                    3. Add mappings: Select which source face goes to which target face
-                    4. Run swap with your custom mappings
-                    
-                    *Leave empty to use default behavior (first source face → all target faces)*
-                    """)
-                    
-                    detect_faces_btn = gr.Button("🔍 Detect Faces", variant="primary", size="sm")
-                    
-                    face_mapping_status = gr.Textbox(
-                        label="Mapping Status",
-                        value="Upload images to detect faces",
-                        interactive=False
-                    )
-                    
-                    with gr.Row():
-                        mapping_source_idx = gr.Dropdown(
-                            label="Source Face Index",
-                            choices=[],
-                            interactive=True
-                        )
-                        mapping_arrow = gr.Markdown("→")
-                        mapping_target_idx = gr.Dropdown(
-                            label="Target Face Index",
-                            choices=[],
-                            interactive=True
-                        )
-                    
-                    current_mappings = gr.Textbox(
-                        label="Current Mappings",
-                        value="No mappings",
-                        interactive=False,
-                        lines=3
-                    )
-                    
-                    with gr.Row():
-                        add_mapping_btn = gr.Button("➕ Add Mapping", size="sm", variant="secondary")
-                        clear_mappings_btn = gr.Button("🗑️ Clear All Mappings", size="sm", variant="secondary")
-                
-                with gr.Row():
-                    enhance_toggle = gr.Checkbox(label="Enable Enhancement (Real-ESRGAN)", value=False)
-                
-                with gr.Row(visible=False) as model_row:
-                    model_selector = gr.Dropdown(
-                        choices=list(MODEL_OPTIONS.keys()),
-                        value=DEFAULT_MODEL,
-                        label="Enhancement Model",
-                        info="Select Real-ESRGAN model for enhancement"
-                    )
-                    denoise_slider = gr.Slider(
-                        minimum=0.0,
-                        maximum=1.0,
-                        value=0.5,
-                        step=0.1,
-                        label="Denoise Strength",
-                        info="Only works with 'realesr-general-x4v3' model",
-                        visible=False
-                    )
-                
-                with gr.Row(visible=False) as enhancement_options_row:
-                    tile_size_slider = gr.Slider(
-                        minimum=128,
-                        maximum=512,
-                        value=DEFAULT_TILE_SIZE,
-                        step=64,
-                        label="Tile Size",
-                        info="Lower = less VRAM usage, slower processing"
-                    )
-                    outscale_slider = gr.Slider(
-                        minimum=2,
-                        maximum=4,
-                        value=DEFAULT_OUTSCALE,
-                        step=1,
-                        label="Upscale Factor",
-                        info="2x or 4x upscaling"
-                    )
-                
-                with gr.Row(visible=False) as enhancement_advanced_row:
-                    use_fp32_checkbox = gr.Checkbox(
-                        label="High Precision (FP32)",
-                        value=DEFAULT_USE_FP32,
-                        info="Uses more VRAM but slightly better quality"
-                    )
-                    pre_pad_slider = gr.Slider(
-                        minimum=0,
-                        maximum=20,
-                        value=DEFAULT_PRE_PAD,
-                        step=5,
-                        label="Edge Padding",
-                        info="Reduces edge artifacts (0-20)"
-                    )
-                
-                with gr.Accordion("⚙️ Advanced Settings", open=False):
-                    with gr.Row():
-                        face_confidence = gr.Slider(
-                            minimum=0.3,
-                            maximum=1.0,
-                            value=0.5,
-                            step=0.05,
-                            label="Face Detection Confidence Threshold",
-                            info="Higher = stricter face detection (0.5 recommended)"
-                        )
-                        gpu_selection = gr.Dropdown(
-                            choices=get_gpu_options(),
-                            value=get_gpu_options()[0] if get_gpu_options() else None,
-                            label="GPU Selection",
-                            info="Choose which GPU(s) to use for processing"
-                        )
-                
-                run_image_btn = gr.Button("Run Image Swap", variant="primary")
+            # Create Image Tab
+            img_components = create_image_tab()
             
-            # GIF Tab
-            with gr.Tab("GIF"):
-                with gr.Row():
-                    with gr.Column():
-                        source_gif = gr.Image(type="pil", label="Source Image")
-                        face_info_gif = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
-                        source_faces_gallery_gif = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
-                    with gr.Column():
-                        target_gif_file = gr.File(label="Target GIF", file_types=[".gif"])
-                        target_gif_preview = gr.Image(label="Preview", visible=False, show_label=True)
-                        target_faces_gallery_gif = gr.Gallery(label="Target Faces (First Frame)", columns=4, height="auto", visible=False)
-                    with gr.Column():
-                        result_gif = gr.Image(label="Swapped Result", show_label=True)
-                
-                # Face mapping controls for GIF
-                with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
-                    gr.Markdown("""
-                    **Instructions:**
-                    1. Upload source image and target GIF
-                    2. Click "Detect Faces" to preview faces (GIF: first frame analyzed)
-                    3. Add mappings for which source face goes to which target face
-                    4. Mappings apply to all frames in the GIF
-                    """)
-                    
-                    detect_faces_btn_gif = gr.Button("🔍 Detect Faces", variant="primary", size="sm")
-                    
-                    face_mapping_status_gif = gr.Textbox(
-                        label="Mapping Status",
-                        value="Upload images to detect faces",
-                        interactive=False
-                    )
-                    
-                    with gr.Row():
-                        mapping_source_idx_gif = gr.Dropdown(
-                            label="Source Face Index",
-                            choices=[],
-                            interactive=True
-                        )
-                        mapping_arrow_gif = gr.Markdown("→")
-                        mapping_target_idx_gif = gr.Dropdown(
-                            label="Target Face Index",
-                            choices=[],
-                            interactive=True
-                        )
-                    
-                    current_mappings_gif = gr.Textbox(
-                        label="Current Mappings",
-                        value="No mappings",
-                        interactive=False,
-                        lines=3
-                    )
-                    
-                    with gr.Row():
-                        add_mapping_btn_gif = gr.Button("➕ Add Mapping", size="sm", variant="secondary")
-                        clear_mappings_btn_gif = gr.Button("🗑️ Clear All Mappings", size="sm", variant="secondary")
-                
-                with gr.Row():
-                    enhance_toggle_gif = gr.Checkbox(label="Enable Enhancement (Real-ESRGAN)", value=False)
-                
-                with gr.Row(visible=False) as model_row_gif:
-                    model_selector_gif = gr.Dropdown(
-                        choices=list(MODEL_OPTIONS.keys()),
-                        value=DEFAULT_MODEL,
-                        label="Enhancement Model"
-                    )
-                    denoise_slider_gif = gr.Slider(
-                        minimum=0.0, maximum=1.0, value=0.5, step=0.1,
-                        label="Denoise Strength", visible=False
-                    )
-                
-                with gr.Row(visible=False) as enhancement_options_row_gif:
-                    tile_size_slider_gif = gr.Slider(
-                        minimum=128, maximum=512, value=DEFAULT_TILE_SIZE, step=64,
-                        label="Tile Size", info="Lower = less VRAM usage"
-                    )
-                    outscale_slider_gif = gr.Slider(
-                        minimum=2, maximum=4, value=DEFAULT_OUTSCALE, step=1,
-                        label="Upscale Factor", info="2x or 4x upscaling"
-                    )
-                
-                with gr.Row(visible=False) as enhancement_advanced_row_gif:
-                    use_fp32_checkbox_gif = gr.Checkbox(
-                        label="High Precision (FP32)", value=DEFAULT_USE_FP32,
-                        info="Uses more VRAM but slightly better quality"
-                    )
-                    pre_pad_slider_gif = gr.Slider(
-                        minimum=0, maximum=20, value=DEFAULT_PRE_PAD, step=5,
-                        label="Edge Padding", info="Reduces edge artifacts"
-                    )
-                
-                with gr.Accordion("⚙️ Advanced Settings", open=False):
-                    with gr.Row():
-                        face_confidence_gif = gr.Slider(
-                            minimum=0.3,
-                            maximum=1.0,
-                            value=0.5,
-                            step=0.05,
-                            label="Face Detection Confidence Threshold",
-                            info="Higher = stricter face detection (0.5 recommended)"
-                        )
-                        gpu_selection_gif = gr.Dropdown(
-                            choices=get_gpu_options(),
-                            value=get_gpu_options()[0] if get_gpu_options() else None,
-                            label="GPU Selection",
-                            info="Choose which GPU(s) to use for processing"
-                        )
-                
-                run_gif_btn = gr.Button("Run GIF Swap", variant="primary")
+            # Create GIF Tab
+            gif_components = create_gif_tab()
             
-            # Video Tab
-            with gr.Tab("Video"):
-                with gr.Row():
-                    with gr.Column():
-                        source_vid = gr.Image(type="pil", label="Source Image")
-                        face_info_vid = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
-                        source_faces_gallery_vid = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
-                    with gr.Column():
-                        target_vid = gr.Video(label="Target Video", sources=None, autoplay=True)
-                        target_faces_gallery_vid = gr.Gallery(label="Target Faces (First Frame)", columns=4, height="auto", visible=False)
-                    with gr.Column():
-                        result_vid = gr.Video(label="Swapped Result", autoplay=True)
-                
-                # Face mapping controls for Video
-                with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
-                    gr.Markdown("""
-                    **Instructions:**
-                    1. Upload source image and target video
-                    2. Click "Detect Faces" to preview faces (Video: first frame analyzed)
-                    3. Add mappings for which source face goes to which target face
-                    4. Mappings apply to all frames in the video
-                    """)
-                    
-                    detect_faces_btn_vid = gr.Button("🔍 Detect Faces", variant="primary", size="sm")
-                    
-                    face_mapping_status_vid = gr.Textbox(
-                        label="Mapping Status",
-                        value="Upload images to detect faces",
-                        interactive=False
-                    )
-                    
-                    with gr.Row():
-                        mapping_source_idx_vid = gr.Dropdown(
-                            label="Source Face Index",
-                            choices=[],
-                            interactive=True
-                        )
-                        mapping_arrow_vid = gr.Markdown("→")
-                        mapping_target_idx_vid = gr.Dropdown(
-                            label="Target Face Index",
-                            choices=[],
-                            interactive=True
-                        )
-                    
-                    current_mappings_vid = gr.Textbox(
-                        label="Current Mappings",
-                        value="No mappings",
-                        interactive=False,
-                        lines=3
-                    )
-                    
-                    with gr.Row():
-                        add_mapping_btn_vid = gr.Button("➕ Add Mapping", size="sm", variant="secondary")
-                        clear_mappings_btn_vid = gr.Button("🗑️ Clear All Mappings", size="sm", variant="secondary")
-                
-                with gr.Row():
-                    enhance_toggle_vid = gr.Checkbox(label="Enable Enhancement (Real-ESRGAN)", value=False)
-                
-                with gr.Row(visible=False) as model_row_vid:
-                    model_selector_vid = gr.Dropdown(
-                        choices=list(MODEL_OPTIONS.keys()),
-                        value=DEFAULT_MODEL,
-                        label="Enhancement Model"
-                    )
-                    denoise_slider_vid = gr.Slider(
-                        minimum=0.0, maximum=1.0, value=0.5, step=0.1,
-                        label="Denoise Strength", visible=False
-                    )
-                
-                with gr.Row(visible=False) as enhancement_options_row_vid:
-                    tile_size_slider_vid = gr.Slider(
-                        minimum=128, maximum=512, value=DEFAULT_TILE_SIZE, step=64,
-                        label="Tile Size", info="Lower = less VRAM usage"
-                    )
-                    outscale_slider_vid = gr.Slider(
-                        minimum=2, maximum=4, value=DEFAULT_OUTSCALE, step=1,
-                        label="Upscale Factor", info="2x or 4x upscaling"
-                    )
-                
-                with gr.Row(visible=False) as enhancement_advanced_row_vid:
-                    use_fp32_checkbox_vid = gr.Checkbox(
-                        label="High Precision (FP32)", value=DEFAULT_USE_FP32,
-                        info="Uses more VRAM but slightly better quality"
-                    )
-                    pre_pad_slider_vid = gr.Slider(
-                        minimum=0, maximum=20, value=DEFAULT_PRE_PAD, step=5,
-                        label="Edge Padding", info="Reduces edge artifacts"
-                    )
-                
-                with gr.Accordion("⚙️ Advanced Settings", open=False):
-                    with gr.Row():
-                        face_confidence_video = gr.Slider(
-                            minimum=0.3,
-                            maximum=1.0,
-                            value=0.5,
-                            step=0.05,
-                            label="Face Detection Confidence Threshold",
-                            info="Higher = stricter face detection (0.5 recommended)"
-                        )
-                        gpu_selection_video = gr.Dropdown(
-                            choices=get_gpu_options(),
-                            value=get_gpu_options()[0] if get_gpu_options() else None,
-                            label="GPU Selection",
-                            info="Choose which GPU(s) to use for processing"
-                        )
-                
-                run_video_btn = gr.Button("Run Video Swap", variant="primary")
+            # Create Video Tab
+            vid_components = create_video_tab()
             
-            # Batch Processing Tab
-            with gr.Tab("Batch Processing"):
-                gr.Markdown("### Process Multiple Files at Once")
-                gr.Markdown("Upload a single source face image and multiple target files for batch face swapping.")
-                
-                with gr.Row():
-                    with gr.Column():
-                        batch_source = gr.Image(type="pil", label="Source Face (Single)")
-                        batch_face_info = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
-                        source_faces_gallery_batch = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
-                    with gr.Column():
-                        batch_targets = gr.Files(label="Target Files (Multiple Images/GIFs/Videos)", file_types=["image", "video"])
-                        gr.Markdown("*Note: Face mapping will apply to all batch files*")
-                    with gr.Column():
-                        batch_results = gr.File(label="Download Results (ZIP)")
-                
-                # Face mapping controls for Batch
-                with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
-                    gr.Markdown("""
-                    **Instructions:**
-                    1. Upload source image (face mapping setup)
-                    2. Upload target files for batch processing
-                    3. Click "Detect Faces" to preview source faces
-                    4. Add mappings - will apply to ALL batch files
-                    5. Target faces detected individually per file
-                    """)
-                    
-                    detect_faces_btn_batch = gr.Button("🔍 Detect Source Faces", variant="primary", size="sm")
-                    
-                    face_mapping_status_batch = gr.Textbox(
-                        label="Mapping Status",
-                        value="Upload source image to detect faces",
-                        interactive=False
-                    )
-                    
-                    with gr.Row():
-                        mapping_source_idx_batch = gr.Dropdown(
-                            label="Source Face Index",
-                            choices=[],
-                            interactive=True
-                        )
-                        mapping_arrow_batch = gr.Markdown("→")
-                        mapping_target_idx_batch = gr.Dropdown(
-                            label="Target Face Index",
-                            choices=[],
-                            interactive=True
-                        )
-                    
-                    current_mappings_batch = gr.Textbox(
-                        label="Current Mappings",
-                        value="No mappings",
-                        interactive=False,
-                        lines=3
-                    )
-                    
-                    with gr.Row():
-                        add_mapping_btn_batch = gr.Button("➕ Add Mapping", size="sm", variant="secondary")
-                        clear_mappings_btn_batch = gr.Button("🗑️ Clear All Mappings", size="sm", variant="secondary")
-                
-                with gr.Row():
-                    batch_enhance = gr.Checkbox(label="Enable Enhancement (Real-ESRGAN)", value=False)
-                
-                with gr.Row(visible=False) as model_row_batch:
-                    model_selector_batch = gr.Dropdown(
-                        choices=list(MODEL_OPTIONS.keys()),
-                        value=DEFAULT_MODEL,
-                        label="Enhancement Model"
-                    )
-                    denoise_slider_batch = gr.Slider(
-                        minimum=0.0, maximum=1.0, value=0.5, step=0.1,
-                        label="Denoise Strength", visible=False
-                    )
-                
-                with gr.Row(visible=False) as enhancement_options_row_batch:
-                    tile_size_slider_batch = gr.Slider(
-                        minimum=128, maximum=512, value=DEFAULT_TILE_SIZE, step=64,
-                        label="Tile Size", info="Lower = less VRAM usage"
-                    )
-                    outscale_slider_batch = gr.Slider(
-                        minimum=2, maximum=4, value=DEFAULT_OUTSCALE, step=1,
-                        label="Upscale Factor", info="2x or 4x upscaling"
-                    )
-                
-                with gr.Row(visible=False) as enhancement_advanced_row_batch:
-                    use_fp32_checkbox_batch = gr.Checkbox(
-                        label="High Precision (FP32)", value=DEFAULT_USE_FP32,
-                        info="Uses more VRAM but slightly better quality"
-                    )
-                    pre_pad_slider_batch = gr.Slider(
-                        minimum=0, maximum=20, value=DEFAULT_PRE_PAD, step=5,
-                        label="Edge Padding", info="Reduces edge artifacts"
-                    )
-                
-                with gr.Accordion("⚙️ Advanced Settings", open=False):
-                    with gr.Row():
-                        batch_confidence = gr.Slider(
-                            minimum=0.3,
-                            maximum=1.0,
-                            value=0.5,
-                            step=0.05,
-                            label="Face Detection Confidence Threshold",
-                            info="Higher = stricter face detection (0.5 recommended)"
-                        )
-                        batch_gpu_selection = gr.Dropdown(
-                            choices=get_gpu_options(),
-                            value=get_gpu_options()[0] if get_gpu_options() else None,
-                            label="GPU Selection",
-                            info="Choose which GPU(s) to use for processing"
-                        )
-                    with gr.Row():
-                        batch_compare = gr.Checkbox(
-                            label="Generate Comparison Images",
-                            value=False,
-                            info="Create side-by-side comparisons for each result"
-                        )
-                
-                batch_status = gr.Textbox(label="Batch Processing Status", lines=3, interactive=False)
-                run_batch_btn = gr.Button("🚀 Run Batch Processing", variant="primary", size="lg")
+            # Create Gallery Tab
+            gallery_components = create_gallery_tab()
         
-        # GPU Memory Monitor
+        # Preset Management Section (at bottom, collapsible)
         gr.Markdown("---")
-        gr.Markdown("### 🖥️ GPU Status Monitor")
+        with gr.Accordion("🎨 Preset Management", open=False):
+            gr.Markdown("Save and load your favorite settings configurations for quick access.")
+            
+            with gr.Row():
+                with gr.Column(scale=2):
+                    preset_dropdown = gr.Dropdown(
+                        choices=get_preset_choices(),
+                        value=get_default_preset(),
+                        label="Available Presets",
+                        info="Select a preset to view or load"
+                    )
+                    
+                    preset_info_display = gr.Markdown(
+                        value=get_preset_info_text(get_default_preset()),
+                        label="Preset Information"
+                    )
+                
+                with gr.Column(scale=1):
+                    with gr.Row():
+                        load_preset_btn = gr.Button("📥 Load Preset", variant="primary", size="sm")
+                        delete_preset_btn = gr.Button("🗑️ Delete Preset", variant="secondary", size="sm")
+                    
+                    gr.Markdown("**Save Current Settings**")
+                    preset_name_input = gr.Textbox(
+                        label="New Preset Name",
+                        placeholder="My Custom Preset",
+                        max_lines=1
+                    )
+                    save_preset_btn = gr.Button("💾 Save as Preset", variant="primary", size="sm")
+                    
+                    preset_status = gr.Textbox(
+                        label="Status",
+                        value="",
+                        interactive=False,
+                        max_lines=1
+                    )
         
-        initial_gpu_info = get_gpu_status()
-        gpu_textboxes = []
+        # GPU Memory Monitor (at bottom, collapsible)
+        gr.Markdown("---")
+        with gr.Accordion("🖥️ GPU Status Monitor", open=False):
+            initial_gpu_info = get_gpu_status()
+            gpu_textboxes = []
+            
+            with gr.Row():
+                for idx, info in enumerate(initial_gpu_info):
+                    gpu_textbox = gr.Textbox(
+                        label=f"GPU {idx}" if len(initial_gpu_info) > 1 else "GPU Status",
+                        value=info,
+                        lines=4,
+                        interactive=False
+                    )
+                    gpu_textboxes.append(gpu_textbox)
+            
+            refresh_gpu_btn = gr.Button("🔄 Refresh GPU Info", size="sm")
         
-        with gr.Row():
-            for idx, info in enumerate(initial_gpu_info):
-                gpu_textbox = gr.Textbox(
-                    label=f"GPU {idx}" if len(initial_gpu_info) > 1 else "GPU Status",
-                    value=info,
-                    lines=4,
-                    interactive=False
-                )
-                gpu_textboxes.append(gpu_textbox)
+        # ============= EVENT HANDLERS =============
         
-        refresh_gpu_btn = gr.Button("🔄 Refresh GPU Info", size="sm")
-        
-        # Event handlers - Enhancement controls visibility
-        def toggle_enhancement_controls(enabled):
-            return [gr.update(visible=enabled)] * 3  # model_row, enhancement_options_row, enhancement_advanced_row
-        
-        enhance_toggle.change(
+        # IMAGE TAB - Enhancement controls visibility
+        img_components["enhance_toggle"].change(
             toggle_enhancement_controls,
-            inputs=[enhance_toggle],
-            outputs=[model_row, enhancement_options_row, enhancement_advanced_row]
+            inputs=[img_components["enhance_toggle"]],
+            outputs=[img_components["model_row"], img_components["enhancement_options_row"], img_components["enhancement_advanced_row"]]
         )
         
-        # Model selection handler - show denoise slider for general-x4v3 model
-        def toggle_denoise_slider(model_choice):
-            supports_denoise = MODEL_OPTIONS.get(model_choice, {}).get("supports_denoise", False)
-            return gr.update(visible=supports_denoise)
+        img_components["restore_faces_toggle"].change(
+            toggle_restoration_controls,
+            inputs=[img_components["restore_faces_toggle"]],
+            outputs=[img_components["restoration_row"]]
+        )
         
-        model_selector.change(
+        img_components["model_selector"].change(
             toggle_denoise_slider,
-            inputs=[model_selector],
-            outputs=[denoise_slider]
+            inputs=[img_components["model_selector"]],
+            outputs=[img_components["denoise_slider"]]
         )
         
-        # GIF tab enhancement controls
-        def toggle_gif_enhancement_controls(enabled):
-            return [gr.update(visible=enabled)] * 3
-        
-        enhance_toggle_gif.change(
-            toggle_gif_enhancement_controls,
-            inputs=[enhance_toggle_gif],
-            outputs=[model_row_gif, enhancement_options_row_gif, enhancement_advanced_row_gif]
+        # Image face detection on upload
+        img_components["source_img"].change(
+            detect_faces_simple,
+            inputs=[img_components["source_img"], img_components["face_confidence"]],
+            outputs=[img_components["face_info_img"]]
+        )
+        img_components["face_confidence"].change(
+            detect_faces_simple,
+            inputs=[img_components["source_img"], img_components["face_confidence"]],
+            outputs=[img_components["face_info_img"]]
         )
         
-        model_selector_gif.change(
-            toggle_denoise_slider,
-            inputs=[model_selector_gif],
-            outputs=[denoise_slider_gif]
-        )
-        
-        # Video tab enhancement controls
-        def toggle_vid_enhancement_controls(enabled):
-            return [gr.update(visible=enabled)] * 3
-        
-        enhance_toggle_vid.change(
-            toggle_vid_enhancement_controls,
-            inputs=[enhance_toggle_vid],
-            outputs=[model_row_vid, enhancement_options_row_vid, enhancement_advanced_row_vid]
-        )
-        
-        model_selector_vid.change(
-            toggle_denoise_slider,
-            inputs=[model_selector_vid],
-            outputs=[denoise_slider_vid]
-        )
-        
-        # Batch tab enhancement controls
-        def toggle_batch_enhancement_controls(enabled):
-            return [gr.update(visible=enabled)] * 3
-        
-        batch_enhance.change(
-            toggle_batch_enhancement_controls,
-            inputs=[batch_enhance],
-            outputs=[model_row_batch, enhancement_options_row_batch, enhancement_advanced_row_batch]
-        )
-        
-        model_selector_batch.change(
-            toggle_denoise_slider,
-            inputs=[model_selector_batch],
-            outputs=[denoise_slider_batch]
-        )
-        
-        # Face detection on upload
-        source_img.change(
-            detect_faces_from_upload,
-            inputs=[source_img, face_confidence],
-            outputs=[face_info_img]
-        )
-        face_confidence.change(
-            detect_faces_from_upload,
-            inputs=[source_img, face_confidence],
-            outputs=[face_info_img]
-        )
-        
-        source_gif.change(
-            detect_faces_from_upload,
-            inputs=[source_gif, face_confidence_gif],
-            outputs=[face_info_gif]
-        )
-        face_confidence_gif.change(
-            detect_faces_from_upload,
-            inputs=[source_gif, face_confidence_gif],
-            outputs=[face_info_gif]
-        )
-        
-        source_vid.change(
-            detect_faces_from_upload,
-            inputs=[source_vid, face_confidence_video],
-            outputs=[face_info_vid]
-        )
-        face_confidence_video.change(
-            detect_faces_from_upload,
-            inputs=[source_vid, face_confidence_video],
-            outputs=[face_info_vid]
-        )
-        
-        batch_source.change(
-            detect_faces_from_upload,
-            inputs=[batch_source, batch_confidence],
-            outputs=[batch_face_info]
-        )
-        batch_confidence.change(
-            detect_faces_from_upload,
-            inputs=[batch_source, batch_confidence],
-            outputs=[batch_face_info]
-        )
-        
-        # Wrappers for processing
-        def wrapped_process_image(src, tgt, enhance, confidence, gpu, model, denoise, tile, outscale, fp32, prepad):
-            return process_input(src, tgt, None, enhance, confidence, gpu, None, model, denoise, tile, outscale, fp32, prepad)
-        
-        def wrapped_process_gif(src, tgt, enhance, confidence, gpu, model, denoise, tile, outscale, fp32, prepad):
-            return process_input(src, None, tgt, enhance, confidence, gpu, None, model, denoise, tile, outscale, fp32, prepad)
-        
-        def wrapped_process_video(src, tgt, enhance, confidence, gpu, model, denoise, tile, outscale, fp32, prepad):
-            return process_input(src, None, tgt, enhance, confidence, gpu, None, model, denoise, tile, outscale, fp32, prepad)
-        
-        # Face mapping event handlers
-        detect_faces_btn.click(
+        # Image face mapping
+        img_components["detect_faces_btn"].click(
             detect_faces_for_mapping,
-            inputs=[source_img, target_img, face_confidence],
+            inputs=[img_components["source_img"], img_components["target_img"], img_components["face_confidence"]],
             outputs=[
-                source_faces_gallery,
-                target_faces_gallery,
-                face_mapping_status,
-                mapping_source_idx,
-                mapping_target_idx,
-                source_faces_gallery,
-                target_faces_gallery
+                img_components["source_faces_gallery"],
+                img_components["target_faces_gallery"],
+                img_components["face_mapping_status"],
+                img_components["mapping_source_idx"],
+                img_components["mapping_target_idx"],
+                img_components["source_faces_gallery"],
+                img_components["target_faces_gallery"]
             ]
         )
         
-        add_mapping_btn.click(
-            add_face_mapping,
-            inputs=[mapping_source_idx, mapping_target_idx, current_mappings],
-            outputs=[face_mapping_status, current_mappings]
+        img_components["add_mapping_btn"].click(
+            add_face_mapping_wrapper,
+            inputs=[img_components["mapping_source_idx"], img_components["mapping_target_idx"], img_components["current_mappings"]],
+            outputs=[img_components["face_mapping_status"], img_components["current_mappings"]]
         )
         
-        clear_mappings_btn.click(
-            clear_face_mappings,
-            outputs=[face_mapping_status, current_mappings]
+        img_components["clear_mappings_btn"].click(
+            clear_face_mappings_wrapper,
+            outputs=[img_components["face_mapping_status"], img_components["current_mappings"]]
         )
         
-        # GIF preview and face mapping
-        target_gif_file.change(
+        # Image processing button
+        def wrapped_process_image(src, tgt, enhance, confidence, gpu, model, denoise, tile, outscale, fp32, prepad, restore, weight):
+            return process_input(src, tgt, None, enhance, confidence, gpu, None, model, denoise, tile, outscale, fp32, prepad, restore, weight)
+        
+        img_components["run_image_btn"].click(
+            wrapped_process_image,
+            inputs=[
+                img_components["source_img"], img_components["target_img"], img_components["enhance_toggle"],
+                img_components["face_confidence"], img_components["gpu_selection"], img_components["model_selector"],
+                img_components["denoise_slider"], img_components["tile_size_slider"], img_components["outscale_slider"],
+                img_components["use_fp32_checkbox"], img_components["pre_pad_slider"], img_components["restore_faces_toggle"],
+                img_components["restoration_weight_slider"]
+            ],
+            outputs=[img_components["result_img"]],
+            show_progress='full'
+        )
+        
+        # GIF TAB - Enhancement controls
+        gif_components["enhance_toggle_gif"].change(
+            toggle_enhancement_controls,
+            inputs=[gif_components["enhance_toggle_gif"]],
+            outputs=[gif_components["model_row_gif"], gif_components["enhancement_options_row_gif"], gif_components["enhancement_advanced_row_gif"]]
+        )
+        
+        gif_components["restore_faces_toggle_gif"].change(
+            toggle_restoration_controls,
+            inputs=[gif_components["restore_faces_toggle_gif"]],
+            outputs=[gif_components["restoration_row_gif"]]
+        )
+        
+        gif_components["model_selector_gif"].change(
+            toggle_denoise_slider,
+            inputs=[gif_components["model_selector_gif"]],
+            outputs=[gif_components["denoise_slider_gif"]]
+        )
+        
+        # GIF face detection
+        gif_components["source_gif"].change(
+            detect_faces_simple,
+            inputs=[gif_components["source_gif"], gif_components["face_confidence_gif"]],
+            outputs=[gif_components["face_info_gif"]]
+        )
+        gif_components["face_confidence_gif"].change(
+            detect_faces_simple,
+            inputs=[gif_components["source_gif"], gif_components["face_confidence_gif"]],
+            outputs=[gif_components["face_info_gif"]]
+        )
+        
+        # GIF preview
+        gif_components["target_gif_file"].change(
             show_gif_preview,
-            inputs=[target_gif_file],
-            outputs=[target_gif_preview]
+            inputs=[gif_components["target_gif_file"]],
+            outputs=[gif_components["target_gif_preview"]]
         )
         
-        detect_faces_btn_gif.click(
-            detect_faces_gif_video,
-            inputs=[source_gif, target_gif_file, face_confidence_gif],
+        # GIF face mapping
+        gif_components["detect_faces_btn_gif"].click(
+            detect_faces_with_thumbnails,
+            inputs=[gif_components["source_gif"], gif_components["target_gif_file"], gif_components["face_confidence_gif"]],
             outputs=[
-                source_faces_gallery_gif,
-                target_faces_gallery_gif,
-                face_mapping_status_gif,
-                mapping_source_idx_gif,
-                mapping_target_idx_gif,
-                source_faces_gallery_gif,
-                target_faces_gallery_gif
+                gif_components["source_faces_gallery_gif"],
+                gif_components["target_faces_gallery_gif"],
+                gif_components["face_mapping_status_gif"],
+                gif_components["mapping_source_idx_gif"],
+                gif_components["mapping_target_idx_gif"],
+                gif_components["source_faces_gallery_gif"],
+                gif_components["target_faces_gallery_gif"]
             ]
         )
         
-        add_mapping_btn_gif.click(
-            add_face_mapping,
-            inputs=[mapping_source_idx_gif, mapping_target_idx_gif, current_mappings_gif],
-            outputs=[face_mapping_status_gif, current_mappings_gif]
+        gif_components["add_mapping_btn_gif"].click(
+            add_face_mapping_wrapper,
+            inputs=[gif_components["mapping_source_idx_gif"], gif_components["mapping_target_idx_gif"], gif_components["current_mappings_gif"]],
+            outputs=[gif_components["face_mapping_status_gif"], gif_components["current_mappings_gif"]]
         )
         
-        clear_mappings_btn_gif.click(
-            clear_face_mappings,
-            outputs=[face_mapping_status_gif, current_mappings_gif]
+        gif_components["clear_mappings_btn_gif"].click(
+            clear_face_mappings_wrapper,
+            outputs=[gif_components["face_mapping_status_gif"], gif_components["current_mappings_gif"]]
+        )
+        
+        # GIF processing button
+        def wrapped_process_gif(src, tgt, enhance, confidence, gpu, model, denoise, tile, outscale, fp32, prepad, restore, weight):
+            return process_input(src, None, tgt, enhance, confidence, gpu, None, model, denoise, tile, outscale, fp32, prepad, restore, weight)
+        
+        gif_components["run_gif_btn"].click(
+            wrapped_process_gif,
+            inputs=[
+                gif_components["source_gif"], gif_components["target_gif_file"], gif_components["enhance_toggle_gif"],
+                gif_components["face_confidence_gif"], gif_components["gpu_selection_gif"], gif_components["model_selector_gif"],
+                gif_components["denoise_slider_gif"], gif_components["tile_size_slider_gif"], gif_components["outscale_slider_gif"],
+                gif_components["use_fp32_checkbox_gif"], gif_components["pre_pad_slider_gif"], gif_components["restore_faces_toggle_gif"],
+                gif_components["restoration_weight_slider_gif"]
+            ],
+            outputs=[gif_components["result_gif"]],
+            show_progress='full'
+        )
+        
+        # VIDEO TAB - Enhancement controls
+        vid_components["enhance_toggle_vid"].change(
+            toggle_enhancement_controls,
+            inputs=[vid_components["enhance_toggle_vid"]],
+            outputs=[vid_components["model_row_vid"], vid_components["enhancement_options_row_vid"], vid_components["enhancement_advanced_row_vid"]]
+        )
+        
+        vid_components["restore_faces_toggle_vid"].change(
+            toggle_restoration_controls,
+            inputs=[vid_components["restore_faces_toggle_vid"]],
+            outputs=[vid_components["restoration_row_vid"]]
+        )
+        
+        vid_components["model_selector_vid"].change(
+            toggle_denoise_slider,
+            inputs=[vid_components["model_selector_vid"]],
+            outputs=[vid_components["denoise_slider_vid"]]
+        )
+        
+        # Video face detection
+        vid_components["source_vid"].change(
+            detect_faces_simple,
+            inputs=[vid_components["source_vid"], vid_components["face_confidence_video"]],
+            outputs=[vid_components["face_info_vid"]]
+        )
+        vid_components["face_confidence_video"].change(
+            detect_faces_simple,
+            inputs=[vid_components["source_vid"], vid_components["face_confidence_video"]],
+            outputs=[vid_components["face_info_vid"]]
         )
         
         # Video face mapping
-        detect_faces_btn_vid.click(
-            detect_faces_gif_video,
-            inputs=[source_vid, target_vid, face_confidence_video],
+        vid_components["detect_faces_btn_vid"].click(
+            detect_faces_with_thumbnails,
+            inputs=[vid_components["source_vid"], vid_components["target_vid"], vid_components["face_confidence_video"]],
             outputs=[
-                source_faces_gallery_vid,
-                target_faces_gallery_vid,
-                face_mapping_status_vid,
-                mapping_source_idx_vid,
-                mapping_target_idx_vid,
-                source_faces_gallery_vid,
-                target_faces_gallery_vid
+                vid_components["source_faces_gallery_vid"],
+                vid_components["target_faces_gallery_vid"],
+                vid_components["face_mapping_status_vid"],
+                vid_components["mapping_source_idx_vid"],
+                vid_components["mapping_target_idx_vid"],
+                vid_components["source_faces_gallery_vid"],
+                vid_components["target_faces_gallery_vid"]
             ]
         )
         
-        add_mapping_btn_vid.click(
-            add_face_mapping,
-            inputs=[mapping_source_idx_vid, mapping_target_idx_vid, current_mappings_vid],
-            outputs=[face_mapping_status_vid, current_mappings_vid]
+        vid_components["add_mapping_btn_vid"].click(
+            add_face_mapping_wrapper,
+            inputs=[vid_components["mapping_source_idx_vid"], vid_components["mapping_target_idx_vid"], vid_components["current_mappings_vid"]],
+            outputs=[vid_components["face_mapping_status_vid"], vid_components["current_mappings_vid"]]
         )
         
-        clear_mappings_btn_vid.click(
-            clear_face_mappings,
-            outputs=[face_mapping_status_vid, current_mappings_vid]
+        vid_components["clear_mappings_btn_vid"].click(
+            clear_face_mappings_wrapper,
+            outputs=[vid_components["face_mapping_status_vid"], vid_components["current_mappings_vid"]]
         )
         
-        # Batch face mapping
-        detect_faces_btn_batch.click(
-            detect_faces_batch_source,
-            inputs=[batch_source, batch_confidence],
-            outputs=[
-                source_faces_gallery_batch,
-                face_mapping_status_batch,
-                mapping_source_idx_batch,
-                source_faces_gallery_batch
-            ]
-        )
+        # Video processing button
+        def wrapped_process_video(src, tgt, enhance, confidence, gpu, model, denoise, tile, outscale, fp32, prepad, restore, weight):
+            return process_input(src, None, tgt, enhance, confidence, gpu, None, model, denoise, tile, outscale, fp32, prepad, restore, weight)
         
-        batch_source.change(
-            lambda: gr.update(choices=[f"Target Face {i}" for i in range(10)], value="Target Face 0"),
-            outputs=[mapping_target_idx_batch]
-        )
-        
-        add_mapping_btn_batch.click(
-            add_face_mapping,
-            inputs=[mapping_source_idx_batch, mapping_target_idx_batch, current_mappings_batch],
-            outputs=[face_mapping_status_batch, current_mappings_batch]
-        )
-        
-        clear_mappings_btn_batch.click(
-            clear_face_mappings,
-            outputs=[face_mapping_status_batch, current_mappings_batch]
-        )
-        
-        # Processing button handlers
-        run_image_btn.click(
-            wrapped_process_image,
-            inputs=[source_img, target_img, enhance_toggle, face_confidence, gpu_selection, model_selector, denoise_slider, tile_size_slider, outscale_slider, use_fp32_checkbox, pre_pad_slider],
-            outputs=[result_img],
-            show_progress='full'
-        )
-        
-        run_gif_btn.click(
-            wrapped_process_gif,
-            inputs=[source_gif, target_gif_file, enhance_toggle_gif, face_confidence_gif, gpu_selection_gif, model_selector_gif, denoise_slider_gif, tile_size_slider_gif, outscale_slider_gif, use_fp32_checkbox_gif, pre_pad_slider_gif],
-            outputs=[result_gif],
-            show_progress='full'
-        )
-        
-        run_video_btn.click(
+        vid_components["run_video_btn"].click(
             wrapped_process_video,
-            inputs=[source_vid, target_vid, enhance_toggle_vid, face_confidence_video, gpu_selection_video, model_selector_vid, denoise_slider_vid, tile_size_slider_vid, outscale_slider_vid, use_fp32_checkbox_vid, pre_pad_slider_vid],
-            outputs=[result_vid],
+            inputs=[
+                vid_components["source_vid"], vid_components["target_vid"], vid_components["enhance_toggle_vid"],
+                vid_components["face_confidence_video"], vid_components["gpu_selection_video"], vid_components["model_selector_vid"],
+                vid_components["denoise_slider_vid"], vid_components["tile_size_slider_vid"], vid_components["outscale_slider_vid"],
+                vid_components["use_fp32_checkbox_vid"], vid_components["pre_pad_slider_vid"], vid_components["restore_faces_toggle_vid"],
+                vid_components["restoration_weight_slider_vid"]
+            ],
+            outputs=[vid_components["result_vid"]],
             show_progress='full'
         )
         
-        run_batch_btn.click(
-            process_batch,
-            inputs=[batch_source, batch_targets, batch_enhance, batch_confidence, batch_compare, batch_gpu_selection, model_selector_batch, denoise_slider_batch, tile_size_slider_batch, outscale_slider_batch, use_fp32_checkbox_batch, pre_pad_slider_batch],
-            outputs=[batch_results, batch_status],
-            show_progress='full'
+        # Preset Management Event Handlers
+        
+        # Update preset info display when dropdown changes
+        preset_dropdown.change(
+            fn=get_preset_info_text,
+            inputs=[preset_dropdown],
+            outputs=[preset_info_display]
+        )
+        
+        # Load preset button - updates all settings controls across all tabs
+        # IMPORTANT: Must update visibility FIRST, then values
+        load_preset_btn.click(
+            # Step 1: Update visibility for image tab based on preset settings
+            fn=lambda preset: toggle_enhancement_controls(preset_manager.load_preset(preset).get('enhance', False) if preset else False),
+            inputs=[preset_dropdown],
+            outputs=[img_components["model_row"], img_components["enhancement_options_row"], img_components["enhancement_advanced_row"]]
+        ).then(
+            fn=lambda preset: toggle_restoration_controls(preset_manager.load_preset(preset).get('restore_faces', False) if preset else False),
+            inputs=[preset_dropdown],
+            outputs=[img_components["restoration_row"]]
+        ).then(
+            # Step 2: Now update the actual values (after visibility is set)
+            fn=load_preset_settings,
+            inputs=[preset_dropdown],
+            outputs=[
+                # Image tab controls
+                img_components["enhance_toggle"],
+                img_components["restore_faces_toggle"],
+                img_components["model_selector"],
+                img_components["tile_size_slider"],
+                img_components["outscale_slider"],
+                img_components["use_fp32_checkbox"],
+                img_components["pre_pad_slider"],
+                img_components["restoration_weight_slider"]
+            ]
+        ).then(
+            # Step 3: Update visibility for GIF tab
+            fn=lambda preset: toggle_enhancement_controls(preset_manager.load_preset(preset).get('enhance', False) if preset else False),
+            inputs=[preset_dropdown],
+            outputs=[gif_components["model_row_gif"], gif_components["enhancement_options_row_gif"], gif_components["enhancement_advanced_row_gif"]]
+        ).then(
+            fn=lambda preset: toggle_restoration_controls(preset_manager.load_preset(preset).get('restore_faces', False) if preset else False),
+            inputs=[preset_dropdown],
+            outputs=[gif_components["restoration_row_gif"]]
+        ).then(
+            # Step 4: Update GIF tab values
+            fn=load_preset_settings,
+            inputs=[preset_dropdown],
+            outputs=[
+                # GIF tab controls
+                gif_components["enhance_toggle_gif"],
+                gif_components["restore_faces_toggle_gif"],
+                gif_components["model_selector_gif"],
+                gif_components["tile_size_slider_gif"],
+                gif_components["outscale_slider_gif"],
+                gif_components["use_fp32_checkbox_gif"],
+                gif_components["pre_pad_slider_gif"],
+                gif_components["restoration_weight_slider_gif"]
+            ]
+        ).then(
+            # Step 5: Update visibility for video tab
+            fn=lambda preset: toggle_enhancement_controls(preset_manager.load_preset(preset).get('enhance', False) if preset else False),
+            inputs=[preset_dropdown],
+            outputs=[vid_components["model_row_vid"], vid_components["enhancement_options_row_vid"], vid_components["enhancement_advanced_row_vid"]]
+        ).then(
+            fn=lambda preset: toggle_restoration_controls(preset_manager.load_preset(preset).get('restore_faces', False) if preset else False),
+            inputs=[preset_dropdown],
+            outputs=[vid_components["restoration_row_vid"]]
+        ).then(
+            # Step 6: Update video tab values
+            fn=load_preset_settings,
+            inputs=[preset_dropdown],
+            outputs=[
+                # Video tab controls
+                vid_components["enhance_toggle_vid"],
+                vid_components["restore_faces_toggle_vid"],
+                vid_components["model_selector_vid"],
+                vid_components["tile_size_slider_vid"],
+                vid_components["outscale_slider_vid"],
+                vid_components["use_fp32_checkbox_vid"],
+                vid_components["pre_pad_slider_vid"],
+                vid_components["restoration_weight_slider_vid"]
+            ]
+        ).then(
+            fn=lambda: "✅ Preset loaded successfully across all tabs!",
+            outputs=[preset_status]
+        )
+        
+        # Save preset button
+        save_preset_btn.click(
+            fn=save_current_preset,
+            inputs=[
+                preset_name_input,
+                img_components["enhance_toggle"],
+                img_components["restore_faces_toggle"],
+                img_components["model_selector"],
+                img_components["tile_size_slider"],
+                img_components["outscale_slider"],
+                img_components["use_fp32_checkbox"],
+                img_components["pre_pad_slider"],
+                img_components["restoration_weight_slider"]
+            ],
+            outputs=[preset_status, preset_dropdown]
+        ).then(
+            fn=lambda name: "",
+            inputs=[preset_name_input],
+            outputs=[preset_name_input]
+        )
+        
+        # Delete preset button
+        delete_preset_btn.click(
+            fn=delete_selected_preset,
+            inputs=[preset_dropdown],
+            outputs=[preset_status, preset_dropdown]
+        )
+        
+        # Gallery Tab Event Handlers
+        
+        # Update gallery when media type changes
+        gallery_components["media_type_radio"].change(
+            fn=update_gallery,
+            inputs=[gallery_components["media_type_radio"], gallery_components["limit_selector"]],
+            outputs=[gallery_components["gallery"], gallery_components["file_count_text"]]
+        )
+        
+        # Limit selector change
+        gallery_components["limit_selector"].change(
+            fn=update_gallery,
+            inputs=[gallery_components["media_type_radio"], gallery_components["limit_selector"]],
+            outputs=[gallery_components["gallery"], gallery_components["file_count_text"]]
+        )
+        
+        # Refresh gallery button (clears cache and reloads)
+        gallery_components["refresh_btn"].click(
+            fn=refresh_gallery,
+            inputs=[gallery_components["media_type_radio"], gallery_components["limit_selector"]],
+            outputs=[gallery_components["gallery"], gallery_components["file_count_text"]]
+        )
+        
+        # Gallery selection handler (show delete button when file selected)
+        gallery_components["gallery"].select(
+            fn=show_delete_controls,
+            outputs=[
+                gallery_components["selected_file_display"],
+                gallery_components["delete_btn"],
+                gallery_components["delete_status"]
+            ]
+        )
+        
+        # Delete button handler
+        gallery_components["delete_btn"].click(
+            fn=delete_and_refresh,
+            inputs=[
+                gallery_components["selected_file_display"],
+                gallery_components["media_type_radio"],
+                gallery_components["limit_selector"]
+            ],
+            outputs=[
+                gallery_components["delete_status"],
+                gallery_components["gallery"],
+                gallery_components["file_count_text"],
+                gallery_components["delete_btn"],
+                gallery_components["selected_file_display"]
+            ]
         )
         
         # GPU refresh handler
