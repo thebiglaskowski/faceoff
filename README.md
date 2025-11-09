@@ -90,9 +90,21 @@ conda activate faceoff
 ```
 
 3. **Install PyTorch with CUDA**:
-```powershell
-pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 -f https://download.pytorch.org/whl/torch_stable.html
-```
+
+   **For CUDA 11.8:**
+   ```powershell
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+   ```
+   
+   **For CUDA 12.1+ (newer systems):**
+   ```powershell
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+   ```
+   
+   **CPU-only (no GPU acceleration):**
+   ```powershell
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+   ```
 
 4. **Install Dependencies**:
 ```powershell
