@@ -64,7 +64,10 @@ Sarah Connor?
 
 2. **FFmpeg** - [Download and install FFmpeg](https://ffmpeg.org/download.html)
 
-3. **CUDA >= 10.1** - [Download and install CUDA](https://developer.nvidia.com/cuda-10.1-download-archive-base)
+3. **CUDA 11.8+ or 12.x** (for GPU acceleration):
+   - **Recommended**: [CUDA 12.1 or later](https://developer.nvidia.com/cuda-downloads) (latest drivers)
+   - **Alternative**: [CUDA 11.8](https://developer.nvidia.com/cuda-11-8-0-download-archive) (older but stable)
+   - **Check compatibility**: Run `nvidia-smi` to see your driver's max CUDA version
 
 4. **TensorRT** (Optional, for GPU acceleration):
    - [Download TensorRT](https://developer.nvidia.com/tensorrt) 
