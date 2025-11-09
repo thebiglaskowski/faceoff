@@ -316,25 +316,13 @@ faceoff/
 ├── temp/                        # Temporary processing files
 └── .gradio/                     # Gradio UI cache
 ```
-├── inputs/                      # Temporary input staging
-├── outputs/                     # Processed outputs
-├── temp/                        # Temporary processing files
-│
-├── tests/                       # Test suite
-│   ├── test_config.py          # Config system tests
-│   ├── test_improvements.py    # Feature validation
-│   └── conftest.py             # Pytest configuration
-│
-└── docs/                        # Documentation
-    ├── CONFIG_README.md        # Configuration guide
-    └── IMPROVEMENTS.md         # Feature documentation
-```
 
 ## Version History
 
 ### v2.5.0 (Current) - Performance & Reliability Release
 
 **New Features:**
+
 - ✅ **TensorRT Model Caching**: Persistent engine cache with automatic optimization
 - ✅ **Async Processing Pipeline**: 3-stage overlapped processing (detection → swap → enhancement)
 - ✅ **Intelligent Memory Management**: Auto cache clearing, OOM recovery, dynamic batch sizing
@@ -344,6 +332,7 @@ faceoff/
 - ✅ **Enhanced Documentation**: Added `IMPROVEMENTS.md` and `CONFIG_README.md`
 
 **Improvements:**
+
 - 🚀 **Performance**: TensorRT acceleration, model preloading, batch optimization
 - 💾 **Memory**: Automatic CUDA cache management prevents OOM crashes
 - 🔧 **Reliability**: Graceful degradation, error recovery, comprehensive logging
@@ -387,11 +376,13 @@ Built with excellent open-source projects:
 This project is provided for educational and research purposes. Please respect all applicable licenses for the models and dependencies used.
 
 **Model Licenses:**
+
 - InsightFace models: Check [InsightFace license](https://github.com/deepinsight/insightface/blob/master/LICENSE)
 - Real-ESRGAN models: [BSD 3-Clause License](https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE)
 - inswapper_128.onnx: Check original model license
 
 **Use Responsibly:**
+
 - Only use on content you have permission to modify
 - Do not create misleading or harmful content
 - Respect privacy and consent
