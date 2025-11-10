@@ -22,8 +22,31 @@ if __name__ == "__main__":
     
     # Launch Gradio app
     demo = create_app()
-    demo.launch(
-        server_name=config.server_name,
-        server_port=config.server_port,
-        share=config.share
-    )
+    
+    # Try the configured port first, then auto-find if busy
+    try:
+        demo.launch(
+            server_name=config.server_name,
+            server_port=config.server_port,
+            share=config.share
+        )
+    except OSError as e:
+        if "Cannot find empty port" in str(e):
+            logger.info(f"Port {config.server_port} is busy, trying alternative ports...")
+            # Try ports 7861-7870
+            for port in range(7861, 7871):
+                try:
+                    demo.launch(
+                        server_name=config.server_name,
+                        server_port=port,
+                        share=config.share
+                    )
+                    logger.info(f"✅ Successfully started on port {port}")
+                    break
+                except OSError:
+                    continue
+            else:
+                logger.error("Could not find any available port in range 7861-7870")
+                raise
+        else:
+            raise

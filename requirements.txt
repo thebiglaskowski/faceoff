@@ -1,10 +1,12 @@
 # FaceOff Requirements - Optimized for Performance
 # Tested with Python 3.11 for best performance (10-60% faster than 3.10)
 
-# Deep Learning & CV - Latest compatible versions
-torch>=2.4.0
-torchvision>=0.19.0
-torchaudio>=2.4.0
+# Deep Learning & CV - Compatible versions for Python 3.11
+# Note: PyTorch 2.4.x has typing compatibility issues with Python 3.11
+# Use 2.3.1 for stable Python 3.11 support or 2.5.0+ for latest features
+torch>=2.3.1,!=2.4.0,!=2.4.1  # Skip problematic 2.4.x versions
+torchvision>=0.18.1
+torchaudio>=2.3.1
 onnxruntime-gpu>=1.23.0
 insightface>=0.7.3
 opencv-python>=4.10.0,<4.11.0
@@ -14,7 +16,8 @@ numpy>=1.21.2,<2.0  # Keep 1.x for AI library compatibility
 Pillow>=10.0.0,<11.0
 moviepy>=1.0.3,<2.0  # Use stable 1.x branch
 imageio>=2.31.0,<2.32.0
-imageio-ffmpeg>=0.4.9,<0.5.0
+imageio-ffmpeg>=0.6.0  # Updated: fixes pkg_resources deprecation warning
+albumentations>=2.0.8  # Updated: latest version with stability improvements
 
 # UI - Modern Gradio
 gradio>=5.49.0

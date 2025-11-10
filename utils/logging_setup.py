@@ -20,6 +20,13 @@ def setup_logging(log_file: str = None, log_level: int = None) -> None:
         log_file: Optional override for log file path (uses config if None)
         log_level: Optional override for console log level (uses config if None)
     """
+    # Import terminal handler here to avoid circular imports
+    try:
+        from ui.components.terminal_tab import terminal_handler
+        terminal_handler_available = True
+    except ImportError:
+        terminal_handler_available = False
+    
     # Get settings from config with optional overrides
     log_file = log_file or config.log_file
     max_bytes = config.log_max_file_size_mb * 1024 * 1024  # Convert MB to bytes
@@ -67,8 +74,18 @@ def setup_logging(log_file: str = None, log_level: int = None) -> None:
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
     
+    # Add terminal handler if available (for UI terminal tab)
+    if terminal_handler_available:
+        terminal_handler.setLevel(logging.DEBUG)  # Capture all logs for terminal
+        root_logger.addHandler(terminal_handler)
+    
     # Log the configuration
     logger = logging.getLogger("FaceOff")
     logger.info("Logging initialized: file=%s (level=%s, max_size=%dMB, backups=%d), console_level=%s",
                 log_file, config.log_file_level.upper(), config.log_max_file_size_mb, 
                 backup_count, config.log_console_level.upper())
+    
+    if terminal_handler_available:
+        logger.info("Terminal tab logging enabled - logs will appear in UI Terminal tab")
+    else:
+        logger.debug("Terminal tab handler not available during setup")

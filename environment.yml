@@ -6,7 +6,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.11  # Updated: Better performance (10-60% faster than 3.10)
   - ffmpeg
   - dlib
   - numpy>=1.26
@@ -42,9 +42,10 @@ dependencies:
       - onnxruntime-gpu>=1.17
       - moviepy>=1.0.3
       - python-magic-bin==0.4.14
-      - imageio-ffmpeg>=0.4.7
+      - imageio-ffmpeg>=0.6.0  # Updated: fixes pkg_resources deprecation warning
+      - albumentations>=2.0.8  # Updated: latest version with stability improvements
       - decorator>=4.4.2
-      - torch==2.2.1+cu121
-      - torchvision==0.17.1+cu121
+      - torch==2.3.1+cu121  # Updated: stable Python 3.11 support (avoid 2.4.x typing issues)
+      - torchvision==0.18.1+cu121  # Updated: compatible with torch 2.3.1
       - realesrgan
       - --extra-index-url https://download.pytorch.org/whl/cu121

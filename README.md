@@ -14,7 +14,6 @@ Read more at [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://t
   - 🖼️ **Images** (PNG, JPG, WEBP, BMP)
   - 🎞️ **Animated GIFs** with frame preservation
   - 🎬 **Videos** (MP4, WEBP, AVI, MOV) with audio preservation
-  - 📦 **Batch Processing** for multiple files simultaneously
 
 - **AI Enhancement**: 6 Real-ESRGAN models for quality upscaling:
   - 🎯 **RealESRGAN_x4plus**: Best for photorealistic images (Default)
@@ -97,19 +96,22 @@ conda activate faceoff
 
 3. **Install PyTorch with CUDA**:
 
+   ⚠️ **PyTorch Version Note**: Avoid 2.4.0/2.4.1 with Python 3.11 due to typing issues.
+
    **For CUDA 12.1+ (Recommended - newest systems):**
    ```powershell
-   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+   # Use stable 2.3.1 or latest 2.5.0+
+   pip install torch==2.3.1+cu121 torchvision==0.18.1+cu121 torchaudio==2.3.1+cu121 --index-url https://download.pytorch.org/whl/cu121
    ```
    
    **For CUDA 11.8 (older systems):**
    ```powershell
-   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+   pip install torch==2.3.1+cu118 torchvision==0.18.1+cu118 torchaudio==2.3.1+cu118 --index-url https://download.pytorch.org/whl/cu118
    ```
    
    **CPU-only (no GPU acceleration):**
    ```powershell
-   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+   pip install torch==2.3.1+cpu torchvision==0.18.1+cpu torchaudio==2.3.1+cpu --index-url https://download.pytorch.org/whl/cpu
    ```
 
 4. **Install All Dependencies** (including TensorRT):
@@ -221,7 +223,7 @@ The unified interface provides:
 - **Image Tab**: Single image face swapping
 - **GIF Tab**: Animated GIF processing with frame preservation
 - **Video Tab**: Video processing with audio preservation
-- **Batch Tab**: Process multiple files simultaneously
+- **Gallery Tab**: View and manage processed outputs
 
 ### Enhancement Options
 
@@ -332,8 +334,75 @@ pip install -r requirements.txt --force-reinstall
 
 # Verify Python environment
 conda activate faceoff
-python --version  # Should show 3.10.x
+python --version  # Should show 3.10.x or 3.11.x
 ```
+
+### PyTorch Compatibility Issues
+
+**Symptoms**: Typing errors during app startup, `Union` or `Tuple` import failures
+
+**Root Cause**: PyTorch 2.4.0/2.4.1 has typing system incompatibilities with Python 3.11
+
+**Solutions**:
+
+**Option 1 - Use Compatible PyTorch (Recommended):**
+```powershell
+conda activate faceoff
+pip uninstall torch torchvision torchaudio -y
+
+# Install PyTorch 2.3.1 (stable with Python 3.11)
+pip install torch==2.3.1+cu121 torchvision==0.18.1+cu121 torchaudio==2.3.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+```
+
+**Option 2 - Use Latest PyTorch:**
+```powershell
+# Install PyTorch 2.5.0+ (fixes typing issues)
+pip install torch>=2.5.0 torchvision>=0.20.0 --index-url https://download.pytorch.org/whl/cu121
+```
+
+**Option 3 - Use Python 3.10:**
+```powershell
+# Create environment with Python 3.10 (most compatible)
+conda create -n faceoff python=3.10 -y
+conda activate faceoff
+pip install -r requirements.txt
+```
+
+**Verification:**
+```powershell
+python -c "import torch; print(f'PyTorch {torch.__version__} - CUDA: {torch.cuda.is_available()}')"
+```
+
+### Package Deprecation Warnings
+
+**Symptoms**: `pkg_resources is deprecated` warnings during startup
+
+**Root Cause**: Older versions of imageio-ffmpeg use deprecated pkg_resources API
+
+**Solution:**
+```powershell
+conda activate faceoff
+pip install --upgrade imageio-ffmpeg  # Updates to 0.6.0+ (fixes warning)
+```
+
+**Verification:**
+```powershell
+python -c "import imageio_ffmpeg; print('✅ No deprecation warnings')"
+```
+
+### Albumentations Update Issues
+
+**Symptoms**: Online version checking failures, network timeouts during import
+
+**Root Cause**: Older albumentations versions (1.4.x) have network dependency issues
+
+**Solution:**
+```powershell
+conda activate faceoff
+pip install --upgrade albumentations  # Updates to 2.0.8+ (removes online checks)
+```
+
+**Features**: Latest albumentations 2.0.8+ provides better performance and removes problematic online update checking.
 
 ### TensorRT Build Failures
 
@@ -435,7 +504,7 @@ See [IMPROVEMENTS.md](IMPROVEMENTS.md) for detailed technical documentation.
 
 ### v2.0.0 - Unified Interface
 
-- ✅ Unified Gradio interface (Image/GIF/Video/Batch tabs)
+- ✅ Unified Gradio interface (Image/GIF/Video/Gallery tabs)
 - ✅ 6 Real-ESRGAN model options with specialized purposes
 - ✅ Denoise control for compatible models
 - ✅ Modular architecture with processing/ui separation
