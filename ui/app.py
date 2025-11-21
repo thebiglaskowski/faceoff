@@ -9,6 +9,64 @@ from pathlib import Path
 from PIL import Image
 
 from utils.logging_setup import setup_logging
+
+# Custom CSS styling
+CUSTOM_CSS = """
+:root {
+    --primary-color: #7C3AED;
+    --secondary-color: #EC4899;
+    --success-color: #10B981;
+}
+
+.gradio-container {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.header-text {
+    color: #7C3AED !important;
+    font-weight: 800;
+    font-size: 2.5em;
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.header-subtitle {
+    text-align: center;
+    font-size: 1.1em;
+    color: #6B7280;
+    margin-bottom: 2rem;
+}
+
+@media (prefers-color-scheme: dark) {
+    .header-text {
+        color: #A78BFA !important;
+    }
+    .header-subtitle {
+        color: #9CA3AF !important;
+    }
+}
+
+.primary-btn {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: 600 !important;
+    transition: transform 0.2s !important;
+}
+
+.primary-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(124, 58, 237, 0.3) !important;
+}
+
+.face-swap-box {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(236, 72, 153, 0.1));
+    border-left: 4px solid var(--primary-color);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin: 1rem 0;
+}
+"""
 from core.face_processor import FaceMappingManager
 from utils.validation import (
     validate_file_size, validate_image_resolution,
@@ -421,10 +479,14 @@ def toggle_denoise_slider(model_choice):
 
 def create_app():
     """Create and configure the Gradio application."""
-    
-    with gr.Blocks(title="FaceOff - Face Swapper") as demo:
-        gr.Markdown("## FaceOff - AI Face Swapper")
-        gr.Markdown("Swap faces from a source image to destination images, GIFs, or videos with optional AI enhancement.")
+
+    with gr.Blocks(
+        title="FaceOff - Face Swapper",
+        theme=gr.themes.Soft(),
+        css=CUSTOM_CSS
+    ) as demo:
+        gr.HTML('<h1 class="header-text">👤 FaceOff</h1>')
+        gr.Markdown('<div class="header-subtitle">AI Face Swapper - Advanced face swapping with enhancement options</div>')
         
         with gr.Tabs():
             # Create Image Tab
@@ -442,7 +504,7 @@ def create_app():
         # Preset Management Section (at bottom, collapsible)
         gr.Markdown("---")
         with gr.Accordion("🎨 Preset Management", open=False):
-            gr.Markdown("Save and load your favorite settings configurations for quick access.")
+            gr.HTML('<div class="face-swap-box"><strong>💾 Save & Load Settings</strong><br/>Manage your favorite face-swap configurations for quick access</div>')
             
             with gr.Row():
                 with gr.Column(scale=2):
@@ -481,6 +543,7 @@ def create_app():
         # GPU Memory Monitor (at bottom, collapsible)
         gr.Markdown("---")
         with gr.Accordion("🖥️ GPU Status Monitor", open=False):
+            gr.HTML('<div class="face-swap-box"><strong>⚡ System Performance</strong><br/>Monitor GPU memory usage and allocation</div>')
             initial_gpu_info = get_gpu_status()
             gpu_textboxes = []
             

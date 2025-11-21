@@ -1,0 +1,15 @@
+{
+  "name": "Default",
+  "description": "Custom user preset",
+  "created": "2025-11-14T10:11:04.272289",
+  "settings": {
+    "enhance": false,
+    "restore_faces": false,
+    "model_name": "RealESRGAN_x4plus",
+    "tile_size": 256,
+    "outscale": 4,
+    "use_fp32": false,
+    "pre_pad": 10,
+    "restoration_weight": 0.5
+  }
+}
