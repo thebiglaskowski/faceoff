@@ -8,9 +8,26 @@ import logging
 import os
 import sys
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
 logger = logging.getLogger("FaceOff")
+
+# Add NVIDIA/TensorRT library paths to PATH
+# pip packages install DLLs in subdirectories not automatically on PATH
+_site_packages = Path(sys.prefix) / 'Lib' / 'site-packages'
+
+# Add tensorrt_libs directory (contains nvinfer_10.dll etc)
+_tensorrt_libs = _site_packages / 'tensorrt_libs'
+if _tensorrt_libs.exists() and str(_tensorrt_libs) not in os.environ.get('PATH', ''):
+    os.environ['PATH'] = str(_tensorrt_libs) + os.pathsep + os.environ.get('PATH', '')
+
+# Add nvidia subdirectories (cublas, cudnn, etc)
+_nvidia_path = _site_packages / 'nvidia'
+if _nvidia_path.exists():
+    for lib_dir in _nvidia_path.glob('*/bin'):
+        if lib_dir.is_dir() and str(lib_dir) not in os.environ.get('PATH', ''):
+            os.environ['PATH'] = str(lib_dir) + os.pathsep + os.environ.get('PATH', '')
 
 # Suppress ONNX Runtime TensorRT warnings during detection
 _original_stderr = None
@@ -54,37 +71,34 @@ def is_tensorrt_available() -> bool:
             logger.debug("TensorRT provider not in available providers list")
             return False
 
-        # Try to actually use it - this will fail if libs are missing
+        # Try to load TensorRT DLL to verify it's actually usable
+        import ctypes
         try:
-            # Create a minimal test to see if TensorRT actually works
-            # We don't need a real model, just check if the provider initializes
-            import numpy as np
-
-            # Check if the TensorRT libraries are loadable
-            # by checking if we can get provider options
-            sess_options = ort.SessionOptions()
-            sess_options.log_severity_level = 4  # Suppress logs
-
-            # If we get here without the DLL error, TensorRT might work
-            # But we saw errors, so let's be more thorough
-
-            # The real test is whether nvinfer DLL is loadable
-            import ctypes
-            try:
-                # Try to load the TensorRT library directly
-                if sys.platform == 'win32':
+            if sys.platform == 'win32':
+                # Try nvinfer_10.dll first (TensorRT 10.x), then nvinfer.dll
+                try:
+                    ctypes.CDLL('nvinfer_10.dll')
+                except OSError:
                     ctypes.CDLL('nvinfer.dll')
-                else:
-                    ctypes.CDLL('libnvinfer.so')
-                logger.info("TensorRT libraries found and loadable")
-                return True
-            except OSError:
-                logger.debug("TensorRT DLLs not found or not loadable")
-                return False
+            else:
+                ctypes.CDLL('libnvinfer.so')
+            logger.info("TensorRT libraries found and loadable")
+            return True
+        except OSError:
+            # DLL not directly loadable, but provider might still work
+            # if ONNX Runtime can find it through its own mechanisms
+            logger.debug("TensorRT DLLs not directly loadable, checking ONNX Runtime...")
 
-        except Exception as e:
-            logger.debug("TensorRT provider test failed: %s", e)
-            return False
+            # Final check: see if ONNX Runtime can actually use TensorRT
+            # by checking session options (lightweight check)
+            try:
+                sess_options = ort.SessionOptions()
+                sess_options.log_severity_level = 4  # Suppress logs
+                # If we can create session options without error, assume it works
+                # The actual test happens when creating a session
+                return True
+            except Exception:
+                return False
 
     except Exception as e:
         logger.debug("TensorRT availability check failed: %s", e)

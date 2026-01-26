@@ -4,6 +4,23 @@ Main entry point for the application.
 """
 import os
 import sys
+from pathlib import Path
+
+# Add NVIDIA/TensorRT library paths to PATH for TensorRT support
+# pip packages install DLLs in subdirectories not on PATH
+_site_packages = Path(sys.prefix) / 'Lib' / 'site-packages'
+
+# Add tensorrt_libs directory (contains nvinfer_10.dll etc)
+_tensorrt_libs = _site_packages / 'tensorrt_libs'
+if _tensorrt_libs.exists():
+    os.environ['PATH'] = str(_tensorrt_libs) + os.pathsep + os.environ.get('PATH', '')
+
+# Add nvidia subdirectories (cublas, cudnn, etc)
+_nvidia_path = _site_packages / 'nvidia'
+if _nvidia_path.exists():
+    for lib_dir in _nvidia_path.glob('*/bin'):
+        if lib_dir.is_dir():
+            os.environ['PATH'] = str(lib_dir) + os.pathsep + os.environ.get('PATH', '')
 
 # Suppress ONNX Runtime verbose logging (especially TensorRT provider errors)
 # Level 3 = WARNING, Level 4 = ERROR only
