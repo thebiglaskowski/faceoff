@@ -18,6 +18,7 @@ import insightface
 from insightface.app import FaceAnalysis
 
 from utils.config_manager import config
+from utils.tensorrt_utils import is_tensorrt_available
 
 logger = logging.getLogger("FaceOff")
 
@@ -73,19 +74,15 @@ class GPUModelInstance:
         providers = []
 
         # TensorRT provider (if available and enabled)
-        if self.use_tensorrt:
-            try:
-                if 'TensorrtExecutionProvider' in ort.get_available_providers():
-                    providers.append(('TensorrtExecutionProvider', {
-                        'device_id': self.device_id,
-                        'trt_max_workspace_size': config.tensorrt_workspace_mb * 1024 * 1024,
-                        'trt_fp16_enable': config.tensorrt_fp16,
-                        'trt_engine_cache_enable': True,
-                        'trt_engine_cache_path': str(Path("cache") / f"tensorrt_gpu{self.device_id}"),
-                    }))
-                    logger.debug(f"TensorRT enabled for GPU {self.device_id}")
-            except Exception as e:
-                logger.debug(f"TensorRT not available for GPU {self.device_id}: {e}")
+        if self.use_tensorrt and is_tensorrt_available():
+            providers.append(('TensorrtExecutionProvider', {
+                'device_id': self.device_id,
+                'trt_max_workspace_size': config.tensorrt_workspace_mb * 1024 * 1024,
+                'trt_fp16_enable': config.tensorrt_fp16,
+                'trt_engine_cache_enable': True,
+                'trt_engine_cache_path': str(Path("cache") / f"tensorrt_gpu{self.device_id}"),
+            }))
+            logger.debug(f"TensorRT enabled for GPU {self.device_id}")
 
         # CUDA provider (primary fallback)
         providers.append(('CUDAExecutionProvider', {

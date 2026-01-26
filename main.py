@@ -2,6 +2,18 @@
 FaceOff - AI Face Swapper
 Main entry point for the application.
 """
+import os
+import sys
+
+# Suppress ONNX Runtime verbose logging (especially TensorRT provider errors)
+# Level 3 = WARNING, Level 4 = ERROR only
+# This must be set BEFORE importing onnxruntime
+os.environ.setdefault('ORT_LOGGING_LEVEL', '3')
+
+# Check TensorRT availability early and cache the result
+from utils.tensorrt_utils import is_tensorrt_available
+_tensorrt_ok = is_tensorrt_available()
+
 import logging
 from ui.app import create_app
 from utils.config_manager import config

@@ -19,6 +19,7 @@ from typing import List, Tuple
 from utils.config_manager import config
 from processing.model_optimizer import optimize_onnx_model
 from utils.error_handler import ErrorHandler, FriendlyError
+from utils.tensorrt_utils import is_tensorrt_available
 
 logger = logging.getLogger("FaceOff")
 
@@ -136,41 +137,24 @@ class MediaProcessor:
                 }
                 
                 # Build provider list with optional TensorRT
-                if self.use_tensorrt:
-                    # Check if TensorRT is available
-                    try:
-                        import onnxruntime as ort
-                        available_providers = ort.get_available_providers()
-                        
-                        if 'TensorrtExecutionProvider' in available_providers:
-                            tensorrt_provider_options = {
-                                'device_id': self.device_id,
-                                'trt_max_workspace_size': 2 * 1024 * 1024 * 1024,  # 2GB
-                                'trt_fp16_enable': False,  # Disable FP16 - can cause quality issues
-                                'trt_engine_cache_enable': True,  # Cache TensorRT engines
-                                'trt_engine_cache_path': config.tensorrt_cache_dir,
-                            }
-                            providers = [
-                                ('TensorrtExecutionProvider', tensorrt_provider_options),
-                                ('CUDAExecutionProvider', cuda_provider_options),
-                                'CPUExecutionProvider'
-                            ]
-                            logger.info("TensorRT optimization enabled on device %d (FP32 mode)", self.device_id)
-                        else:
-                            logger.warning("TensorRT not available. Install TensorRT libraries for acceleration. Falling back to CUDA.")
-                            providers = [
-                                ('CUDAExecutionProvider', cuda_provider_options),
-                                'CPUExecutionProvider'
-                            ]
-                            self.use_tensorrt = False  # Disable flag since it's not available
-                    except Exception as e:
-                        logger.warning("TensorRT check failed: %s. Falling back to CUDA.", e)
-                        providers = [
-                            ('CUDAExecutionProvider', cuda_provider_options),
-                            'CPUExecutionProvider'
-                        ]
-                        self.use_tensorrt = False
+                if self.use_tensorrt and is_tensorrt_available():
+                    tensorrt_provider_options = {
+                        'device_id': self.device_id,
+                        'trt_max_workspace_size': 2 * 1024 * 1024 * 1024,  # 2GB
+                        'trt_fp16_enable': False,  # Disable FP16 - can cause quality issues
+                        'trt_engine_cache_enable': True,  # Cache TensorRT engines
+                        'trt_engine_cache_path': config.tensorrt_cache_dir,
+                    }
+                    providers = [
+                        ('TensorrtExecutionProvider', tensorrt_provider_options),
+                        ('CUDAExecutionProvider', cuda_provider_options),
+                        'CPUExecutionProvider'
+                    ]
+                    logger.info("TensorRT optimization enabled on device %d (FP32 mode)", self.device_id)
                 else:
+                    if self.use_tensorrt:
+                        logger.debug("TensorRT requested but not available, using CUDA")
+                        self.use_tensorrt = False
                     providers = [
                         ('CUDAExecutionProvider', cuda_provider_options),
                         'CPUExecutionProvider'
