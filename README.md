@@ -447,15 +447,29 @@ faceoff/
 │
 ├── utils/                       # Utilities
 │   ├── config_manager.py       # Config loader with validation
+│   ├── config_schema.py        # Configuration validation schema
 │   ├── constants.py            # Model options and constants
 │   ├── validation.py           # Input validation
 │   ├── logging_setup.py        # Logging configuration with rotation
-│   ├── memory_manager.py       # GPU memory management
+│   ├── json_formatter.py       # JSON log formatter for structured logging
+│   ├── memory_manager.py       # GPU memory management with caching
+│   ├── error_handler.py        # User-friendly error handling
 │   ├── compression.py          # Media compression utilities
 │   ├── temp_manager.py         # Temporary file management
+│   ├── cleanup_manager.py      # Old file cleanup manager
 │   ├── progress.py             # Progress tracking
+│   ├── profiling.py            # Performance profiling utilities
 │   ├── model_cache.py          # TensorRT cache management
 │   └── preset_manager.py       # Settings preset management
+│
+├── tests/                       # Test suite
+│   ├── conftest.py             # Shared pytest fixtures
+│   └── unit/                   # Unit tests (135 tests)
+│
+├── scripts/                     # Utility scripts
+│   ├── demo_config.py          # Config system demo
+│   ├── demo_progress.py        # Progress tracking demo
+│   └── test_onnx_gpu.py        # ONNX GPU compatibility test
 │
 ├── presets/                     # Processing presets
 │   ├── Balanced.json           # Balanced quality/speed preset
@@ -481,7 +495,30 @@ faceoff/
 
 ## Version History
 
-### v2.5.0 (Current) - Performance & Reliability Release
+### v2.6.0 (Current) - Code Quality & Testing Release
+
+**New Features:**
+
+- ✅ **Comprehensive Test Suite**: 135 pytest unit tests covering core functionality
+- ✅ **Exception Hierarchy**: Standardized error handling with specialized exception types
+- ✅ **Multi-GPU Model Pool**: Thread-safe per-GPU ONNX sessions for video/GIF processing
+- ✅ **Configuration Validation**: Schema-based config validation with auto-correction
+- ✅ **Performance Profiling**: `@profile` decorator and `Profiler` context manager
+- ✅ **Cleanup Manager**: Automatic cleanup of old temporary and output files
+- ✅ **Frame Prefetching**: Background thread prefetches frames for faster processing
+- ✅ **Memory Stats Caching**: Reduced overhead from repeated CUDA memory queries
+
+**Improvements:**
+
+- 🚀 **UI Refactor**: `ui/app.py` reduced from 966 to 656 lines with extracted handlers
+- 💾 **Bounded Queues**: Async pipeline queues bounded to prevent memory explosion
+- 🔧 **Thread Safety**: FaceMappingManager now thread-safe with proper locking
+- 📝 **JSON Logging**: Optional structured JSON log output for log aggregation
+- ⚙️ **Magic Numbers**: Moved to config (iou_threshold, mb_per_batch, ui_padding)
+
+See [BLUEPRINT.md](BLUEPRINT.md) for implementation details.
+
+### v2.5.0 - Performance & Reliability Release
 
 **New Features:**
 

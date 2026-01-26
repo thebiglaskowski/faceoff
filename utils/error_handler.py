@@ -1,24 +1,144 @@
 """
 User-friendly error handling for FaceOff.
 Converts technical errors into helpful messages with solutions.
+
+Exception Hierarchy:
+    FaceOffError (base)
+    ├── FriendlyError (user-facing with suggestions)
+    ├── ProcessingError (face swap/enhancement failures)
+    │   ├── FaceDetectionError
+    │   ├── FaceSwapError
+    │   └── EnhancementError
+    ├── ResourceError (memory/GPU issues)
+    │   ├── OutOfMemoryError
+    │   └── GPUError
+    ├── ValidationError (input validation)
+    │   ├── FileValidationError
+    │   └── ConfigValidationError
+    └── ModelError (model loading/inference)
 """
+import functools
 import logging
 import torch
-from typing import Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 from pathlib import Path
 
 logger = logging.getLogger("FaceOff")
 
+# Type variable for decorator
+F = TypeVar('F', bound=Callable[..., Any])
 
-class FriendlyError(Exception):
-    """Exception with user-friendly message and suggestions."""
-    
-    def __init__(self, title: str, message: str, suggestions: list[str], technical_details: str = ""):
-        self.title = title
+
+# =============================================================================
+# Exception Hierarchy
+# =============================================================================
+
+class FaceOffError(Exception):
+    """Base exception for all FaceOff errors."""
+
+    def __init__(self, message: str, details: Optional[str] = None):
         self.message = message
+        self.details = details
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        if self.details:
+            return f"{self.message} ({self.details})"
+        return self.message
+
+
+class ProcessingError(FaceOffError):
+    """Base class for processing-related errors."""
+    pass
+
+
+class FaceDetectionError(ProcessingError):
+    """Error during face detection."""
+    pass
+
+
+class FaceSwapError(ProcessingError):
+    """Error during face swapping."""
+    pass
+
+
+class EnhancementError(ProcessingError):
+    """Error during image enhancement."""
+    pass
+
+
+class ResourceError(FaceOffError):
+    """Base class for resource-related errors."""
+    pass
+
+
+class OutOfMemoryError(ResourceError):
+    """GPU or system ran out of memory."""
+
+    def __init__(
+        self,
+        message: str = "Out of memory",
+        device_id: int = 0,
+        allocated_mb: float = 0,
+        total_mb: float = 0
+    ):
+        self.device_id = device_id
+        self.allocated_mb = allocated_mb
+        self.total_mb = total_mb
+        details = f"GPU {device_id}: {allocated_mb:.0f}/{total_mb:.0f} MB"
+        super().__init__(message, details)
+
+
+class GPUError(ResourceError):
+    """GPU-related error (unavailable, driver issues, etc.)."""
+    pass
+
+
+class ValidationError(FaceOffError):
+    """Base class for validation errors."""
+    pass
+
+
+class FileValidationError(ValidationError):
+    """File validation failed (format, size, permissions)."""
+
+    def __init__(self, message: str, file_path: Optional[str] = None):
+        self.file_path = file_path
+        super().__init__(message, file_path)
+
+
+class ConfigValidationError(ValidationError):
+    """Configuration validation failed."""
+
+    def __init__(self, message: str, key: Optional[str] = None, value: Any = None):
+        self.key = key
+        self.value = value
+        details = f"{key}={value}" if key else None
+        super().__init__(message, details)
+
+
+class ModelError(FaceOffError):
+    """Model loading or inference error."""
+
+    def __init__(self, message: str, model_name: Optional[str] = None):
+        self.model_name = model_name
+        super().__init__(message, model_name)
+
+
+class FriendlyError(FaceOffError):
+    """Exception with user-friendly message and suggestions."""
+
+    def __init__(
+        self,
+        title: str,
+        message: str,
+        suggestions: List[str],
+        technical_details: str = ""
+    ):
+        self.title = title
         self.suggestions = suggestions
         self.technical_details = technical_details
-        super().__init__(message)
+        super().__init__(message, technical_details)
     
     def format_message(self) -> str:
         """Format error message for display."""
@@ -292,19 +412,77 @@ class ErrorHandler:
         )
 
 
-def wrap_error(func):
+def wrap_error(func: F) -> F:
     """Decorator to automatically convert exceptions to friendly errors."""
-    def wrapper(*args, **kwargs):
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return func(*args, **kwargs)
         except FriendlyError:
             # Already a friendly error, re-raise
             raise
-        except Exception as e:
-            # Convert to friendly error
+        except FaceOffError as e:
+            # Convert FaceOffError subclasses to friendly error
             context = kwargs.get('context', {})
             friendly_error = ErrorHandler.handle_error(e, context)
             logger.error("Error in %s: %s", func.__name__, e, exc_info=True)
             raise friendly_error from e
-    
-    return wrapper
+        except Exception as e:
+            # Convert unknown exceptions to friendly error
+            context = kwargs.get('context', {})
+            friendly_error = ErrorHandler.handle_error(e, context)
+            logger.error("Error in %s: %s", func.__name__, e, exc_info=True)
+            raise friendly_error from e
+
+    return wrapper  # type: ignore
+
+
+def convert_to_faceoff_error(error: Exception, context: Optional[Dict[str, Any]] = None) -> FaceOffError:
+    """
+    Convert a standard exception to an appropriate FaceOffError subclass.
+
+    Args:
+        error: Original exception
+        context: Additional context about the operation
+
+    Returns:
+        Appropriate FaceOffError subclass
+    """
+    context = context or {}
+    error_str = str(error).lower()
+    error_type = type(error).__name__
+
+    # Already a FaceOffError
+    if isinstance(error, FaceOffError):
+        return error
+
+    # Out of Memory
+    if "out of memory" in error_str or isinstance(error, (torch.cuda.OutOfMemoryError, MemoryError)):
+        return OutOfMemoryError(
+            str(error),
+            device_id=context.get('device_id', 0),
+            allocated_mb=context.get('allocated_mb', 0),
+            total_mb=context.get('total_mb', 0)
+        )
+
+    # No faces detected
+    if "no faces detected" in error_str or "no face" in error_str:
+        return FaceDetectionError(str(error))
+
+    # File not found or permission
+    if "filenotfounderror" in error_type.lower() or "no such file" in error_str:
+        return FileValidationError(str(error), context.get('file_path'))
+
+    if "permissionerror" in error_type.lower() or "permission denied" in error_str:
+        return FileValidationError(f"Permission denied: {error}", context.get('file_path'))
+
+    # Model errors
+    if "model" in error_str and ("failed" in error_str or "initialization" in error_str):
+        return ModelError(str(error), context.get('model_name'))
+
+    # GPU errors
+    if "cuda" in error_str or "gpu" in error_str:
+        return GPUError(str(error))
+
+    # Default to base error
+    return FaceOffError(str(error))

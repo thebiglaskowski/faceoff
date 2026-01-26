@@ -2,6 +2,7 @@
 Face detection, extraction, and processing utilities.
 """
 import logging
+import threading
 import cv2
 import numpy as np
 from pathlib import Path
@@ -345,35 +346,46 @@ class FaceProcessor:
 
 
 class FaceMappingManager:
-    """Manages face mapping state for multi-face swapping."""
-    
+    """
+    Thread-safe manager for face mapping state.
+
+    Manages face mapping state for multi-face swapping with proper
+    synchronization for concurrent access.
+    """
+
     def __init__(self):
-        """Initialize face mapping manager."""
+        """Initialize face mapping manager with thread lock."""
         self._mappings: List[Tuple[int, int]] = []
-    
+        self._lock = threading.Lock()
+
     def add(self, source_idx: int, target_idx: int) -> None:
-        """Add a face mapping."""
-        self._mappings.append((source_idx, target_idx))
+        """Add a face mapping (thread-safe)."""
+        with self._lock:
+            self._mappings.append((source_idx, target_idx))
         logger.info("Added face mapping: Source %d → Target %d", source_idx, target_idx)
-    
+
     def clear(self) -> None:
-        """Clear all face mappings."""
-        self._mappings = []
+        """Clear all face mappings (thread-safe)."""
+        with self._lock:
+            self._mappings = []
         logger.info("Cleared all face mappings")
-    
+
     def get(self) -> Optional[List[Tuple[int, int]]]:
-        """Get current face mappings, or None if empty."""
-        return self._mappings if self._mappings else None
-    
+        """Get current face mappings, or None if empty (thread-safe)."""
+        with self._lock:
+            return self._mappings.copy() if self._mappings else None
+
     def get_display_text(self) -> str:
-        """Get formatted display text for current mappings."""
-        if not self._mappings:
-            return "No mappings"
-        return "\n".join([
-            f"Source Face {s} → Target Face {t}"
-            for s, t in self._mappings
-        ])
-    
+        """Get formatted display text for current mappings (thread-safe)."""
+        with self._lock:
+            if not self._mappings:
+                return "No mappings"
+            return "\n".join([
+                f"Source Face {s} → Target Face {t}"
+                for s, t in self._mappings
+            ])
+
     def count(self) -> int:
-        """Get number of mappings."""
-        return len(self._mappings)
+        """Get number of mappings (thread-safe)."""
+        with self._lock:
+            return len(self._mappings)

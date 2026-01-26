@@ -17,10 +17,12 @@ gpu:
   # Frame batching for better GPU utilization
   batch_size: 4                   # Frames to process per batch (1-16)
   max_batch_size: 16              # Safety limit to prevent OOM
-  
-  # Multi-GPU settings (only for enhancement, not face swapping)
+
+  # Multi-GPU settings
   workers_per_gpu: 4              # Worker threads per GPU
-  
+  multi_gpu_video_enabled: true   # Enable multi-GPU for video/GIF face swapping
+                                  # Uses isolated model pool with per-GPU ONNX sessions
+
   # TensorRT optimization (auto-enabled for face detection)
   tensorrt_enabled: true          # Enable TensorRT optimization
   tensorrt_fp16: true             # Use FP16 precision (faster)
@@ -35,10 +37,12 @@ face_detection:
   buffalo_model_path: "models/buffalo_l"
   face_analysis_name: "buffalo_l"
   face_analysis_det_size: [640, 640]
-  
+
   # Detection parameters
   confidence_threshold: 0.5       # Minimum confidence (0.0-1.0)
-  
+  iou_threshold: 0.3              # IoU threshold for face tracking (0.1-0.5)
+  ui_padding: 20                  # Padding around face thumbnails in UI
+
   # Resolution-adaptive detection (faster processing)
   adaptive_enabled: true          # Enable adaptive resolution
   detection_scale: 0.5            # Detect at fraction of original (0.25-1.0)
@@ -105,6 +109,7 @@ face_restoration:
 async_pipeline:
   enabled: true                   # Use async pipeline for videos/GIFs
   min_frames_threshold: 10        # Minimum frames to use async (below uses sync)
+  queue_size: 32                  # Maximum queue size (0=unbounded, 16-64 recommended)
 
 # =============================================================================
 # Logging Configuration
@@ -114,14 +119,18 @@ logging:
   log_file: "app.log"
   max_file_size_mb: 10            # Maximum log file size before rotation
   backup_count: 5                 # Number of backup log files to keep
-  
+
   # Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
   console_level: "INFO"           # Console output level
   file_level: "DEBUG"             # File output level
-  
+
   # Log format
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   date_format: "%Y-%m-%d %H:%M:%S"
+
+  # Structured logging (JSON format for log aggregation tools)
+  json_format: false              # Enable JSON log output
+  json_log_file: "app.json.log"   # Separate file for JSON logs
 
 # =============================================================================
 # Model Caching Settings
@@ -145,7 +154,8 @@ memory:
   # Automatic VRAM management
   auto_clear_cache: true          # Clear CUDA cache between processing stages
   clear_cache_threshold_mb: 1024  # Clear if free VRAM below this (MB)
-  
+  mb_per_batch_estimate: 500      # Estimated MB per batch for optimal sizing
+
   # Emergency fallback settings
   reduce_batch_on_oom: true       # Reduce batch size if OOM detected
   min_batch_size: 1               # Minimum batch size before failing
@@ -179,6 +189,13 @@ directories:
   output: "outputs"
   models: "models"
   cache: "cache"
+
+# =============================================================================
+# Cleanup Settings
+# =============================================================================
+cleanup:
+  enabled: true                   # Enable automatic cleanup of old files
+  max_age_hours: 24               # Delete files older than this (hours)
 
 # =============================================================================
 # UI Settings

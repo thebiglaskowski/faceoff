@@ -6,22 +6,40 @@ and adaptive batch size adjustment to prevent OOM errors.
 """
 
 import logging
+import time
 import torch
-from typing import Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, Optional, Tuple
 from utils.config_manager import config
 
 logger = logging.getLogger("FaceOff")
 
 
+@dataclass
+class CachedMemoryStats:
+    """Cached memory statistics with timestamp."""
+    stats: Dict[str, float]
+    timestamp: float
+
+    def is_valid(self, max_age_seconds: float = 0.5) -> bool:
+        """Check if cache is still valid."""
+        return (time.time() - self.timestamp) < max_age_seconds
+
+
 class MemoryManager:
     """Manages GPU memory to prevent OOM errors."""
-    
-    def __init__(self, device_id: int = 0):
+
+    # Class-level cache for memory stats (shared across instances per device)
+    _stats_cache: Dict[int, CachedMemoryStats] = {}
+    _cache_max_age: float = 0.5  # Cache valid for 500ms
+
+    def __init__(self, device_id: int = 0, cache_stats: bool = True):
         """
         Initialize memory manager.
-        
+
         Args:
             device_id: GPU device ID to monitor
+            cache_stats: Whether to cache memory stats for performance
         """
         self.device_id = device_id
         self.device = torch.device(f'cuda:{device_id}')
@@ -29,14 +47,19 @@ class MemoryManager:
         self.clear_threshold_mb = config.clear_cache_threshold_mb
         self.reduce_batch_on_oom = config.reduce_batch_on_oom
         self.min_batch_size = config.min_batch_size
-        
+        self.cache_stats = cache_stats
+        self.mb_per_batch = config.mb_per_batch_estimate
+
         logger.info("MemoryManager initialized for device %d (auto_clear=%s, threshold=%dMB)",
                    device_id, self.auto_clear, self.clear_threshold_mb)
     
-    def get_memory_stats(self) -> dict:
+    def get_memory_stats(self, use_cache: bool = True) -> Dict[str, float]:
         """
         Get current GPU memory statistics.
-        
+
+        Args:
+            use_cache: Whether to use cached stats if available (default True)
+
         Returns:
             Dict with memory stats in MB
         """
@@ -48,20 +71,46 @@ class MemoryManager:
                 'total_mb': 0,
                 'utilization_pct': 0
             }
-        
+
+        # Check cache if enabled
+        if self.cache_stats and use_cache:
+            cached = self._stats_cache.get(self.device_id)
+            if cached and cached.is_valid(self._cache_max_age):
+                return cached.stats
+
+        # Fetch fresh stats
         allocated = torch.cuda.memory_allocated(self.device) / 1024 / 1024
         reserved = torch.cuda.memory_reserved(self.device) / 1024 / 1024
         total = torch.cuda.get_device_properties(self.device).total_memory / 1024 / 1024
         free = total - allocated
         utilization = (allocated / total * 100) if total > 0 else 0
-        
-        return {
+
+        stats = {
             'allocated_mb': allocated,
             'reserved_mb': reserved,
             'free_mb': free,
             'total_mb': total,
             'utilization_pct': utilization
         }
+
+        # Update cache
+        if self.cache_stats:
+            self._stats_cache[self.device_id] = CachedMemoryStats(
+                stats=stats,
+                timestamp=time.time()
+            )
+
+        return stats
+
+    def invalidate_cache(self) -> None:
+        """Invalidate the memory stats cache for this device."""
+        if self.device_id in self._stats_cache:
+            del self._stats_cache[self.device_id]
+
+    @classmethod
+    def clear_all_caches(cls) -> None:
+        """Clear all cached memory stats."""
+        cls._stats_cache.clear()
     
     def should_clear_cache(self) -> bool:
         """
@@ -81,44 +130,46 @@ class MemoryManager:
     def clear_cache(self, force: bool = False) -> None:
         """
         Clear CUDA cache if needed or forced.
-        
+
         Args:
             force: Force cache clear even if threshold not exceeded
         """
         if not torch.cuda.is_available():
             return
-        
-        stats_before = self.get_memory_stats()
-        
+
+        stats_before = self.get_memory_stats(use_cache=False)
+
         if force or self.should_clear_cache():
             torch.cuda.empty_cache()
             torch.cuda.synchronize(self.device)
-            
-            stats_after = self.get_memory_stats()
+
+            # Invalidate cache after clearing
+            self.invalidate_cache()
+
+            stats_after = self.get_memory_stats(use_cache=False)
             freed_mb = stats_before['reserved_mb'] - stats_after['reserved_mb']
-            
+
             logger.info("CUDA cache cleared on device %d: freed %.2f MB (%.1f%% → %.1f%% utilization)",
-                       self.device_id, freed_mb, 
+                       self.device_id, freed_mb,
                        stats_before['utilization_pct'], stats_after['utilization_pct'])
     
     def get_optimal_batch_size(self, current_batch_size: int, available_vram_mb: Optional[float] = None) -> int:
         """
         Calculate optimal batch size based on available VRAM.
-        
+
         Args:
             current_batch_size: Current batch size
             available_vram_mb: Optional override for available VRAM
-            
+
         Returns:
             Recommended batch size
         """
         stats = self.get_memory_stats()
         available = available_vram_mb or stats['free_mb']
-        
-        # Rough heuristic: ~500MB per batch item for face swapping
+
+        # Use configurable MB per batch estimate (default 500MB)
         # This is conservative and depends on image resolution
-        mb_per_batch = 500
-        max_batch_size = max(self.min_batch_size, int(available / mb_per_batch))
+        max_batch_size = max(self.min_batch_size, int(available / self.mb_per_batch))
         
         # Cap at configured max
         max_batch_size = min(max_batch_size, config.max_batch_size)

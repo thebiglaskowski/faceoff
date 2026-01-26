@@ -14,6 +14,7 @@ from typing import List, Optional, Tuple
 
 from core.face_processor import filter_faces_by_confidence, sort_faces_by_position, FaceTracker
 from core.media_processor import MediaProcessor
+from core.model_pool import get_model_pool, GPUModelInstance
 from processing.enhancement import enhance_frames_single_gpu, enhance_frames_multi_gpu
 from processing.face_restoration import FaceRestorer
 from processing.resolution_adaptive import ResolutionAdaptiveProcessor
@@ -23,6 +24,63 @@ from utils.temp_manager import get_temp_manager
 from utils.progress import get_progress_tracker, create_stage_tracker
 
 logger = logging.getLogger("FaceOff")
+
+
+def process_frames_batch_pooled(
+    gpu_instance: GPUModelInstance,
+    frames: List[np.ndarray],
+    src_faces: List,
+    face_confidence: float,
+    face_mappings: Optional[List[Tuple[int, int]]] = None,
+    face_tracker: Optional[FaceTracker] = None,
+    adaptive_processor: Optional[ResolutionAdaptiveProcessor] = None
+) -> List[np.ndarray]:
+    """
+    Process a batch of frames using the model pool's GPU instance.
+
+    This is the thread-safe version that uses isolated ONNX sessions per GPU.
+
+    Args:
+        gpu_instance: GPUModelInstance from the model pool
+        frames: Batch of frames to process
+        src_faces: Source faces (pre-detected)
+        face_confidence: Minimum face detection confidence
+        face_mappings: Optional face mapping rules
+        face_tracker: Face tracker for maintaining stable IDs
+        adaptive_processor: Optional resolution-adaptive processor
+
+    Returns:
+        List of processed frames with swapped faces
+    """
+    # Detect faces in all frames using the GPU instance's face analysis
+    all_dst_faces = [gpu_instance.get_faces(frame) for frame in frames]
+
+    # Filter by confidence
+    all_dst_faces = [filter_faces_by_confidence(faces, face_confidence) for faces in all_dst_faces]
+
+    # Track faces if tracker provided
+    if face_tracker:
+        all_dst_faces = [face_tracker.track_faces(faces) for faces in all_dst_faces]
+
+    # Process each frame with face swapping
+    results = []
+    for frame, dst_faces in zip(frames, all_dst_faces):
+        swapped = frame.copy()
+
+        # Apply face mappings or default behavior
+        if face_mappings:
+            for src_idx, dst_idx in face_mappings:
+                if src_idx < len(src_faces) and dst_idx < len(dst_faces) and dst_faces[dst_idx] is not None:
+                    swapped = gpu_instance.swap_face(swapped, dst_faces[dst_idx], src_faces[src_idx], paste_back=True)
+        else:
+            # Default: swap first source face to all destination faces
+            for face in dst_faces:
+                if src_faces and face is not None:
+                    swapped = gpu_instance.swap_face(swapped, face, src_faces[0], paste_back=True)
+
+        results.append(swapped)
+
+    return results
 
 
 def process_frames_batch(
@@ -166,78 +224,74 @@ def process_video(
         )
         logger.info("Resolution-adaptive detection enabled (scale=%.2f)", detection_scale)
     
-    # Multi-GPU setup - now with batching support
+    # Multi-GPU setup - using model pool for isolated ONNX sessions per GPU
     if len(device_ids) > 1:
-        logger.info("Multi-GPU Video Mode: %d GPUs: %s (batched processing)", len(device_ids), device_ids)
-        
+        logger.info("Multi-GPU Video Mode: %d GPUs: %s (using model pool)", len(device_ids), device_ids)
+
         # Stage 1: Face Detection
         progress.set_stage("🔍 Face Detection")
         progress.log("📸 Detecting faces in source image...")
-        
-        processors = [MediaProcessor(device_id=dev_id, use_tensorrt=True) for dev_id in device_ids]
-        
-        # Create a single global lock for all swapper operations to prevent corruption
-        # Even though each GPU has its own processor, the inswapper model has shared state
-        global_swapper_lock = threading.Lock()
-        
-        # Pre-detect source faces for each processor
+
+        # Use model pool for isolated GPU instances
+        model_pool = get_model_pool()
+        gpu_instances = model_pool.get_instances(device_ids)
+        num_gpus = len(gpu_instances)
+
+        # Pre-detect source faces using each GPU's isolated models
         processor_src_faces = []
-        for proc in processors:
-            proc_src = proc.get_faces(source_image)
+        for gpu_instance in gpu_instances:
+            proc_src = gpu_instance.get_faces(source_image)
             proc_src = filter_faces_by_confidence(proc_src, face_confidence)
             proc_src = sort_faces_by_position(proc_src)
             processor_src_faces.append(proc_src)
-        
+
         progress.log(f"✅ Found {len(processor_src_faces[0])} source face(s)")
         logger.info("Source faces detected (after filtering): %d", len(processor_src_faces[0]))
-        
-        # Initialize face tracker for stable face IDs across frames
-        face_tracker = FaceTracker(iou_threshold=0.3)
-        
+
         # Use config for batch size
         batch_size = config.batch_size
-        num_gpus = len(processors)
-        
+
         # Distribute frames to GPUs (round-robin)
         gpu_frame_batches = [[] for _ in range(num_gpus)]
         gpu_frame_indices = [[] for _ in range(num_gpus)]
-        
+
         for idx, frame in enumerate(frames):
             gpu_idx = idx % num_gpus
             gpu_frame_batches[gpu_idx].append(frame)
             gpu_frame_indices[gpu_idx].append(idx)
-        
-        logger.info("Processing %d frames across %d GPUs in batches of %d...", 
-                   len(frames), num_gpus, batch_size)        
-        # Process each GPU's frames in parallel using threads
-        def process_gpu_frames(gpu_idx):
-            proc = processors[gpu_idx]
+
+        logger.info("Processing %d frames across %d GPUs in batches of %d...",
+                   len(frames), num_gpus, batch_size)
+
+        # Process each GPU's frames in parallel using model pool
+        def process_gpu_frames_with_pool(gpu_idx):
+            gpu_instance = gpu_instances[gpu_idx]
             src_faces = processor_src_faces[gpu_idx]
             gpu_frames = gpu_frame_batches[gpu_idx]
-            
-            # Each GPU needs its own face tracker to avoid thread-safety issues
+
+            # Each GPU needs its own face tracker
             gpu_face_tracker = FaceTracker(iou_threshold=0.3)
-            
+
             gpu_results = []
             for i in range(0, len(gpu_frames), batch_size):
                 batch = gpu_frames[i:i + batch_size]
-                batch_results = process_frames_batch(
-                    proc, batch, src_faces, face_confidence,
-                    face_mappings, gpu_face_tracker, adaptive_processor, global_swapper_lock
+                batch_results = process_frames_batch_pooled(
+                    gpu_instance, batch, src_faces, face_confidence,
+                    face_mappings, gpu_face_tracker, adaptive_processor
                 )
                 gpu_results.extend(batch_results)
-            
+
             return gpu_idx, gpu_results
-        
+
         # Process all GPUs in parallel
         gpu_results_dict = {}
-        
+
         with ThreadPoolExecutor(max_workers=num_gpus) as executor:
-            futures = [executor.submit(process_gpu_frames, gpu_idx) for gpu_idx in range(num_gpus)]
+            futures = [executor.submit(process_gpu_frames_with_pool, gpu_idx) for gpu_idx in range(num_gpus)]
             for future in futures:
                 gpu_idx, gpu_frames = future.result()
                 gpu_results_dict[gpu_idx] = gpu_frames
-        
+
         # Reconstruct frames in original order
         result = [None] * len(frames)
         for gpu_idx in range(num_gpus):
@@ -245,7 +299,7 @@ def process_video(
             gpu_frames = gpu_results_dict[gpu_idx]
             for original_idx, frame in zip(indices, gpu_frames):
                 result[original_idx] = frame
-        
+
         logger.info("Multi-GPU Video processing complete: %d frames", len(result))
     
     else:

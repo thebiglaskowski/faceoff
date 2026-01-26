@@ -31,8 +31,10 @@ cache/
 *.cache
 tensorrt_cache/
 
-# --- Tests (internal testing files, not to be committed) ---
-tests/
+# --- Tests (exclude pycache and test outputs, but track test files) ---
+tests/__pycache__/
+tests/**/__pycache__/
+.pytest_cache/
 
 # --- Config/environment for local machine only ---
 *.env

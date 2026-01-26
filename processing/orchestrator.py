@@ -137,13 +137,16 @@ def process_media(
     # Parse GPU selection
     device_ids = parse_gpu_selection(gpu_selection)
     
-    # TEMPORARY: Force single-GPU for videos/GIFs due to inswapper model threading issues
-    # Multi-GPU causes model corruption in face swapping even with locks
+    # Multi-GPU face swapping for videos/GIFs is now supported via the model pool
+    # This uses isolated ONNX sessions per GPU with proper CUDA context management
     if len(device_ids) > 1 and media_type in ["video", "gif"]:
-        logger.warning("Multi-GPU not supported for %s due to model threading limitations. Using single GPU: %d", 
-                      media_type.upper(), device_ids[0])
-        logger.warning("Face detection will still benefit from optimizations (batching, adaptive resolution)")
-        device_ids = [device_ids[0]]
+        if config.multi_gpu_video_enabled:
+            logger.info("Multi-GPU enabled for %s with %d GPUs (using model pool)",
+                       media_type.upper(), len(device_ids))
+        else:
+            logger.info("Multi-GPU disabled in config for %s. Using single GPU: %d",
+                       media_type.upper(), device_ids[0])
+            device_ids = [device_ids[0]]
     
     # Log face mappings received
     logger.info("process_media received face_mappings: %s", face_mappings)

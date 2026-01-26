@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from core.media_processor import MediaProcessor
 from core.face_processor import filter_faces_by_confidence, FaceTracker
 from processing.resolution_adaptive import ResolutionAdaptiveProcessor
+from utils.config_manager import config
 from utils.memory_manager import MemoryManager
 from utils.progress import get_progress_tracker
 
@@ -32,6 +33,78 @@ class FrameTask:
     frame: np.ndarray
     detected_faces: Optional[List] = None
     swapped_frame: Optional[np.ndarray] = None
+
+
+class FramePrefetcher:
+    """
+    Prefetches frames into memory for faster pipeline processing.
+
+    Loads frames ahead of time in a background thread to minimize
+    I/O wait during GPU-intensive operations.
+    """
+
+    def __init__(self, frames: List[np.ndarray], prefetch_count: int = 8):
+        """
+        Initialize frame prefetcher.
+
+        Args:
+            frames: List of frames to prefetch
+            prefetch_count: Number of frames to prefetch ahead
+        """
+        self.frames = frames
+        self.prefetch_count = min(prefetch_count, len(frames))
+        self._index = 0
+        self._lock = threading.Lock()
+        self._prefetch_queue: queue.Queue = queue.Queue(maxsize=prefetch_count)
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        """Start prefetching thread."""
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._prefetch_worker, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        """Stop prefetching thread."""
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+
+    def _prefetch_worker(self) -> None:
+        """Worker thread that prefetches frames."""
+        prefetch_idx = 0
+        while not self._stop_event.is_set() and prefetch_idx < len(self.frames):
+            try:
+                # Copy frame to ensure it's in contiguous memory
+                frame_copy = np.ascontiguousarray(self.frames[prefetch_idx])
+                self._prefetch_queue.put((prefetch_idx, frame_copy), timeout=0.5)
+                prefetch_idx += 1
+            except queue.Full:
+                continue
+
+    def get_next(self) -> Optional[Tuple[int, np.ndarray]]:
+        """
+        Get next prefetched frame.
+
+        Returns:
+            Tuple of (index, frame) or None if no more frames
+        """
+        try:
+            return self._prefetch_queue.get(timeout=1.0)
+        except queue.Empty:
+            return None
+
+    def __len__(self) -> int:
+        return len(self.frames)
+
+    def __enter__(self) -> 'FramePrefetcher':
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        self.stop()
+        return False
 
 
 class AsyncPipeline:
@@ -53,36 +126,43 @@ class AsyncPipeline:
         face_confidence: float,
         face_mappings: Optional[List[Tuple[int, int]]] = None,
         adaptive_processor: Optional[ResolutionAdaptiveProcessor] = None,
-        queue_size: int = 0  # 0 = unbounded to avoid deadlock
+        queue_size: Optional[int] = None
     ):
         """
         Initialize async pipeline.
-        
+
         Args:
             processor: MediaProcessor instance
             src_faces: Source faces for swapping
             face_confidence: Minimum face detection confidence
             face_mappings: Optional face mapping rules
             adaptive_processor: Optional resolution-adaptive processor
-            queue_size: Maximum queue size for buffering (0=unbounded)
+            queue_size: Maximum queue size for buffering (None=use config, 0=unbounded)
         """
         self.processor = processor
         self.src_faces = src_faces
         self.face_confidence = face_confidence
         self.face_mappings = face_mappings
         self.adaptive_processor = adaptive_processor
-        
+
         # Memory manager for OOM prevention
         self.memory_manager = MemoryManager(device_id=processor.device_id)
-        
-        # Create unbounded queues to avoid deadlock when feeding frames
-        # Using maxsize=0 (unbounded) prevents blocking when feeding all frames at once
-        self.detection_queue = queue.Queue(maxsize=0)
-        self.swapping_queue = queue.Queue(maxsize=0)
-        self.output_queue = queue.Queue(maxsize=0)
+
+        # Get queue size from config if not specified
+        if queue_size is None:
+            queue_size = config.async_queue_size
+
+        # Create bounded queues to prevent memory explosion with large videos
+        # Using bounded queues provides backpressure when processing can't keep up
+        # Note: queue_size of 0 means unbounded (legacy behavior)
+        logger.debug("AsyncPipeline using queue_size=%d", queue_size)
+        self.detection_queue = queue.Queue(maxsize=queue_size)
+        self.swapping_queue = queue.Queue(maxsize=queue_size)
+        self.output_queue = queue.Queue(maxsize=queue_size)
         
         # Face tracker for maintaining stable IDs
-        self.face_tracker = FaceTracker(iou_threshold=0.3)
+        iou_threshold = config.get('face_detection', 'iou_threshold', default=0.3)
+        self.face_tracker = FaceTracker(iou_threshold=iou_threshold)
         
         # Threading control
         self.stop_event = threading.Event()

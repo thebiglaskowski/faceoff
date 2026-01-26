@@ -4,11 +4,39 @@ Refactored with modular components for clean architecture.
 """
 import gradio as gr
 import logging
-import numpy as np
 from pathlib import Path
-from PIL import Image
 
 from utils.logging_setup import setup_logging
+from utils.constants import MODEL_OPTIONS
+
+# UI Components and Helpers
+from ui.components.image_tab import create_image_tab
+from ui.components.gif_tab import create_gif_tab
+from ui.components.video_tab import create_video_tab
+from ui.components.gallery_tab import create_gallery_tab, update_gallery, refresh_gallery
+from ui.helpers.gallery_utils import delete_file
+from ui.helpers.gpu_utils import get_gpu_status, refresh_gpu_info
+from ui.helpers.face_detection import detect_faces_simple, detect_faces_for_mapping, detect_faces_with_thumbnails
+from ui.helpers.preview import show_gif_preview
+
+# Handler modules (extracted for cleaner architecture)
+from ui.handlers.preset_handlers import (
+    load_preset_all_tabs,
+    load_preset_settings,
+    save_current_preset,
+    delete_selected_preset,
+    get_preset_info_text,
+    get_preset_choices,
+    get_default_preset,
+    get_preset_manager,
+)
+from ui.handlers.processing_handlers import (
+    process_image,
+    process_gif,
+    process_video,
+    add_face_mapping_wrapper,
+    clear_face_mappings_wrapper,
+)
 
 # Custom CSS styling
 CUSTOM_CSS = """
@@ -67,37 +95,10 @@ CUSTOM_CSS = """
     margin: 1rem 0;
 }
 """
-from core.face_processor import FaceMappingManager
-from utils.validation import (
-    validate_file_size, validate_image_resolution,
-    validate_video_duration, validate_gif_frames, validate_media_type
-)
-from utils.constants import MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_TILE_SIZE, DEFAULT_OUTSCALE, DEFAULT_USE_FP32, DEFAULT_PRE_PAD
-from processing.orchestrator import process_media
-from utils.preset_manager import PresetManager, initialize_default_presets
-from utils.error_handler import ErrorHandler, FriendlyError
-
-# UI Components and Helpers
-from ui.components.image_tab import create_image_tab
-from ui.components.gif_tab import create_gif_tab
-from ui.components.video_tab import create_video_tab
-from ui.components.gallery_tab import create_gallery_tab, update_gallery, refresh_gallery
-from ui.helpers.gallery_utils import count_media_files, delete_file
-from ui.helpers.gpu_utils import get_gpu_status, refresh_gpu_info
-from ui.helpers.face_detection import detect_faces_simple, detect_faces_for_mapping, detect_faces_with_thumbnails
-from ui.helpers.face_mapping import add_face_mapping as helper_add_mapping, clear_face_mappings as helper_clear_mappings
-from ui.helpers.preview import show_gif_preview
 
 # Set up logging
 setup_logging()
 logger = logging.getLogger("FaceOff")
-
-# Global state for face mappings
-face_mapping_manager = FaceMappingManager()
-
-# Initialize preset manager
-preset_manager = PresetManager()
-initialize_default_presets(preset_manager)
 
 # Create output directories on startup
 output_base = Path("outputs")
@@ -106,281 +107,6 @@ output_base.mkdir(exist_ok=True)
 (output_base / "gif").mkdir(exist_ok=True)
 (output_base / "video").mkdir(exist_ok=True)
 logger.info("Output directories initialized: outputs/image, outputs/gif, outputs/video")
-
-
-def get_preset_choices():
-    """Get list of available preset names for dropdown."""
-    presets = preset_manager.list_presets()
-    return [p['name'] for p in presets]
-
-
-def get_default_preset():
-    """Get the default preset name (Balanced if available, otherwise first in list)."""
-    choices = get_preset_choices()
-    if "Balanced" in choices:
-        return "Balanced"
-    return choices[0] if choices else None
-
-
-def load_preset_settings(preset_name):
-    """Load preset and return settings as tuple for updating UI controls."""
-    if not preset_name:
-        return [gr.update() for _ in range(8)]  # Return no updates
-    
-    try:
-        settings = preset_manager.load_preset(preset_name)
-        logger.info(f"Loaded preset: {preset_name}")
-        
-        # Get the model name from settings (check both 'model' and 'model_name' for compatibility)
-        model_name = settings.get('model') or settings.get('model_name', DEFAULT_MODEL)
-        logger.info(f"Preset model_name from settings: {model_name}")
-        
-        # The image_tab.py dropdowns use simple model names (e.g., "RealESRGAN_x4plus")
-        # not display names, so we use the model_name directly
-        logger.info(f"Using model name for dropdown: {model_name}")
-        
-        # Return updates for all relevant controls in order
-        # enhance, restore_faces, model, tile_size, outscale, use_fp32, pre_pad, restoration_weight
-        return [
-            gr.update(value=settings.get('enhance', False)),
-            gr.update(value=settings.get('restore_faces') or settings.get('restore', False)),
-            gr.update(value=model_name),  # Use model_name directly, not display name
-            gr.update(value=settings.get('tile_size', DEFAULT_TILE_SIZE)),
-            gr.update(value=settings.get('outscale', DEFAULT_OUTSCALE)),
-            gr.update(value=settings.get('use_fp32', DEFAULT_USE_FP32)),
-            gr.update(value=settings.get('pre_pad', DEFAULT_PRE_PAD)),
-            gr.update(value=settings.get('restoration_weight', 0.5)),
-        ]
-    except Exception as e:
-        logger.error(f"Error loading preset: {e}")
-        return [gr.update() for _ in range(8)]
-
-
-def save_current_preset(preset_name, enhance, restore, model_display_name, tile_size, outscale, use_fp32, pre_pad, restoration_weight):
-    """Save current settings as a new preset."""
-    if not preset_name or not preset_name.strip():
-        return gr.update(value="❌ Please enter a preset name"), gr.update()
-    
-    preset_name = preset_name.strip()
-    
-    try:
-        # Extract the actual model name from the display name
-        model_name = model_display_name
-        for display_name, model_info in MODEL_OPTIONS.items():
-            if display_name == model_display_name:
-                model_name = model_info.get('model_name', model_display_name)
-                break
-        
-        settings = {
-            'enhance': enhance,
-            'restore_faces': restore,  # Use consistent field name
-            'model_name': model_name,  # Store the actual model name, not display name
-            'tile_size': tile_size,
-            'outscale': outscale,
-            'use_fp32': use_fp32,
-            'pre_pad': pre_pad,
-            'restoration_weight': restoration_weight,
-        }
-        
-        preset_manager.save_preset(preset_name, settings, description="Custom user preset")
-        logger.info(f"Saved preset: {preset_name}")
-        
-        # Update dropdown with new preset list and status message
-        return (
-            gr.update(value=f"✅ Saved preset: {preset_name}"),
-            gr.update(choices=get_preset_choices(), value=preset_name)
-        )
-    except Exception as e:
-        logger.error(f"Error saving preset: {e}")
-        return gr.update(value=f"❌ Error: {str(e)}"), gr.update()
-
-
-def delete_selected_preset(preset_name):
-    """Delete the selected preset."""
-    if not preset_name:
-        return gr.update(value="❌ No preset selected"), gr.update()
-    
-    try:
-        preset_manager.delete_preset(preset_name)
-        logger.info(f"Deleted preset: {preset_name}")
-        
-        new_choices = get_preset_choices()
-        return (
-            gr.update(value=f"✅ Deleted preset: {preset_name}"),
-            gr.update(choices=new_choices, value=new_choices[0] if new_choices else None)
-        )
-    except Exception as e:
-        logger.error(f"Error deleting preset: {e}")
-        return gr.update(value=f"❌ Error: {str(e)}"), gr.update()
-
-
-def get_preset_info_text(preset_name):
-    """Get preset information for display."""
-    if not preset_name:
-        return "No preset selected"
-    
-    try:
-        info = preset_manager.get_preset_info(preset_name)
-        description = info.get('description', 'No description')
-        created = info.get('created', 'Unknown')
-        settings = info.get('settings', {})
-        
-        # Get model name (check both 'model' and 'model_name')
-        model_name = settings.get('model') or settings.get('model_name', 'N/A')
-        
-        # Get restore faces setting (check both field names)
-        restore_faces = settings.get('restore_faces') or settings.get('restore', False)
-        
-        info_text = f"**{preset_name}**\n\n"
-        info_text += f"{description}\n\n"
-        info_text += f"_Created: {created}_\n\n"
-        info_text += "**Settings:**\n"
-        info_text += f"- Enhancement: {'Yes' if settings.get('enhance') else 'No'}\n"
-        info_text += f"- Face Restoration: {'Yes' if restore_faces else 'No'}\n"
-        info_text += f"- Model: {model_name}\n"
-        info_text += f"- Tile Size: {settings.get('tile_size', 'N/A')}\n"
-        info_text += f"- Upscale: {settings.get('outscale', 'N/A')}x\n"
-        info_text += f"- FP32: {'Yes' if settings.get('use_fp32') else 'No'}\n"
-        
-        return info_text
-    except Exception as e:
-        return f"Error loading preset info: {str(e)}"
-
-
-def process_input(source_image, target_image_path=None, target_video_path=None, 
-                 enhance=False, confidence=0.5, gpu_selection=None, 
-                 face_mappings=None, model_selection=None, denoise_strength=0.5, 
-                 tile_size=None, outscale=None, use_fp32=None, pre_pad=None,
-                 restore_faces=False, restoration_weight=0.5):
-    """
-    Process input and route to appropriate media processing function.
-    """
-    import numpy as np
-    
-    logger.info("="*40)
-    logger.info("Starting processing...")
-    
-    try:
-        # Validate and prepare inputs
-        if source_image is None:
-            raise gr.Error("Please upload a source image.")
-        
-        # Determine media type and target path
-        if target_image_path:
-            target_path = target_image_path
-            if isinstance(target_path, Image.Image):
-                # Use timestamp-based unique filename
-                import time
-                timestamp = int(time.time() * 1000)
-                temp_path = Path("inputs") / f"temp_target_{timestamp}.png"
-                temp_path.parent.mkdir(exist_ok=True)
-                target_path.save(temp_path)
-                target_path = str(temp_path)
-            media_type = "image"
-        elif target_video_path:
-            target_path = target_video_path.name if hasattr(target_video_path, 'name') else target_video_path
-            media_type = validate_media_type(target_path)
-        else:
-            raise gr.Error("Please upload a target file.")
-        
-        # Validate files
-        validate_file_size(target_path)
-        
-        if media_type == "image":
-            validate_image_resolution(target_path)
-        elif media_type == "video":
-            validate_video_duration(target_path)
-        elif media_type == "gif":
-            validate_gif_frames(target_path)
-        
-        # Use provided enhancement settings or defaults
-        if tile_size is None:
-            tile_size = DEFAULT_TILE_SIZE
-        if outscale is None:
-            outscale = DEFAULT_OUTSCALE
-        if use_fp32 is None:
-            use_fp32 = DEFAULT_USE_FP32
-        if pre_pad is None:
-            pre_pad = DEFAULT_PRE_PAD
-        
-        # Parse model selection
-        if model_selection and model_selection in MODEL_OPTIONS:
-            model_name = MODEL_OPTIONS[model_selection]["model_name"]
-        else:
-            model_name = MODEL_OPTIONS[DEFAULT_MODEL]["model_name"]
-        
-        # Convert source to numpy array
-        source_array = np.array(source_image)
-        
-        # Get face mappings from manager
-        mappings = face_mapping_manager.get()
-        logger.info("Face mapping manager returned: %s", mappings)
-        
-        # Process media
-        output_dir = Path("outputs")
-        output_dir.mkdir(exist_ok=True)
-        
-        logger.info("Processing %s with enhancement=%s, model=%s, denoise=%.2f, confidence=%.2f, tile=%d, outscale=%d, fp32=%s, prepad=%d, restore=%s, weight=%.2f",
-                   media_type, enhance, model_name, denoise_strength, confidence, tile_size, outscale, use_fp32, pre_pad, restore_faces, restoration_weight)
-        
-        result_img, result_vid = process_media(
-            source_image=source_array,
-            dest_path=target_path,
-            media_type=media_type,
-            output_dir=str(output_dir),
-            enhance=enhance,
-            tile_size=tile_size,
-            outscale=outscale,
-            face_confidence=confidence,
-            gpu_selection=gpu_selection,
-            face_mappings=mappings,
-            model_name=model_name,
-            denoise_strength=denoise_strength,
-            use_fp32=use_fp32,
-            pre_pad=pre_pad,
-            restore_faces=restore_faces,
-            restoration_weight=restoration_weight
-        )
-        
-        logger.info("Processing complete!")
-        logger.info("="*40)
-        
-        # Return appropriate result based on media type
-        if media_type == "image":
-            return result_img
-        else:
-            return result_vid
-    
-    except FriendlyError as fe:
-        # Display friendly error message
-        logger.error("="*40)
-        raise gr.Error(fe.format_message())
-    except gr.Error:
-        raise
-    except Exception as e:
-        # Convert technical errors to friendly messages
-        context = {
-            'media_type': media_type if 'media_type' in locals() else 'unknown',
-            'enhance': enhance,
-            'tile_size': tile_size if tile_size else DEFAULT_TILE_SIZE,
-            'outscale': outscale if outscale else DEFAULT_OUTSCALE,
-            'restore_faces': restore_faces,
-            'use_fp32': use_fp32 if use_fp32 else DEFAULT_USE_FP32
-        }
-        friendly_error = ErrorHandler.handle_error(e, context)
-        logger.error("Processing error: %s", e, exc_info=True)
-        logger.error("="*40)
-        raise gr.Error(friendly_error.format_message())
-
-
-def add_face_mapping_wrapper(source_idx, target_idx, current_mappings_text):
-    """Wrapper to add face mapping using global manager."""
-    return helper_add_mapping(source_idx, target_idx, current_mappings_text, face_mapping_manager)
-
-
-def clear_face_mappings_wrapper():
-    """Wrapper to clear face mappings using global manager."""
-    return helper_clear_mappings(face_mapping_manager)
 
 
 def toggle_enhancement_controls(enabled):
@@ -619,11 +345,8 @@ def create_app():
         )
         
         # Image processing button
-        def wrapped_process_image(src, tgt, enhance, confidence, gpu, model, denoise, tile, outscale, fp32, prepad, restore, weight):
-            return process_input(src, tgt, None, enhance, confidence, gpu, None, model, denoise, tile, outscale, fp32, prepad, restore, weight)
-        
         img_components["run_image_btn"].click(
-            wrapped_process_image,
+            process_image,
             inputs=[
                 img_components["source_img"], img_components["target_img"], img_components["enhance_toggle"],
                 img_components["face_confidence"], img_components["gpu_selection"], img_components["model_selector"],
@@ -700,11 +423,8 @@ def create_app():
         )
         
         # GIF processing button
-        def wrapped_process_gif(src, tgt, enhance, confidence, gpu, model, denoise, tile, outscale, fp32, prepad, restore, weight):
-            return process_input(src, None, tgt, enhance, confidence, gpu, None, model, denoise, tile, outscale, fp32, prepad, restore, weight)
-        
         gif_components["run_gif_btn"].click(
-            wrapped_process_gif,
+            process_gif,
             inputs=[
                 gif_components["source_gif"], gif_components["target_gif_file"], gif_components["enhance_toggle_gif"],
                 gif_components["face_confidence_gif"], gif_components["gpu_selection_gif"], gif_components["model_selector_gif"],
@@ -774,11 +494,8 @@ def create_app():
         )
         
         # Video processing button
-        def wrapped_process_video(src, tgt, enhance, confidence, gpu, model, denoise, tile, outscale, fp32, prepad, restore, weight):
-            return process_input(src, None, tgt, enhance, confidence, gpu, None, model, denoise, tile, outscale, fp32, prepad, restore, weight)
-        
         vid_components["run_video_btn"].click(
-            wrapped_process_video,
+            process_video,
             inputs=[
                 vid_components["source_vid"], vid_components["target_vid"], vid_components["enhance_toggle_vid"],
                 vid_components["face_confidence_video"], vid_components["gpu_selection_video"], vid_components["model_selector_vid"],
@@ -800,22 +517,17 @@ def create_app():
         )
         
         # Load preset button - updates all settings controls across all tabs
-        # IMPORTANT: Must update visibility FIRST, then values
+        # Uses load_preset_all_tabs to return all updates in one function call
         load_preset_btn.click(
-            # Step 1: Update visibility for image tab based on preset settings
-            fn=lambda preset: toggle_enhancement_controls(preset_manager.load_preset(preset).get('enhance', False) if preset else False),
-            inputs=[preset_dropdown],
-            outputs=[img_components["model_row"], img_components["enhancement_options_row"], img_components["enhancement_advanced_row"]]
-        ).then(
-            fn=lambda preset: toggle_restoration_controls(preset_manager.load_preset(preset).get('restore_faces', False) if preset else False),
-            inputs=[preset_dropdown],
-            outputs=[img_components["restoration_row"]]
-        ).then(
-            # Step 2: Now update the actual values (after visibility is set)
-            fn=load_preset_settings,
+            fn=load_preset_all_tabs,
             inputs=[preset_dropdown],
             outputs=[
-                # Image tab controls
+                # Image tab visibility (4 outputs)
+                img_components["model_row"],
+                img_components["enhancement_options_row"],
+                img_components["enhancement_advanced_row"],
+                img_components["restoration_row"],
+                # Image tab values (8 outputs)
                 img_components["enhance_toggle"],
                 img_components["restore_faces_toggle"],
                 img_components["model_selector"],
@@ -823,23 +535,13 @@ def create_app():
                 img_components["outscale_slider"],
                 img_components["use_fp32_checkbox"],
                 img_components["pre_pad_slider"],
-                img_components["restoration_weight_slider"]
-            ]
-        ).then(
-            # Step 3: Update visibility for GIF tab
-            fn=lambda preset: toggle_enhancement_controls(preset_manager.load_preset(preset).get('enhance', False) if preset else False),
-            inputs=[preset_dropdown],
-            outputs=[gif_components["model_row_gif"], gif_components["enhancement_options_row_gif"], gif_components["enhancement_advanced_row_gif"]]
-        ).then(
-            fn=lambda preset: toggle_restoration_controls(preset_manager.load_preset(preset).get('restore_faces', False) if preset else False),
-            inputs=[preset_dropdown],
-            outputs=[gif_components["restoration_row_gif"]]
-        ).then(
-            # Step 4: Update GIF tab values
-            fn=load_preset_settings,
-            inputs=[preset_dropdown],
-            outputs=[
-                # GIF tab controls
+                img_components["restoration_weight_slider"],
+                # GIF tab visibility (4 outputs)
+                gif_components["model_row_gif"],
+                gif_components["enhancement_options_row_gif"],
+                gif_components["enhancement_advanced_row_gif"],
+                gif_components["restoration_row_gif"],
+                # GIF tab values (8 outputs)
                 gif_components["enhance_toggle_gif"],
                 gif_components["restore_faces_toggle_gif"],
                 gif_components["model_selector_gif"],
@@ -847,23 +549,13 @@ def create_app():
                 gif_components["outscale_slider_gif"],
                 gif_components["use_fp32_checkbox_gif"],
                 gif_components["pre_pad_slider_gif"],
-                gif_components["restoration_weight_slider_gif"]
-            ]
-        ).then(
-            # Step 5: Update visibility for video tab
-            fn=lambda preset: toggle_enhancement_controls(preset_manager.load_preset(preset).get('enhance', False) if preset else False),
-            inputs=[preset_dropdown],
-            outputs=[vid_components["model_row_vid"], vid_components["enhancement_options_row_vid"], vid_components["enhancement_advanced_row_vid"]]
-        ).then(
-            fn=lambda preset: toggle_restoration_controls(preset_manager.load_preset(preset).get('restore_faces', False) if preset else False),
-            inputs=[preset_dropdown],
-            outputs=[vid_components["restoration_row_vid"]]
-        ).then(
-            # Step 6: Update video tab values
-            fn=load_preset_settings,
-            inputs=[preset_dropdown],
-            outputs=[
-                # Video tab controls
+                gif_components["restoration_weight_slider_gif"],
+                # Video tab visibility (4 outputs)
+                vid_components["model_row_vid"],
+                vid_components["enhancement_options_row_vid"],
+                vid_components["enhancement_advanced_row_vid"],
+                vid_components["restoration_row_vid"],
+                # Video tab values (8 outputs)
                 vid_components["enhance_toggle_vid"],
                 vid_components["restore_faces_toggle_vid"],
                 vid_components["model_selector_vid"],
@@ -871,11 +563,10 @@ def create_app():
                 vid_components["outscale_slider_vid"],
                 vid_components["use_fp32_checkbox_vid"],
                 vid_components["pre_pad_slider_vid"],
-                vid_components["restoration_weight_slider_vid"]
+                vid_components["restoration_weight_slider_vid"],
+                # Status message (1 output)
+                preset_status,
             ]
-        ).then(
-            fn=lambda: "✅ Preset loaded successfully across all tabs!",
-            outputs=[preset_status]
         )
         
         # Save preset button

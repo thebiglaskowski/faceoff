@@ -100,7 +100,11 @@ class Config:
     @property
     def workers_per_gpu(self) -> int:
         return self.get('gpu', 'workers_per_gpu', default=4)
-    
+
+    @property
+    def multi_gpu_video_enabled(self) -> bool:
+        return self.get('gpu', 'multi_gpu_video_enabled', default=True)
+
     @property
     def tensorrt_enabled(self) -> bool:
         return self.get('gpu', 'tensorrt_enabled', default=True)
@@ -133,7 +137,15 @@ class Config:
     @property
     def face_confidence_threshold(self) -> float:
         return self.get('face_detection', 'confidence_threshold', default=0.5)
-    
+
+    @property
+    def iou_threshold(self) -> float:
+        return self.get('face_detection', 'iou_threshold', default=0.3)
+
+    @property
+    def ui_padding(self) -> int:
+        return self.get('face_detection', 'ui_padding', default=20)
+
     @property
     def adaptive_detection_enabled(self) -> bool:
         return self.get('face_detection', 'adaptive_enabled', default=True)
@@ -196,6 +208,10 @@ class Config:
     @property
     def async_min_frames_threshold(self) -> int:
         return self.get('async_pipeline', 'min_frames_threshold', default=10)
+
+    @property
+    def async_queue_size(self) -> int:
+        return self.get('async_pipeline', 'queue_size', default=32)
     
     # Logging
     @property
@@ -225,7 +241,15 @@ class Config:
     @property
     def log_date_format(self) -> str:
         return self.get('logging', 'date_format', default='%Y-%m-%d %H:%M:%S')
-    
+
+    @property
+    def log_json_format(self) -> bool:
+        return self.get('logging', 'json_format', default=False)
+
+    @property
+    def log_json_file(self) -> str:
+        return self.get('logging', 'json_log_file', default='app.json.log')
+
     # Model cache
     @property
     def tensorrt_cache_dir(self) -> str:
@@ -255,7 +279,11 @@ class Config:
     @property
     def reduce_batch_on_oom(self) -> bool:
         return self.get('memory', 'reduce_batch_on_oom', default=True)
-    
+
+    @property
+    def mb_per_batch_estimate(self) -> int:
+        return self.get('memory', 'mb_per_batch_estimate', default=500)
+
     @property
     def min_batch_size(self) -> int:
         return self.get('memory', 'min_batch_size', default=1)

@@ -73,18 +73,35 @@ def setup_logging(log_file: str = None, log_level: int = None) -> None:
     # Add handlers
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
-    
+
+    # Add JSON handler if enabled in config
+    if config.log_json_format:
+        try:
+            from utils.json_formatter import create_json_handler
+            json_handler = create_json_handler(
+                config.log_json_file,
+                level=file_level,
+                include_timestamp=True,
+                include_source=True
+            )
+            root_logger.addHandler(json_handler)
+        except Exception as e:
+            logging.getLogger("FaceOff").warning("Failed to enable JSON logging: %s", e)
+
     # Add terminal handler if available (for UI terminal tab)
     if terminal_handler_available:
         terminal_handler.setLevel(logging.DEBUG)  # Capture all logs for terminal
         root_logger.addHandler(terminal_handler)
-    
+
     # Log the configuration
     logger = logging.getLogger("FaceOff")
     logger.info("Logging initialized: file=%s (level=%s, max_size=%dMB, backups=%d), console_level=%s",
-                log_file, config.log_file_level.upper(), config.log_max_file_size_mb, 
+                log_file, config.log_file_level.upper(), config.log_max_file_size_mb,
                 backup_count, config.log_console_level.upper())
-    
+
+    if config.log_json_format:
+        logger.info("JSON logging enabled: %s", config.log_json_file)
+
     if terminal_handler_available:
         logger.info("Terminal tab logging enabled - logs will appear in UI Terminal tab")
     else:
