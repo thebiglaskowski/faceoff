@@ -157,11 +157,20 @@ print(f'✅ Python: 3.11')
 print(f'✅ PyTorch: {torch.__version__}')
 print(f'✅ CUDA Available: {torch.cuda.is_available()}')
 print(f'✅ TensorRT: {tensorrt.__version__}')
+print(f'✅ ONNX Providers: {onnxruntime.get_available_providers()}')
 print('🚀 All dependencies working!')
 "
 ```
 
-9. **Configure** (Optional):
+9. **Fix TensorRT DLL Errors** (if you see "nvinfer_10.dll missing"):
+
+```powershell
+# Install NVIDIA CUDA libraries for TensorRT
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12
+pip install nvidia-cusparse-cu12 nvidia-cusolver-cu12 nvidia-curand-cu12
+```
+
+10. **Configure** (Optional):
    - Copy `config.example.yaml` to `config.yaml` (auto-created with defaults if missing)
    - Edit settings as needed - see [CONFIG_README.md](CONFIG_README.md) for details
 

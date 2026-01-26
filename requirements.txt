@@ -29,7 +29,18 @@ basicsr>=1.4.2
 facexlib>=0.3.0
 
 # Performance & GPU Acceleration
-tensorrt>=10.14.0  # GPU acceleration (2-3x faster inference)
+# TensorRT provides 2-3x faster inference (optional but recommended)
+# Install with: pip install tensorrt==10.7.0
+tensorrt>=10.0.0
+
+# NVIDIA CUDA libraries for TensorRT support (install if TensorRT errors occur)
+# These are optional - only needed if you see "missing DLL" errors
+nvidia-cublas-cu12>=12.0.0
+nvidia-cudnn-cu12>=9.0.0
+nvidia-cufft-cu12>=11.0.0
+nvidia-cusparse-cu12>=12.0.0
+nvidia-cusolver-cu12>=11.0.0
+nvidia-curand-cu12>=10.0.0
 
 # Core Utilities
 PyYAML>=6.0
