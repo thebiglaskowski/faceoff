@@ -51,7 +51,8 @@ gfpgan/
 # But keep your **main ONNX swapper** (if under 100MB) by explicitly negating
 !inswapper_128.onnx
 
-# --- External git repos inside project (prevent nested repos issues) ---
+# --- External dependencies (now using pip packages) ---
+external/Real-ESRGAN/
 external/**/.git
 
 # --- OS / Editor junk ---

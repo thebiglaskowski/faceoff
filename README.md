@@ -305,7 +305,7 @@ The config system includes validation, defaults, and automatic migration. Change
 
 **Solutions**:
 1. Check terminal/logs for error messages (`app.log`)
-2. Verify Real-ESRGAN weights downloaded to `external/Real-ESRGAN/weights/`
+2. Verify Real-ESRGAN pip package is installed (`pip install realesrgan`)
 3. Try `RealESRGAN_x2plus` model to reduce memory usage
 4. Ensure CUDA toolkit is properly installed
 5. Check TensorRT cache isn't corrupted: delete `cache/tensorrt/` folder
@@ -489,8 +489,7 @@ faceoff/
 ├── models/                      # Model storage
 │   └── buffalo_l/              # InsightFace face analysis models
 │
-├── external/                    # External dependencies
-│   ├── Real-ESRGAN/            # Enhancement engine
+├── external/                    # External dependencies (optional)
 │   └── gifsicle/               # GIF compression tool (optional)
 │       └── gifsicle.exe        # Download from lcdf.org
 │
