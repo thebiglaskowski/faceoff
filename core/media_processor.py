@@ -140,8 +140,8 @@ class MediaProcessor:
                 if self.use_tensorrt and is_tensorrt_available():
                     tensorrt_provider_options = {
                         'device_id': self.device_id,
-                        'trt_max_workspace_size': 2 * 1024 * 1024 * 1024,  # 2GB
-                        'trt_fp16_enable': False,  # Disable FP16 - can cause quality issues
+                        'trt_max_workspace_size': config.tensorrt_workspace_mb * 1024 * 1024,
+                        'trt_fp16_enable': config.tensorrt_fp16,  # FP16 for ~30% speedup
                         'trt_engine_cache_enable': True,  # Cache TensorRT engines
                         'trt_engine_cache_path': config.tensorrt_cache_dir,
                     }
@@ -150,7 +150,8 @@ class MediaProcessor:
                         ('CUDAExecutionProvider', cuda_provider_options),
                         'CPUExecutionProvider'
                     ]
-                    logger.info("TensorRT optimization enabled on device %d (FP32 mode)", self.device_id)
+                    fp_mode = "FP16" if config.tensorrt_fp16 else "FP32"
+                    logger.info("TensorRT optimization enabled on device %d (%s mode)", self.device_id, fp_mode)
                 else:
                     if self.use_tensorrt:
                         logger.debug("TensorRT requested but not available, using CUDA")

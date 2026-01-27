@@ -66,7 +66,34 @@ class Config:
     def reload(self) -> None:
         """Reload configuration from file."""
         self._load_config()
-    
+
+    def update(self, *keys: str, value: Any) -> None:
+        """
+        Update a configuration value at runtime.
+
+        Args:
+            *keys: Keys to traverse the config hierarchy
+            value: New value to set
+
+        Example:
+            config.update('gpu', 'tensorrt_fp16', value=True)
+
+        Note: This updates the in-memory config only, not the file.
+        """
+        if not keys:
+            return
+
+        # Navigate to the parent dict
+        current = self._config
+        for key in keys[:-1]:
+            if key not in current:
+                current[key] = {}
+            current = current[key]
+
+        # Set the value
+        current[keys[-1]] = value
+        logger.debug(f"Config updated: {'.'.join(keys)} = {value}")
+
     # =============================================================================
     # Convenience properties for commonly accessed values
     # =============================================================================

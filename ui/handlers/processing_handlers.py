@@ -25,6 +25,7 @@ from utils.constants import (
 )
 from processing.orchestrator import process_media
 from utils.error_handler import ErrorHandler, FriendlyError
+from utils.config_manager import config
 from ui.helpers.face_mapping import (
     add_face_mapping as helper_add_mapping,
     clear_face_mappings as helper_clear_mappings
@@ -59,7 +60,8 @@ def _process_input(
     use_fp32: bool = None,
     pre_pad: int = None,
     restore_faces: bool = False,
-    restoration_weight: float = 0.5
+    restoration_weight: float = 0.5,
+    tensorrt_fp16: bool = True
 ):
     """
     Core processing function for all media types.
@@ -111,6 +113,9 @@ def _process_input(
         if pre_pad is None:
             pre_pad = DEFAULT_PRE_PAD
 
+        # Update TensorRT FP16 config for this processing run
+        config.update('gpu', 'tensorrt_fp16', value=tensorrt_fp16)
+
         # Parse model selection
         if model_selection and model_selection in MODEL_OPTIONS:
             model_name = MODEL_OPTIONS[model_selection]["model_name"]
@@ -131,9 +136,10 @@ def _process_input(
         logger.info(
             "Processing %s with enhancement=%s, model=%s, denoise=%.2f, "
             "confidence=%.2f, tile=%d, outscale=%d, fp32=%s, prepad=%d, "
-            "restore=%s, weight=%.2f",
+            "restore=%s, weight=%.2f, tensorrt_fp16=%s",
             media_type, enhance, model_name, denoise_strength, confidence,
-            tile_size, outscale, use_fp32, pre_pad, restore_faces, restoration_weight
+            tile_size, outscale, use_fp32, pre_pad, restore_faces, restoration_weight,
+            tensorrt_fp16
         )
 
         result_img, result_vid = process_media(
@@ -198,14 +204,15 @@ def process_image(
     fp32: bool,
     prepad: int,
     restore: bool,
-    weight: float
+    weight: float,
+    tensorrt_fp16: bool = True
 ):
     """Process an image face swap."""
     return _process_input(
         source_img, target_img, None,
         enhance, confidence, gpu, None,
         model, denoise, tile, outscale, fp32, prepad,
-        restore, weight
+        restore, weight, tensorrt_fp16
     )
 
 
@@ -222,14 +229,15 @@ def process_gif(
     fp32: bool,
     prepad: int,
     restore: bool,
-    weight: float
+    weight: float,
+    tensorrt_fp16: bool = True
 ):
     """Process a GIF face swap."""
     return _process_input(
         source_img, None, target_file,
         enhance, confidence, gpu, None,
         model, denoise, tile, outscale, fp32, prepad,
-        restore, weight
+        restore, weight, tensorrt_fp16
     )
 
 
@@ -246,14 +254,15 @@ def process_video(
     fp32: bool,
     prepad: int,
     restore: bool,
-    weight: float
+    weight: float,
+    tensorrt_fp16: bool = True
 ):
     """Process a video face swap."""
     return _process_input(
         source_img, None, target_file,
         enhance, confidence, gpu, None,
         model, denoise, tile, outscale, fp32, prepad,
-        restore, weight
+        restore, weight, tensorrt_fp16
     )
 
 

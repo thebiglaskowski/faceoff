@@ -144,6 +144,12 @@ def create_video_tab():
                     label="GPU Selection",
                     info="Choose which GPU(s) to use for processing"
                 )
+            with gr.Row():
+                tensorrt_fp16_checkbox_vid = gr.Checkbox(
+                    label="TensorRT FP16 Mode",
+                    value=True,
+                    info="~30% faster inference, minimal quality impact (requires TensorRT)"
+                )
         
         run_video_btn = gr.Button("Run Video Swap", variant="primary")
     
@@ -177,5 +183,6 @@ def create_video_tab():
         "pre_pad_slider_vid": pre_pad_slider_vid,
         "face_confidence_video": face_confidence_video,
         "gpu_selection_video": gpu_selection_video,
+        "tensorrt_fp16_checkbox_vid": tensorrt_fp16_checkbox_vid,
         "run_video_btn": run_video_btn,
     }

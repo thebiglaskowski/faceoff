@@ -165,6 +165,12 @@ def create_image_tab():
                     label="GPU Selection",
                     info="Choose which GPU(s) to use for processing"
                 )
+            with gr.Row():
+                tensorrt_fp16_checkbox = gr.Checkbox(
+                    label="TensorRT FP16 Mode",
+                    value=True,
+                    info="~30% faster inference, minimal quality impact (requires TensorRT)"
+                )
         
         run_image_btn = gr.Button("Run Image Swap", variant="primary")
     
@@ -198,5 +204,6 @@ def create_image_tab():
         "pre_pad_slider": pre_pad_slider,
         "face_confidence": face_confidence,
         "gpu_selection": gpu_selection,
+        "tensorrt_fp16_checkbox": tensorrt_fp16_checkbox,
         "run_image_btn": run_image_btn,
     }

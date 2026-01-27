@@ -107,13 +107,16 @@ def is_tensorrt_available() -> bool:
         _restore_stderr()
 
 
-def get_onnx_providers(device_id: int = 0, use_tensorrt: bool = True) -> List:
+def get_onnx_providers(device_id: int = 0, use_tensorrt: bool = True,
+                       use_fp16: bool = True, workspace_mb: int = 2048) -> List:
     """
     Get the list of ONNX execution providers to use.
 
     Args:
         device_id: CUDA device ID
         use_tensorrt: Whether to attempt using TensorRT (if available)
+        use_fp16: Whether to use FP16 precision (faster, slightly lower quality)
+        workspace_mb: TensorRT workspace size in MB
 
     Returns:
         List of provider tuples for ONNX Runtime session
@@ -124,10 +127,11 @@ def get_onnx_providers(device_id: int = 0, use_tensorrt: bool = True) -> List:
     if use_tensorrt and is_tensorrt_available():
         providers.append(('TensorrtExecutionProvider', {
             'device_id': device_id,
-            'trt_max_workspace_size': 2 << 30,  # 2GB
-            'trt_fp16_enable': True,
+            'trt_max_workspace_size': workspace_mb * 1024 * 1024,
+            'trt_fp16_enable': use_fp16,
         }))
-        logger.debug("TensorRT provider enabled for device %d", device_id)
+        fp_mode = "FP16" if use_fp16 else "FP32"
+        logger.debug("TensorRT provider enabled for device %d (%s)", device_id, fp_mode)
 
     # Always include CUDA as fallback
     providers.append(('CUDAExecutionProvider', {

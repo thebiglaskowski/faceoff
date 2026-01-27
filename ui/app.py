@@ -352,7 +352,7 @@ def create_app():
                 img_components["face_confidence"], img_components["gpu_selection"], img_components["model_selector"],
                 img_components["denoise_slider"], img_components["tile_size_slider"], img_components["outscale_slider"],
                 img_components["use_fp32_checkbox"], img_components["pre_pad_slider"], img_components["restore_faces_toggle"],
-                img_components["restoration_weight_slider"]
+                img_components["restoration_weight_slider"], img_components["tensorrt_fp16_checkbox"]
             ],
             outputs=[img_components["result_img"]],
             show_progress='full'
@@ -430,7 +430,7 @@ def create_app():
                 gif_components["face_confidence_gif"], gif_components["gpu_selection_gif"], gif_components["model_selector_gif"],
                 gif_components["denoise_slider_gif"], gif_components["tile_size_slider_gif"], gif_components["outscale_slider_gif"],
                 gif_components["use_fp32_checkbox_gif"], gif_components["pre_pad_slider_gif"], gif_components["restore_faces_toggle_gif"],
-                gif_components["restoration_weight_slider_gif"]
+                gif_components["restoration_weight_slider_gif"], gif_components["tensorrt_fp16_checkbox_gif"]
             ],
             outputs=[gif_components["result_gif"]],
             show_progress='full'
@@ -501,7 +501,7 @@ def create_app():
                 vid_components["face_confidence_video"], vid_components["gpu_selection_video"], vid_components["model_selector_vid"],
                 vid_components["denoise_slider_vid"], vid_components["tile_size_slider_vid"], vid_components["outscale_slider_vid"],
                 vid_components["use_fp32_checkbox_vid"], vid_components["pre_pad_slider_vid"], vid_components["restore_faces_toggle_vid"],
-                vid_components["restoration_weight_slider_vid"]
+                vid_components["restoration_weight_slider_vid"], vid_components["tensorrt_fp16_checkbox_vid"]
             ],
             outputs=[vid_components["result_vid"]],
             show_progress='full'
