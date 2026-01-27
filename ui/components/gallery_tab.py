@@ -94,28 +94,35 @@ def _get_count_text():
     return f"**📊 Files:** {counts['image']} Images | {counts['gif']} GIFs | {counts['video']} Videos"
 
 
-def update_gallery(media_type: str, limit: str = "24"):
+def update_gallery(media_type: str, limit: str = "24", force_refresh: bool = False):
     """
     Update gallery based on selected media type and limit.
-    
+
     Args:
         media_type: "Images", "GIFs", or "Videos"
         limit: Number of files to show as string
-        
+        force_refresh: If True, clear cache before loading (for media type changes)
+
     Returns:
         Tuple of (gallery_update, count_text_update)
     """
+    import logging
+    logger = logging.getLogger("FaceOff")
+
     # Map display names to internal types
     type_map = {
         "Images": "image",
         "GIFs": "gif",
         "Videos": "video"
     }
-    
-    
+
     internal_type = type_map.get(media_type, "image")
     max_files = int(limit)
-    
+
+    # Force cache refresh when switching media types for responsive UX
+    # This ensures users always see fresh data when toggling
+    clear_gallery_cache(internal_type)
+
     # Get files with specified limit
     if internal_type == "image":
         files = get_image_files(max_files=max_files)
@@ -125,19 +132,16 @@ def update_gallery(media_type: str, limit: str = "24"):
         files = get_video_files(max_files=max_files)
     else:
         files = []
-    
-    # Log what we're returning for debugging
-    import logging
-    logger = logging.getLogger("FaceOff")
+
     logger.info(f"update_gallery: Returning {len(files)} files for {media_type} ({internal_type})")
     if files:
         logger.debug(f"First file: {files[0][0]}")
-    
+
     # Update count text with info about limiting
     count_text = _get_count_text()
     if len(files) >= max_files:
         count_text += f"\n\n_Showing {max_files} most recent {media_type.lower()}_"
-    
+
     return gr.update(value=files, selected_index=None), gr.update(value=count_text)
 
 

@@ -15,13 +15,13 @@ Read more at [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://t
   - 🎞️ **Animated GIFs** with frame preservation
   - 🎬 **Videos** (MP4, WEBP, AVI, MOV) with audio preservation
 
-- **AI Enhancement**: 6 Real-ESRGAN models for quality upscaling:
-  - 🎯 **RealESRGAN_x4plus**: Best for photorealistic images (Default)
-  - 🎨 **RealESRGAN_x4plus_anime_6B**: Optimized for anime/illustrations
-  - 💎 **RealESRNet_x4plus**: Conservative enhancement, fewer artifacts
-  - 🔧 **realesr-general-x4v3**: With adjustable denoise control (0-1)
-  - 🎬 **realesr-animevideov3**: Specialized for anime videos
-  - ⚡ **RealESRGAN_x2plus**: Fast 2x upscaling
+- **AI Enhancement**: Multiple upscaling options:
+  - 🎯 **Real-ESRGAN** (6 models): RealESRGAN_x4plus, anime_6B, x2plus, and more
+  - 🔮 **SwinIR/Swin2SR**: Transformer-based super-resolution (alternative to Real-ESRGAN)
+
+- **Face Restoration**: Improve face quality after swapping:
+  - 👤 **GFPGAN**: Classic face restoration
+  - 🎭 **CodeFormer**: Advanced restoration with fidelity control
 
 ### Performance & Reliability
 
@@ -96,22 +96,21 @@ conda activate faceoff
 
 3. **Install PyTorch with CUDA**:
 
-   ⚠️ **PyTorch Version Note**: Avoid 2.4.0/2.4.1 with Python 3.11 due to typing issues.
+   ⚠️ **PyTorch Version Note**: Requires torch >= 2.6.0 for security (CVE-2025-32434) and SwinIR/CodeFormer support.
 
-   **For CUDA 12.1+ (Recommended - newest systems):**
+   **For CUDA 12.4+ (Recommended):**
    ```powershell
-   # Use stable 2.3.1 or latest 2.5.0+
-   pip install torch==2.3.1+cu121 torchvision==0.18.1+cu121 torchaudio==2.3.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
    ```
-   
-   **For CUDA 11.8 (older systems):**
+
+   **For CUDA 12.1 (alternative):**
    ```powershell
-   pip install torch==2.3.1+cu118 torchvision==0.18.1+cu118 torchaudio==2.3.1+cu118 --index-url https://download.pytorch.org/whl/cu118
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
    ```
-   
+
    **CPU-only (no GPU acceleration):**
    ```powershell
-   pip install torch==2.3.1+cpu torchvision==0.18.1+cpu torchaudio==2.3.1+cpu --index-url https://download.pytorch.org/whl/cpu
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
    ```
 
 4. **Install All Dependencies** (including TensorRT):
@@ -503,7 +502,37 @@ faceoff/
 
 ## Version History
 
-### v2.6.0 (Current) - Code Quality & Testing Release
+### v2.7.0 (Current) - Enhancement & Stability Release
+
+**New Features:**
+
+- ✅ **SwinIR/Swin2SR Transformer Upscaling**: Alternative to RealESRGAN with 4 model variants
+- ✅ **CodeFormer Face Restoration**: Advanced restoration with fidelity weight control
+- ✅ **Dynamic Model Selection**: UI dropdowns for SwinIR model variants
+- ✅ **Gallery Auto-Refresh**: Automatically updates after processing completes
+- ✅ **Scaled Compression Timeouts**: Large files get proportionally longer timeouts (up to 10 min)
+
+**Performance Optimizations:**
+
+- 🚀 **SDPA (Flash Attention)**: Automatic PyTorch 2.0+ scaled dot-product attention for SwinIR
+- 🚀 **FP16 Autocast**: Half-precision inference for faster transformer processing
+- 🚀 **BetterTransformer Support**: Optional HuggingFace optimum integration
+- 🚀 **torch.compile()**: Linux-only Triton JIT compilation (30-50% speedup)
+
+**Bug Fixes:**
+
+- 🔧 **TensorRT Multi-GPU**: Fixed Myelin autotuner race conditions with GPU-specific cache paths
+- 🔧 **TensorRT Auto-Disable**: Automatically disabled for multi-GPU to prevent compilation conflicts
+- 🔧 **Gallery Cache**: Fixed laggy updates when switching between media types
+- 🔧 **Compression Timeouts**: Large enhanced GIFs no longer timeout during compression
+
+**Architecture:**
+
+- 📁 **LRU Model Cache**: Bounded model caching prevents unbounded memory growth
+- 📁 **Processing Facade**: Clean API for orchestrator integration
+- 📁 **Model Preloader**: Background model warming for faster first inference
+
+### v2.6.0 - Code Quality & Testing Release
 
 **New Features:**
 

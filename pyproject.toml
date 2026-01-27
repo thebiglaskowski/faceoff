@@ -1,0 +1,44 @@
+# FaceOff Project Configuration
+# This file configures Python tools (pytest, coverage, etc.)
+
+[project]
+name = "faceoff"
+version = "1.0.0"
+description = "Local GPU-accelerated face swapping application"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+# Note: Main pytest config is in pytest.ini for compatibility
+
+[tool.coverage.run]
+# Source directories to measure
+source = ["core", "processing", "utils", "ui"]
+# Files to omit from coverage
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+    "main.py",  # Entry point, difficult to unit test
+]
+# Branch coverage
+branch = true
+
+[tool.coverage.report]
+# Minimum coverage percentage
+fail_under = 70
+# Exclude lines from coverage
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "except ImportError:",
+    "pass",
+]
+# Show missing lines
+show_missing = true
+# Skip files with 100% coverage in report
+skip_covered = false
+
+[tool.coverage.html]
+directory = "htmlcov"

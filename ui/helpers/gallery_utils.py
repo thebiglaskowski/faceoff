@@ -15,7 +15,7 @@ _gallery_cache: Dict[str, Dict[str, Any]] = {
     'gif': {'files': [], 'timestamp': 0, 'dir_mtime': 0},
     'video': {'files': [], 'timestamp': 0, 'dir_mtime': 0}
 }
-CACHE_DURATION = 30  # Cache duration in seconds
+CACHE_DURATION = 10  # Cache duration in seconds (reduced for faster updates)
 
 
 def _should_refresh_cache(media_type: str, media_path: Path) -> bool:
@@ -138,7 +138,7 @@ def get_video_files(output_dir: str = "outputs", max_files: int = 50) -> List[Tu
 def clear_gallery_cache(media_type: Optional[str] = None):
     """
     Clear the gallery cache for specified media type or all types.
-    
+
     Args:
         media_type: Type to clear ("image", "gif", "video") or None for all
     """
@@ -149,6 +149,20 @@ def clear_gallery_cache(media_type: Optional[str] = None):
         for key in _gallery_cache:
             _gallery_cache[key] = {'files': [], 'timestamp': 0, 'dir_mtime': 0}
         logger.debug("Cleared all gallery caches")
+
+
+def invalidate_gallery_for_new_file(media_type: str) -> None:
+    """
+    Invalidate gallery cache when a new file is created.
+
+    This should be called by processing handlers after saving output files
+    to ensure the gallery shows the new file immediately.
+
+    Args:
+        media_type: Type of media created ("image", "gif", "video")
+    """
+    clear_gallery_cache(media_type)
+    logger.info(f"Gallery cache invalidated for new {media_type} file")
 
 
 def count_media_files(output_dir: str = "outputs") -> dict:

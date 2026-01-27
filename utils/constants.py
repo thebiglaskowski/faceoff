@@ -5,7 +5,7 @@ This module now uses the centralized config manager.
 Legacy constants are maintained for backward compatibility.
 """
 
-from utils.config_manager import config, get_model_options
+from utils.config_manager import config, get_model_options, get_swinir_model_options
 
 # File size and resource limits (from config)
 MAX_FILE_SIZE_MB = config.max_file_size_mb
@@ -16,8 +16,12 @@ MAX_GIF_FRAMES = config.max_gif_frames
 # Real-ESRGAN model options (from config)
 MODEL_OPTIONS = get_model_options()
 
-# Default model (from config)
+# SwinIR/Swin2SR model options
+SWINIR_MODEL_OPTIONS = get_swinir_model_options()
+
+# Default models (from config)
 DEFAULT_MODEL = list(MODEL_OPTIONS.keys())[0] if MODEL_OPTIONS else "RealESRGAN_x4plus (General - Best for Photos)"
+DEFAULT_SWINIR_MODEL = list(SWINIR_MODEL_OPTIONS.keys())[0] if SWINIR_MODEL_OPTIONS else "Swin2SR_RealWorld_x4 (Recommended)"
 
 # Default enhancement settings (from config)
 DEFAULT_TILE_SIZE = config.default_tile_size

@@ -172,7 +172,9 @@ def process_video(
     restoration_weight: float = 0.5,
     adaptive_detection: bool = None,
     detection_scale: float = None,
-    use_async_pipeline: bool = True
+    use_async_pipeline: bool = True,
+    enhancement_model: str = "RealESRGAN",
+    restoration_model: str = "GFPGAN"
 ) -> Tuple[None, Optional[str]]:
     """
     Process video files with face swapping.
@@ -375,14 +377,24 @@ def process_video(
     # Apply face restoration if requested (before creating video)
     if restore_faces:
         progress.set_stage("⚡ Face Restoration")
-        progress.log(f"🔧 Applying GFPGAN restoration (weight={restoration_weight:.2f})...")
-        logger.info("Applying GFPGAN face restoration (weight=%.2f)...", restoration_weight)
-        restorer = FaceRestorer(device_id=device_ids[0] if device_ids else 0)
+        progress.log(f"🔧 Applying {restoration_model} restoration (weight={restoration_weight:.2f})...")
+        logger.info("Applying %s face restoration (weight=%.2f)...", restoration_model, restoration_weight)
+
+        # Get appropriate restorer based on model selection
+        gpu_id = device_ids[0] if device_ids else 0
+        if restoration_model == "CodeFormer":
+            from processing.codeformer_restoration import CodeFormerRestorer
+            restorer = CodeFormerRestorer(device_id=gpu_id)
+            restore_fn = lambda frame, w: restorer.restore_faces_in_frame(frame, fidelity_weight=w)
+        else:
+            restorer = FaceRestorer(device_id=gpu_id)
+            restore_fn = lambda frame, w: restorer.restore_faces_in_frame(frame, weight=w)
+
         try:
             restored_result = []
             with progress.track(len(result), "Restoring faces", "frame") as pbar:
                 for idx, frame in enumerate(result):
-                    restored = restorer.restore_faces_in_frame(frame, weight=restoration_weight)
+                    restored = restore_fn(frame, restoration_weight)
                     restored_result.append(restored)
                     pbar.update(1)
                     if (idx + 1) % 50 == 0:
@@ -507,7 +519,8 @@ def process_video(
     # Apply enhancement if requested
     if enhance:
         progress.set_stage("✨ Enhancement")
-        progress.log(f"🎨 Applying Real-ESRGAN enhancement (scale={outscale}x, model={model_name})...")
+        display_model = model_name if enhancement_model == "RealESRGAN" else enhancement_model
+        progress.log(f"🎨 Applying {enhancement_model} enhancement (scale={outscale}x, model={display_model})...")
         
         # Use temp manager for enhancement temp directories
         temp_manager = get_temp_manager()
@@ -533,8 +546,27 @@ def process_video(
             
             video_clip.close()
             
-            # Enhance frames using multi-GPU or single GPU
-            if len(device_ids) > 1:
+            # Enhance frames using selected model
+            if enhancement_model == "SwinIR":
+                # Use SwinIR for enhancement
+                from processing.swinir_enhancement import enhance_frames_swinir
+
+                # Map model_name to SwinIR equivalent if needed
+                if model_name.startswith("Swin"):
+                    swinir_model = model_name
+                else:
+                    swinir_model = "Swin2SR_RealWorld_x4"
+
+                result = enhance_frames_swinir(
+                    temp_frames_dir,
+                    enhanced_output_dir,
+                    media_type="video",
+                    fps=fps,
+                    audio=audio,
+                    model_name=swinir_model,
+                    gpu_id=device_ids[0] if device_ids else 0
+                )
+            elif len(device_ids) > 1:
                 logger.info("Using multi-GPU enhancement with %d GPUs", len(device_ids))
                 result = enhance_frames_multi_gpu(
                     frame_paths,

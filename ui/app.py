@@ -2,12 +2,18 @@
 Gradio UI for FaceOff - AI Face Swapper application.
 Refactored with modular components for clean architecture.
 """
+# Suppress third-party warnings BEFORE any imports that might trigger them
+import warnings
+warnings.filterwarnings("ignore", message=r".*`rcond` parameter will change.*", category=FutureWarning)
+warnings.filterwarnings("ignore", message=r".*parameter 'pretrained' is deprecated.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=r".*Arguments other than a weight enum.*", category=UserWarning)
+
 import gradio as gr
 import logging
 from pathlib import Path
 
 from utils.logging_setup import setup_logging
-from utils.constants import MODEL_OPTIONS
+from utils.constants import MODEL_OPTIONS, SWINIR_MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_SWINIR_MODEL
 
 # UI Components and Helpers
 from ui.components.image_tab import create_image_tab
@@ -110,8 +116,54 @@ logger.info("Output directories initialized: outputs/image, outputs/gif, outputs
 
 
 def toggle_enhancement_controls(enabled):
-    """Toggle visibility of enhancement control rows."""
-    return [gr.update(visible=enabled)] * 3
+    """Toggle visibility of enhancement control rows and model selector."""
+    return [gr.update(visible=enabled)] * 4  # model_row, enhancement_options_row, enhancement_advanced_row, enhancement_model_selector
+
+
+def update_model_choices(enhancement_framework: str):
+    """
+    Update the model selector choices based on the selected enhancement framework.
+
+    Args:
+        enhancement_framework: "RealESRGAN" or "SwinIR"
+
+    Returns:
+        gr.update with new choices and value for the model selector
+    """
+    if enhancement_framework == "SwinIR":
+        choices = list(SWINIR_MODEL_OPTIONS.keys())
+        default = DEFAULT_SWINIR_MODEL
+        info = "Select Swin2SR model for enhancement"
+    else:
+        choices = list(MODEL_OPTIONS.keys())
+        default = DEFAULT_MODEL
+        info = "Select Real-ESRGAN model for enhancement"
+
+    return gr.update(choices=choices, value=default, info=info)
+
+
+def _refresh_gallery_for_type(media_type: str, limit: str = "24"):
+    """
+    Helper to refresh gallery for a specific media type.
+
+    Used for auto-refresh after processing completes.
+    """
+    return refresh_gallery(media_type, limit)
+
+
+def refresh_gallery_images(_result=None):
+    """Refresh gallery showing images. Used after image processing."""
+    return _refresh_gallery_for_type("Images")
+
+
+def refresh_gallery_gifs(_result=None):
+    """Refresh gallery showing GIFs. Used after GIF processing."""
+    return _refresh_gallery_for_type("GIFs")
+
+
+def refresh_gallery_videos(_result=None):
+    """Refresh gallery showing videos. Used after video processing."""
+    return _refresh_gallery_for_type("Videos")
 
 
 def show_delete_controls(evt: gr.SelectData):
@@ -193,8 +245,8 @@ def delete_and_refresh(file_path: str, media_type_display: str, limit: str = "24
 
 
 def toggle_restoration_controls(enabled):
-    """Toggle visibility of face restoration controls."""
-    return gr.update(visible=enabled)
+    """Toggle visibility of face restoration controls and model selector."""
+    return [gr.update(visible=enabled)] * 2  # restoration_row, restoration_model_selector
 
 
 def toggle_denoise_slider(model_choice):
@@ -291,13 +343,20 @@ def create_app():
         img_components["enhance_toggle"].change(
             toggle_enhancement_controls,
             inputs=[img_components["enhance_toggle"]],
-            outputs=[img_components["model_row"], img_components["enhancement_options_row"], img_components["enhancement_advanced_row"]]
+            outputs=[img_components["model_row"], img_components["enhancement_options_row"], img_components["enhancement_advanced_row"], img_components["enhancement_model_selector"]]
         )
-        
+
+        # Update model selector choices when enhancement framework changes
+        img_components["enhancement_model_selector"].change(
+            update_model_choices,
+            inputs=[img_components["enhancement_model_selector"]],
+            outputs=[img_components["model_selector"]]
+        )
+
         img_components["restore_faces_toggle"].change(
             toggle_restoration_controls,
             inputs=[img_components["restore_faces_toggle"]],
-            outputs=[img_components["restoration_row"]]
+            outputs=[img_components["restoration_row"], img_components["restoration_model_selector"]]
         )
         
         img_components["model_selector"].change(
@@ -344,7 +403,7 @@ def create_app():
             outputs=[img_components["face_mapping_status"], img_components["current_mappings"]]
         )
         
-        # Image processing button
+        # Image processing button with auto-refresh of gallery
         img_components["run_image_btn"].click(
             process_image,
             inputs=[
@@ -352,23 +411,36 @@ def create_app():
                 img_components["face_confidence"], img_components["gpu_selection"], img_components["model_selector"],
                 img_components["denoise_slider"], img_components["tile_size_slider"], img_components["outscale_slider"],
                 img_components["use_fp32_checkbox"], img_components["pre_pad_slider"], img_components["restore_faces_toggle"],
-                img_components["restoration_weight_slider"], img_components["tensorrt_fp16_checkbox"]
+                img_components["restoration_weight_slider"], img_components["tensorrt_fp16_checkbox"],
+                img_components["enhancement_model_selector"], img_components["restoration_model_selector"]
             ],
             outputs=[img_components["result_img"]],
             show_progress='full'
+        ).then(
+            # Auto-refresh gallery after processing completes
+            refresh_gallery_images,
+            inputs=[img_components["result_img"]],
+            outputs=[gallery_components["gallery"], gallery_components["file_count_text"]]
         )
         
         # GIF TAB - Enhancement controls
         gif_components["enhance_toggle_gif"].change(
             toggle_enhancement_controls,
             inputs=[gif_components["enhance_toggle_gif"]],
-            outputs=[gif_components["model_row_gif"], gif_components["enhancement_options_row_gif"], gif_components["enhancement_advanced_row_gif"]]
+            outputs=[gif_components["model_row_gif"], gif_components["enhancement_options_row_gif"], gif_components["enhancement_advanced_row_gif"], gif_components["enhancement_model_selector_gif"]]
         )
-        
+
+        # Update model selector choices when enhancement framework changes
+        gif_components["enhancement_model_selector_gif"].change(
+            update_model_choices,
+            inputs=[gif_components["enhancement_model_selector_gif"]],
+            outputs=[gif_components["model_selector_gif"]]
+        )
+
         gif_components["restore_faces_toggle_gif"].change(
             toggle_restoration_controls,
             inputs=[gif_components["restore_faces_toggle_gif"]],
-            outputs=[gif_components["restoration_row_gif"]]
+            outputs=[gif_components["restoration_row_gif"], gif_components["restoration_model_selector_gif"]]
         )
         
         gif_components["model_selector_gif"].change(
@@ -422,7 +494,7 @@ def create_app():
             outputs=[gif_components["face_mapping_status_gif"], gif_components["current_mappings_gif"]]
         )
         
-        # GIF processing button
+        # GIF processing button with auto-refresh of gallery
         gif_components["run_gif_btn"].click(
             process_gif,
             inputs=[
@@ -430,23 +502,36 @@ def create_app():
                 gif_components["face_confidence_gif"], gif_components["gpu_selection_gif"], gif_components["model_selector_gif"],
                 gif_components["denoise_slider_gif"], gif_components["tile_size_slider_gif"], gif_components["outscale_slider_gif"],
                 gif_components["use_fp32_checkbox_gif"], gif_components["pre_pad_slider_gif"], gif_components["restore_faces_toggle_gif"],
-                gif_components["restoration_weight_slider_gif"], gif_components["tensorrt_fp16_checkbox_gif"]
+                gif_components["restoration_weight_slider_gif"], gif_components["tensorrt_fp16_checkbox_gif"],
+                gif_components["enhancement_model_selector_gif"], gif_components["restoration_model_selector_gif"]
             ],
             outputs=[gif_components["result_gif"]],
             show_progress='full'
+        ).then(
+            # Auto-refresh gallery after processing completes
+            refresh_gallery_gifs,
+            inputs=[gif_components["result_gif"]],
+            outputs=[gallery_components["gallery"], gallery_components["file_count_text"]]
         )
         
         # VIDEO TAB - Enhancement controls
         vid_components["enhance_toggle_vid"].change(
             toggle_enhancement_controls,
             inputs=[vid_components["enhance_toggle_vid"]],
-            outputs=[vid_components["model_row_vid"], vid_components["enhancement_options_row_vid"], vid_components["enhancement_advanced_row_vid"]]
+            outputs=[vid_components["model_row_vid"], vid_components["enhancement_options_row_vid"], vid_components["enhancement_advanced_row_vid"], vid_components["enhancement_model_selector_vid"]]
         )
-        
+
+        # Update model selector choices when enhancement framework changes
+        vid_components["enhancement_model_selector_vid"].change(
+            update_model_choices,
+            inputs=[vid_components["enhancement_model_selector_vid"]],
+            outputs=[vid_components["model_selector_vid"]]
+        )
+
         vid_components["restore_faces_toggle_vid"].change(
             toggle_restoration_controls,
             inputs=[vid_components["restore_faces_toggle_vid"]],
-            outputs=[vid_components["restoration_row_vid"]]
+            outputs=[vid_components["restoration_row_vid"], vid_components["restoration_model_selector_vid"]]
         )
         
         vid_components["model_selector_vid"].change(
@@ -493,7 +578,7 @@ def create_app():
             outputs=[vid_components["face_mapping_status_vid"], vid_components["current_mappings_vid"]]
         )
         
-        # Video processing button
+        # Video processing button with auto-refresh of gallery
         vid_components["run_video_btn"].click(
             process_video,
             inputs=[
@@ -501,10 +586,16 @@ def create_app():
                 vid_components["face_confidence_video"], vid_components["gpu_selection_video"], vid_components["model_selector_vid"],
                 vid_components["denoise_slider_vid"], vid_components["tile_size_slider_vid"], vid_components["outscale_slider_vid"],
                 vid_components["use_fp32_checkbox_vid"], vid_components["pre_pad_slider_vid"], vid_components["restore_faces_toggle_vid"],
-                vid_components["restoration_weight_slider_vid"], vid_components["tensorrt_fp16_checkbox_vid"]
+                vid_components["restoration_weight_slider_vid"], vid_components["tensorrt_fp16_checkbox_vid"],
+                vid_components["enhancement_model_selector_vid"], vid_components["restoration_model_selector_vid"]
             ],
             outputs=[vid_components["result_vid"]],
             show_progress='full'
+        ).then(
+            # Auto-refresh gallery after processing completes
+            refresh_gallery_videos,
+            inputs=[vid_components["result_vid"]],
+            outputs=[gallery_components["gallery"], gallery_components["file_count_text"]]
         )
         
         # Preset Management Event Handlers

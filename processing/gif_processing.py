@@ -63,7 +63,9 @@ def process_gif(
     restoration_weight: float = 0.5,
     adaptive_detection: bool = None,
     detection_scale: float = None,
-    use_async_pipeline: bool = True
+    use_async_pipeline: bool = True,
+    enhancement_model: str = "RealESRGAN",
+    restoration_model: str = "GFPGAN"
 ) -> Tuple[None, Optional[str]]:
     """
     Process GIF files with face swapping.
@@ -123,7 +125,11 @@ def process_gif(
         progress.set_stage("🔍 Face Detection")
         progress.log("📸 Detecting faces in source image...")
         
-        processors = [MediaProcessor(device_id=dev_id, use_tensorrt=True) for dev_id in device_ids]
+        # Disable TensorRT for multi-GPU to avoid Myelin autotuner race conditions
+        # TensorRT's concurrent engine compilation across multiple CUDA contexts causes
+        # "MyelinCheckException: Deserialization during autotuning failed" errors.
+        # CUDA-only still provides good GPU acceleration without these issues.
+        processors = [MediaProcessor(device_id=dev_id, use_tensorrt=False) for dev_id in device_ids]
         
         # Create a single global lock for all swapper operations to prevent corruption
         # Even though each GPU has its own processor, the inswapper model has shared state
@@ -294,14 +300,23 @@ def process_gif(
     # Apply face restoration if requested (before enhancement)
     if restore_faces:
         progress.set_stage("⚡ Face Restoration")
-        progress.log(f"🔧 Applying GFPGAN restoration (weight={restoration_weight:.2f})...")
-        logger.info("Applying GFPGAN face restoration (weight=%.2f)...", restoration_weight)
-        restorer = FaceRestorer(device_id=gpu_id)
+        progress.log(f"🔧 Applying {restoration_model} restoration (weight={restoration_weight:.2f})...")
+        logger.info("Applying %s face restoration (weight=%.2f)...", restoration_model, restoration_weight)
+
+        # Get appropriate restorer based on model selection
+        if restoration_model == "CodeFormer":
+            from processing.codeformer_restoration import CodeFormerRestorer
+            restorer = CodeFormerRestorer(device_id=gpu_id)
+            restore_fn = lambda frame, w: restorer.restore_faces_in_frame(frame, fidelity_weight=w)
+        else:
+            restorer = FaceRestorer(device_id=gpu_id)
+            restore_fn = lambda frame, w: restorer.restore_faces_in_frame(frame, weight=w)
+
         try:
             restored_frames = []
             with progress.track(len(result_frames), "Restoring faces", "frame") as pbar:
                 for idx, frame in enumerate(result_frames):
-                    restored = restorer.restore_faces_in_frame(frame, weight=restoration_weight)
+                    restored = restore_fn(frame, restoration_weight)
                     restored_frames.append(restored)
                     pbar.update(1)
                     if (idx + 1) % 10 == 0:
@@ -329,7 +344,8 @@ def process_gif(
     # Apply enhancement if requested
     if enhance:
         progress.set_stage("✨ Enhancement")
-        progress.log(f"🎨 Applying Real-ESRGAN enhancement (scale={outscale}x, model={model_name})...")
+        display_model = model_name if enhancement_model == "RealESRGAN" else enhancement_model
+        progress.log(f"🎨 Applying {enhancement_model} enhancement (scale={outscale}x, model={display_model})...")
         
         # Use temp manager for enhancement temp directories
         enhancement_temp_dir = temp_manager.get_temp_dir("gif") / f"enhance_{Path(dest_path).stem}"
@@ -350,8 +366,26 @@ def process_gif(
                 Image.fromarray(frame).save(frame_path)
                 enhancement_frame_paths.append(frame_path)
             
-            # Enhance frames using multi-GPU or single GPU
-            if len(device_ids) > 1:
+            # Enhance frames using selected model
+            if enhancement_model == "SwinIR":
+                # Use SwinIR for enhancement
+                from processing.swinir_enhancement import enhance_frames_swinir
+
+                # Map model_name to SwinIR equivalent if needed
+                if model_name.startswith("Swin"):
+                    swinir_model = model_name
+                else:
+                    swinir_model = "Swin2SR_RealWorld_x4"
+
+                enhanced_frames = enhance_frames_swinir(
+                    temp_frames_dir,
+                    enhanced_output_dir,
+                    media_type="gif",
+                    model_name=swinir_model,
+                    gpu_id=gpu_id,
+                    frame_durations=frame_durations
+                )
+            elif len(device_ids) > 1:
                 logger.info("Using multi-GPU GIF enhancement with %d GPUs", len(device_ids))
                 enhanced_frames = enhance_frames_multi_gpu(
                     enhancement_frame_paths,
@@ -375,7 +409,7 @@ def process_gif(
                     original_size = (original_width, original_height)
                 else:
                     original_size = None
-                
+
                 enhanced_frames = enhance_frames_single_gpu(
                     temp_frames_dir,
                     enhanced_output_dir,  # Use temp directory instead of output_dir

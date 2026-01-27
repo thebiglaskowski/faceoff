@@ -35,9 +35,15 @@ tensorrt_cache/
 tests/__pycache__/
 tests/**/__pycache__/
 .pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
 
 # --- Config/environment for local machine only ---
 *.env
+
+# --- Claude Code local files ---
+.claude/
 
 # --- Model weights (large files) ---
 # (Commit ONLY if under 100MB or tracked via git-lfs)
@@ -64,3 +70,4 @@ Thumbs.db
 node_modules/
 dist/
 build/
+inswapper_128_optimized.onnx

@@ -64,8 +64,36 @@ class GPUModelInstance:
             det_size=tuple(config.face_analysis_det_size)
         )
 
-        # Initialize inswapper with GPU-specific session
-        self.swapper = self._load_swapper(model_path, providers)
+        # Check actual providers - if TensorRT failed and fell back to CPU, reinitialize with CUDA
+        actual_providers = []
+        if hasattr(self.face_app, 'models') and 'det_model' in self.face_app.models:
+            det_model = self.face_app.models['det_model']
+            if hasattr(det_model, 'session'):
+                actual_providers = det_model.session.get_providers()
+                logger.debug(f"Face analysis using providers: {actual_providers}")
+
+        # If we wanted TensorRT but ended up with only CPU, reinitialize with CUDA
+        if self.use_tensorrt and actual_providers == ['CPUExecutionProvider']:
+            logger.warning(f"TensorRT failed for face analysis on GPU {device_id}, reinitializing with CUDA...")
+            cuda_providers = self._get_cuda_only_providers()
+            self.face_app = FaceAnalysis(
+                name=config.face_analysis_name,
+                providers=cuda_providers
+            )
+            self.face_app.prepare(
+                ctx_id=device_id,
+                det_size=tuple(config.face_analysis_det_size)
+            )
+            # Log the new providers
+            if hasattr(self.face_app, 'models') and 'det_model' in self.face_app.models:
+                det_model = self.face_app.models['det_model']
+                if hasattr(det_model, 'session'):
+                    actual_providers = det_model.session.get_providers()
+                    logger.info(f"Face analysis reinitialized with providers: {actual_providers}")
+
+        # Initialize inswapper with GPU-specific session (use CUDA only, TensorRT often fails)
+        cuda_providers = self._get_cuda_only_providers()
+        self.swapper = self._load_swapper(model_path, cuda_providers)
 
         logger.info(f"GPU {device_id} models initialized successfully")
 
@@ -85,17 +113,34 @@ class GPUModelInstance:
             logger.debug(f"TensorRT enabled for GPU {self.device_id}")
 
         # CUDA provider (primary fallback)
+        # Use configurable memory limit to prevent BFC arena fragmentation
+        gpu_mem_limit_mb = config.get('gpu', 'onnx_mem_limit_mb', default=2048)
         providers.append(('CUDAExecutionProvider', {
             'device_id': self.device_id,
             'arena_extend_strategy': 'kSameAsRequested',
-            'gpu_mem_limit': 4 * 1024 * 1024 * 1024,  # 4GB limit per session
+            'gpu_mem_limit': gpu_mem_limit_mb * 1024 * 1024,
             'cudnn_conv_algo_search': 'EXHAUSTIVE',
+            'do_copy_in_default_stream': True,
         }))
 
         # CPU fallback
         providers.append(('CPUExecutionProvider', {}))
 
         return providers
+
+    def _get_cuda_only_providers(self) -> List[tuple]:
+        """Get ONNX providers with CUDA only (no TensorRT)."""
+        gpu_mem_limit_mb = config.get('gpu', 'onnx_mem_limit_mb', default=2048)
+        return [
+            ('CUDAExecutionProvider', {
+                'device_id': self.device_id,
+                'arena_extend_strategy': 'kSameAsRequested',
+                'gpu_mem_limit': gpu_mem_limit_mb * 1024 * 1024,
+                'cudnn_conv_algo_search': 'EXHAUSTIVE',
+                'do_copy_in_default_stream': True,
+            }),
+            ('CPUExecutionProvider', {}),
+        ]
 
     def _load_swapper(self, model_path: str, providers: List[tuple]):
         """Load inswapper model with GPU-specific session."""
@@ -213,12 +258,26 @@ class ModelPool:
         """
         Get model instances for multiple GPUs.
 
+        Note: TensorRT is automatically disabled for multi-GPU scenarios to avoid
+        Myelin autotuner race conditions that cause "Deserialization during
+        autotuning failed" errors when multiple CUDA contexts compile engines
+        simultaneously.
+
         Args:
             device_ids: List of CUDA device IDs
 
         Returns:
             List of GPUModelInstance objects
         """
+        # Disable TensorRT for multi-GPU to avoid Myelin autotuner race conditions
+        if len(device_ids) > 1 and self._use_tensorrt:
+            logger.info("Disabling TensorRT for multi-GPU processing (avoids Myelin race conditions)")
+            original_tensorrt = self._use_tensorrt
+            self._use_tensorrt = False
+            instances = [self.get_instance(dev_id) for dev_id in device_ids]
+            self._use_tensorrt = original_tensorrt  # Restore for future single-GPU use
+            return instances
+
         return [self.get_instance(dev_id) for dev_id in device_ids]
 
     @contextmanager

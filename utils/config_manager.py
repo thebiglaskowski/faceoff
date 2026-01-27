@@ -446,3 +446,34 @@ def get_model_options() -> Dict[str, Dict[str, Any]]:
             'description': model_config.get('description', '')
         }
     return result
+
+
+def get_swinir_model_options() -> Dict[str, Dict[str, Any]]:
+    """
+    Get SwinIR/Swin2SR models in UI-compatible format.
+
+    Returns:
+        Dict mapping display names to model configurations
+    """
+    return {
+        "Swin2SR_RealWorld_x4 (Recommended)": {
+            "model_name": "Swin2SR_RealWorld_x4",
+            "scale": 4,
+            "description": "Real-world SR 4x - Best for degraded images"
+        },
+        "Swin2SR_x4 (Standard)": {
+            "model_name": "Swin2SR_x4",
+            "scale": 4,
+            "description": "Classical SR 4x - Standard upscaling"
+        },
+        "Swin2SR_Compressed_x4 (JPEG Artifacts)": {
+            "model_name": "Swin2SR_Compressed_x4",
+            "scale": 4,
+            "description": "Compressed SR 4x - For JPEG artifacts"
+        },
+        "Swin2SR_x2 (Fast 2x)": {
+            "model_name": "Swin2SR_x2",
+            "scale": 2,
+            "description": "Classical SR 2x - Fast, good for clean images"
+        }
+    }

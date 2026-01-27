@@ -68,7 +68,9 @@ def process_media(
     use_fp32: bool = False,
     pre_pad: int = 0,
     restore_faces: bool = False,
-    restoration_weight: float = 0.5
+    restoration_weight: float = 0.5,
+    enhancement_model: str = "RealESRGAN",
+    restoration_model: str = "GFPGAN"
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Process media with face swapping and optional enhancement.
@@ -84,11 +86,15 @@ def process_media(
         face_confidence: Minimum confidence threshold for face detection
         gpu_selection: GPU selection string
         face_mappings: List of (source_idx, target_idx) tuples for face mapping
-        model_name: Real-ESRGAN model to use for enhancement
+        model_name: Real-ESRGAN model variant (for enhancement)
         denoise_strength: Denoise strength (0-1, only for realesr-general-x4v3)
         use_fp32: Use FP32 precision instead of FP16
         pre_pad: Pre-padding size to reduce edge artifacts
-        
+        restore_faces: Whether to apply face restoration
+        restoration_weight: Face restoration weight (0-1)
+        enhancement_model: Enhancement model to use ("RealESRGAN" or "SwinIR")
+        restoration_model: Face restoration model ("GFPGAN" or "CodeFormer")
+
     Returns:
         Tuple of (result_path, log_message)
         media_type: "image", "video", or "gif"
@@ -173,7 +179,8 @@ def process_media(
                 processor, source_image, dest_path, specific_output_path,
                 enhance, tile_size, outscale, face_confidence,
                 device_ids, face_mappings, model_name, denoise_strength,
-                use_fp32, pre_pad, restore_faces, restoration_weight
+                use_fp32, pre_pad, restore_faces, restoration_weight,
+                enhancement_model, restoration_model
             )
         elif media_type == "video":
             result_path, video_path = process_video(
@@ -181,7 +188,9 @@ def process_media(
                 enhance, tile_size, outscale, face_confidence,
                 device_ids, face_mappings, model_name, denoise_strength,
                 use_fp32, pre_pad, restore_faces, restoration_weight,
-                use_async_pipeline=True
+                use_async_pipeline=True,
+                enhancement_model=enhancement_model,
+                restoration_model=restoration_model
             )
         elif media_type == "gif":
             result_path, video_path = process_gif(
@@ -189,7 +198,9 @@ def process_media(
                 enhance, tile_size, outscale, face_confidence,
                 device_ids, face_mappings, model_name, denoise_strength,
                 use_fp32, pre_pad, restore_faces, restoration_weight,
-                use_async_pipeline=True
+                use_async_pipeline=True,
+                enhancement_model=enhancement_model,
+                restoration_model=restoration_model
             )
         else:
             raise ValueError(f"Unsupported media type: {media_type}")

@@ -5,22 +5,16 @@ from ui.helpers.gpu_utils import get_gpu_options
 from ui.helpers.face_detection import detect_faces_simple, detect_faces_with_thumbnails
 from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
 from ui.helpers.preview import show_gif_preview
-
-
-# Constants for enhancement models
-MODEL_OPTIONS = {
-    "RealESRGAN_x4plus": {"scale": 4, "supports_denoise": False},
-    "RealESRNet_x4plus": {"scale": 4, "supports_denoise": False},
-    "RealESRGAN_x4plus_anime_6B": {"scale": 4, "supports_denoise": False},
-    "RealESRGAN_x2plus": {"scale": 2, "supports_denoise": False},
-    "realesr-general-x4v3": {"scale": 4, "supports_denoise": True},
-}
-
-DEFAULT_MODEL = "RealESRGAN_x4plus"
-DEFAULT_TILE_SIZE = 256
-DEFAULT_OUTSCALE = 4
-DEFAULT_USE_FP32 = False
-DEFAULT_PRE_PAD = 10
+from utils.constants import (
+    MODEL_OPTIONS,
+    SWINIR_MODEL_OPTIONS,
+    DEFAULT_MODEL,
+    DEFAULT_SWINIR_MODEL,
+    DEFAULT_TILE_SIZE,
+    DEFAULT_OUTSCALE,
+    DEFAULT_USE_FP32,
+    DEFAULT_PRE_PAD,
+)
 
 
 def create_gif_tab():
@@ -82,13 +76,29 @@ def create_gif_tab():
                 clear_mappings_btn_gif = gr.Button("🗑️ Clear All Mappings", size="sm", variant="secondary")
         
         with gr.Row():
-            enhance_toggle_gif = gr.Checkbox(label="Enable Enhancement (Real-ESRGAN)", value=False)
+            enhance_toggle_gif = gr.Checkbox(label="Enable Enhancement", value=False)
             restore_faces_toggle_gif = gr.Checkbox(
-                label="Restore Faces (GFPGAN)", 
+                label="Restore Faces",
                 value=False,
                 info="Enhance face quality after swapping"
             )
-        
+
+        with gr.Row():
+            enhancement_model_selector_gif = gr.Dropdown(
+                choices=["RealESRGAN", "SwinIR"],
+                value="RealESRGAN",
+                label="Enhancement Framework",
+                info="RealESRGAN (faster) or SwinIR (transformer-based)",
+                visible=False
+            )
+            restoration_model_selector_gif = gr.Dropdown(
+                choices=["GFPGAN", "CodeFormer"],
+                value="GFPGAN",
+                label="Face Restoration Model",
+                info="GFPGAN (fast) or CodeFormer (better fidelity control)",
+                visible=False
+            )
+
         with gr.Row(visible=False) as restoration_row_gif:
             restoration_weight_slider_gif = gr.Slider(
                 minimum=0.0,
@@ -173,6 +183,8 @@ def create_gif_tab():
         "clear_mappings_btn_gif": clear_mappings_btn_gif,
         "enhance_toggle_gif": enhance_toggle_gif,
         "restore_faces_toggle_gif": restore_faces_toggle_gif,
+        "enhancement_model_selector_gif": enhancement_model_selector_gif,
+        "restoration_model_selector_gif": restoration_model_selector_gif,
         "restoration_row_gif": restoration_row_gif,
         "restoration_weight_slider_gif": restoration_weight_slider_gif,
         "model_row_gif": model_row_gif,

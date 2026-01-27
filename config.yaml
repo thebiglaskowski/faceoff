@@ -28,6 +28,10 @@ gpu:
   tensorrt_fp16: true             # Use FP16 precision (faster)
   tensorrt_workspace_mb: 2048     # Workspace size in MB
 
+  # ONNX Runtime memory settings
+  onnx_mem_limit_mb: 2048         # Max GPU memory for ONNX sessions (MB)
+                                  # Lower this if you see BFC arena allocation errors
+
 # =============================================================================
 # Face Detection Settings
 # =============================================================================
@@ -205,3 +209,14 @@ ui:
   server_port: 7860
   share: false                    # Create public Gradio link
   theme: "default"                # Gradio theme
+
+  # Gradio queue settings (prevents request overload)
+  queue_max_size: 20              # Maximum pending requests in queue
+  queue_concurrency_limit: 4      # Maximum concurrent processing tasks
+
+# =============================================================================
+# Model Cache Settings
+# =============================================================================
+model_cache_limits:
+  max_models_per_cache: 5         # Maximum models to keep in memory per cache
+  eviction_policy: "lru"          # Eviction policy: "lru" (least recently used)

@@ -167,43 +167,6 @@ class ModelCache:
 model_cache = ModelCache()
 
 
-def preload_models(device_id: int = 0) -> None:
-    """
-    Preload models at startup to reduce first-run delay.
-    
-    This function can be called during application startup to compile
-    TensorRT engines in the background before the user makes a request.
-    
-    Args:
-        device_id: GPU device ID to use for preloading
-    """
-    if not config.preload_on_startup:
-        logger.info("Model preloading disabled in config")
-        return
-    
-    logger.info("Starting model preloading on device %d...", device_id)
-    
-    try:
-        # Import here to avoid circular dependencies
-        from core.media_processor import MediaProcessor
-        import numpy as np
-        
-        # Create a dummy processor to trigger TensorRT compilation
-        logger.info("Preloading face detection model (buffalo_l)...")
-        processor = MediaProcessor(device_id=device_id, use_tensorrt=True, optimize_models=False)
-        
-        # Create a small dummy image to trigger model initialization
-        dummy_image = np.zeros((640, 640, 3), dtype=np.uint8)
-        
-        # Trigger face detection to compile TensorRT engine
-        _ = processor.get_faces(dummy_image)
-        
-        logger.info("✅ Model preloading complete (TensorRT engines compiled and cached)")
-        
-    except Exception as e:
-        logger.warning("Model preloading failed: %s (will compile on first use)", e)
-
-
 def clear_model_cache() -> int:
     """
     Clear all cached TensorRT engines.

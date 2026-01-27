@@ -1,5 +1,9 @@
 # FaceOff Improvement Blueprint
 
+> **HISTORICAL DOCUMENT** - This document is preserved for reference only.
+> See `PROJECT_INTENT.md` for the authoritative project specification.
+> See `CLAUDE.md` for development guidelines.
+
 > Generated from comprehensive code review on 2026-01-25
 > Overall Grade: **8.5/10** (Strong)
 

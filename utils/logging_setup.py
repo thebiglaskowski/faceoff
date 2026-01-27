@@ -1,7 +1,41 @@
 import logging
 import sys
+import warnings
 from logging.handlers import RotatingFileHandler
 from utils.config_manager import config
+
+
+def suppress_third_party_warnings() -> None:
+    """
+    Suppress noisy warnings from third-party libraries.
+
+    These warnings are from external packages we can't modify:
+    - InsightFace: numpy.linalg.lstsq rcond FutureWarning
+    - Torchvision: pretrained parameter deprecation warnings
+    """
+    # Suppress numpy lstsq FutureWarning (triggered by InsightFace)
+    # "rcond parameter will change to the default of machine precision"
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*`rcond` parameter will change.*",
+        category=FutureWarning
+    )
+
+    # Suppress torchvision pretrained parameter deprecation
+    # "The parameter 'pretrained' is deprecated since 0.13"
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*parameter 'pretrained' is deprecated.*",
+        category=UserWarning
+    )
+
+    # Suppress torchvision weights argument deprecation
+    # "Arguments other than a weight enum or `None` for 'weights' are deprecated"
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*Arguments other than a weight enum.*",
+        category=UserWarning
+    )
 
 
 def setup_logging(log_file: str = None, log_level: int = None) -> None:
@@ -15,11 +49,14 @@ def setup_logging(log_file: str = None, log_level: int = None) -> None:
     - logging.backup_count: Number of backup files to keep
     - logging.console_level: Console log level (INFO, DEBUG, WARNING, ERROR)
     - logging.file_level: File log level (INFO, DEBUG, WARNING, ERROR)
-    
+
     Args:
         log_file: Optional override for log file path (uses config if None)
         log_level: Optional override for console log level (uses config if None)
     """
+    # Suppress noisy third-party library warnings first
+    suppress_third_party_warnings()
+
     # Import terminal handler here to avoid circular imports
     try:
         from ui.components.terminal_tab import terminal_handler

@@ -18,8 +18,30 @@ from typing import List, Optional, Tuple, Union
 from moviepy.editor import ImageSequenceClip
 
 from utils.temp_manager import get_temp_manager
+from utils.lru_cache import LRUModelCache
 
 logger = logging.getLogger("FaceOff")
+
+
+def _cleanup_upsampler(upsampler):
+    """Cleanup function for evicted upsamplers."""
+    try:
+        del upsampler
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
+def _cleanup_face_enhancer(enhancer):
+    """Cleanup function for evicted face enhancers."""
+    try:
+        del enhancer
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
 
 # Model name to URL mapping for auto-download
 MODEL_URLS = {
@@ -41,9 +63,9 @@ MODEL_SCALES = {
     'realesr-animevideov3': 4,
 }
 
-# Cache for loaded models to avoid reloading
-_upsampler_cache = {}
-_face_enhancer_cache = {}
+# LRU caches for loaded models (bounded to prevent memory growth)
+_upsampler_cache = LRUModelCache("RealESRGAN", cleanup_fn=_cleanup_upsampler)
+_face_enhancer_cache = LRUModelCache("GFPGAN", cleanup_fn=_cleanup_face_enhancer)
 
 
 def _get_upsampler(
@@ -66,8 +88,9 @@ def _get_upsampler(
     # Create cache key
     cache_key = (model_name, gpu_id, tile_size, pre_pad, use_fp32)
 
-    if cache_key in _upsampler_cache:
-        return _upsampler_cache[cache_key]
+    cached = _upsampler_cache.get(cache_key)
+    if cached is not None:
+        return cached
 
     # Determine model architecture based on model name
     if model_name == 'RealESRGAN_x4plus':
@@ -117,7 +140,7 @@ def _get_upsampler(
         gpu_id=gpu_id
     )
 
-    _upsampler_cache[cache_key] = upsampler
+    _upsampler_cache.put(cache_key, upsampler)
     logger.debug("Created RealESRGANer for model=%s, gpu=%d", model_name, gpu_id)
 
     return upsampler
@@ -131,8 +154,9 @@ def _get_face_enhancer(gpu_id: int = 0, use_fp32: bool = False):
 
     cache_key = (gpu_id, use_fp32)
 
-    if cache_key in _face_enhancer_cache:
-        return _face_enhancer_cache[cache_key]
+    cached = _face_enhancer_cache.get(cache_key)
+    if cached is not None:
+        return cached
 
     face_enhancer = GFPGANer(
         model_path='https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.3.pth',
@@ -142,7 +166,7 @@ def _get_face_enhancer(gpu_id: int = 0, use_fp32: bool = False):
         bg_upsampler=None  # We'll set this separately if needed
     )
 
-    _face_enhancer_cache[cache_key] = face_enhancer
+    _face_enhancer_cache.put(cache_key, face_enhancer)
     logger.debug("Created GFPGANer for gpu=%d", gpu_id)
 
     return face_enhancer
@@ -150,7 +174,6 @@ def _get_face_enhancer(gpu_id: int = 0, use_fp32: bool = False):
 
 def clear_enhancement_cache():
     """Clear cached upsampler and face enhancer instances."""
-    global _upsampler_cache, _face_enhancer_cache
     _upsampler_cache.clear()
     _face_enhancer_cache.clear()
     if torch.cuda.is_available():

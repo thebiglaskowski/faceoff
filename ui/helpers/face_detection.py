@@ -3,16 +3,44 @@ Face detection helpers for UI.
 Consolidates duplicate face detection logic across UI components.
 """
 import cv2
+import gc
 import logging
 import gradio as gr
+import torch
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from typing import List, Tuple, Optional
 
-from core.face_processor import FaceProcessor, sort_faces_by_position, filter_faces_by_confidence
+from processing.facade import FaceProcessor, sort_faces_by_position, filter_faces_by_confidence
 from utils.temp_manager import get_temp_manager
 
 logger = logging.getLogger("FaceOff")
+
+
+def _clear_gpu_memory():
+    """
+    Clear GPU memory before heavy operations to prevent OOM errors.
+
+    ONNX Runtime's BFC arena can fragment memory, making it impossible to
+    allocate contiguous blocks even when total free memory is sufficient.
+    This clears caches and runs garbage collection to defragment.
+    """
+    # Run Python garbage collection first
+    gc.collect()
+
+    # Clear PyTorch CUDA cache
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+
+    # Clear enhancement model caches (they hold large GPU memory)
+    try:
+        from processing.enhancement import clear_enhancement_cache
+        clear_enhancement_cache()
+    except ImportError:
+        pass
+
+    logger.debug("GPU memory cleared before face detection")
 
 
 def add_index_overlay(face_pil: Image.Image, index: int) -> Image.Image:
@@ -100,18 +128,21 @@ def extract_face_thumbnails(image_rgb: 'np.ndarray', faces_raw: List, with_index
 def detect_faces_simple(pil_image: Image.Image, confidence: float = 0.5) -> str:
     """
     Simple face detection for UI preview (just returns status text).
-    
+
     Args:
         pil_image: PIL Image to detect faces in
         confidence: Detection confidence threshold
-        
+
     Returns:
         Status text describing detection results
     """
     if pil_image is None:
         return ""
-    
+
     try:
+        # Clear GPU memory to prevent OOM from fragmentation
+        _clear_gpu_memory()
+
         temp_manager = get_temp_manager()
         
         # Save temporarily
@@ -155,7 +186,10 @@ def detect_faces_for_mapping(
             gr.update(visible=False),
             gr.update(visible=False)
         )
-    
+
+    # Clear GPU memory to prevent OOM from fragmentation
+    _clear_gpu_memory()
+
     temp_manager = get_temp_manager()
     processor = FaceProcessor(device_id=0, confidence=face_confidence)
     
@@ -251,10 +285,13 @@ def detect_faces_with_thumbnails(source_img, target_file, face_confidence):
             gr.update(visible=False),
             gr.update(visible=False)
         )
-    
+
+    # Clear GPU memory to prevent OOM from fragmentation
+    _clear_gpu_memory()
+
     from moviepy.editor import VideoFileClip
     import numpy as np
-    
+
     temp_manager = get_temp_manager()
     processor = FaceProcessor(device_id=0, confidence=face_confidence)
     

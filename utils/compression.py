@@ -11,6 +11,29 @@ import os
 
 logger = logging.getLogger("FaceOff")
 
+
+# Timeout scaling constants
+BASE_TIMEOUT_SECONDS = 60  # Base timeout for small files
+MB_PER_ADDITIONAL_MINUTE = 10  # Add 1 minute per 10MB of file size
+MAX_TIMEOUT_SECONDS = 600  # Cap at 10 minutes
+
+
+def _calculate_timeout(file_size_bytes: int, base_timeout: int = BASE_TIMEOUT_SECONDS) -> int:
+    """
+    Calculate timeout based on file size.
+
+    Args:
+        file_size_bytes: Size of file in bytes
+        base_timeout: Base timeout in seconds
+
+    Returns:
+        Timeout in seconds, scaled by file size
+    """
+    file_size_mb = file_size_bytes / (1024 * 1024)
+    additional_seconds = int((file_size_mb / MB_PER_ADDITIONAL_MINUTE) * 60)
+    timeout = base_timeout + additional_seconds
+    return min(timeout, MAX_TIMEOUT_SECONDS)
+
 # Get the project root directory (where this script is located)
 PROJECT_ROOT = Path(__file__).parent.parent
 EXTERNAL_GIFSICLE = PROJECT_ROOT / "external" / "gifsicle" / "gifsicle.exe"
@@ -109,24 +132,28 @@ def compress_gif(input_path: str, output_path: Optional[str] = None, lossy: int 
         output_file = Path(output_path) if output_path else input_file
         original_size = input_file.stat().st_size
         
+        # Calculate timeout based on file size
+        timeout = _calculate_timeout(original_size)
+        logger.debug(f"GIF compression timeout: {timeout}s for {_format_bytes(original_size)} file")
+
         # Method 1: Try gifsicle first (best quality/size ratio)
         gifsicle_path = _find_gifsicle()
         if gifsicle_path:
             try:
                 temp_output = output_file.with_suffix('.gif.tmp')
-                
+
                 cmd = [
                     gifsicle_path,
                     '--optimize=3',  # Maximum optimization
                     '--colors=256',  # Full color palette
                 ]
-                
+
                 if lossy > 0:
                     cmd.append(f'--lossy={lossy}')
-                
+
                 cmd.extend(['-o', str(temp_output), str(input_file)])
-                
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
                 
                 if result.returncode == 0 and temp_output.exists():
                     # Replace original with compressed
@@ -152,7 +179,7 @@ def compress_gif(input_path: str, output_path: Optional[str] = None, lossy: int 
                     # Fall through to PIL method
                     
             except subprocess.TimeoutExpired:
-                logger.warning("gifsicle timeout, falling back to ImageMagick/PIL")
+                logger.warning(f"gifsicle: timed out after {timeout}s, falling back to ImageMagick/PIL")
             except Exception as e:
                 logger.warning(f"gifsicle error: {e}, falling back to ImageMagick/PIL")
         
@@ -171,16 +198,16 @@ def compress_gif(input_path: str, output_path: Optional[str] = None, lossy: int 
                     str(temp_output)
                 ]
                 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
                 if result.returncode == 0 and temp_output.exists():
                     # Replace original with compressed
                     temp_output.replace(output_file)
                     new_size = output_file.stat().st_size
-                    
+
                     savings = original_size - new_size
                     savings_percent = (savings / original_size) * 100 if original_size > 0 else 0
-                    
+
                     stats = {
                         'original_size': original_size,
                         'compressed_size': new_size,
@@ -188,16 +215,16 @@ def compress_gif(input_path: str, output_path: Optional[str] = None, lossy: int 
                         'savings_percent': savings_percent,
                         'method': 'ImageMagick'
                     }
-                    
+
                     logger.info(f"Compressed GIF (ImageMagick): {input_file.name} | {original_size:,} -> {new_size:,} bytes ({savings_percent:.1f}% reduction)")
-                    
+
                     return True, f"✅ Compressed: {savings_percent:.1f}% smaller ({_format_bytes(original_size)} -> {_format_bytes(new_size)})", stats
                 else:
                     logger.warning(f"ImageMagick failed: {result.stderr}")
                     # Fall through to PIL method
-                    
+
             except subprocess.TimeoutExpired:
-                logger.warning("ImageMagick timeout, falling back to PIL")
+                logger.warning(f"ImageMagick: timed out after {timeout}s, falling back to PIL")
             except Exception as e:
                 logger.warning(f"ImageMagick error: {e}, falling back to PIL")
         

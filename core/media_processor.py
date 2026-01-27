@@ -128,22 +128,29 @@ class MediaProcessor:
             logger.info("Acquiring model initialization lock for device %d", self.device_id)
             try:
                 # Configure CUDA provider for specific device
+                # Use 'kSameAsRequested' to reduce memory fragmentation
+                # (kNextPowerOfTwo can cause BFC arena allocation failures)
+                gpu_mem_limit_mb = config.get('gpu', 'onnx_mem_limit_mb', default=2048)
                 cuda_provider_options = {
                     'device_id': self.device_id,
-                    'arena_extend_strategy': 'kNextPowerOfTwo',
-                    'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB
+                    'arena_extend_strategy': 'kSameAsRequested',
+                    'gpu_mem_limit': gpu_mem_limit_mb * 1024 * 1024,
                     'cudnn_conv_algo_search': 'EXHAUSTIVE',
                     'do_copy_in_default_stream': True,
                 }
                 
                 # Build provider list with optional TensorRT
                 if self.use_tensorrt and is_tensorrt_available():
+                    # Use GPU-specific cache path to prevent race conditions
+                    # when multiple GPUs compile TensorRT engines simultaneously
+                    gpu_cache_path = Path(config.tensorrt_cache_dir) / f"gpu_{self.device_id}"
+                    gpu_cache_path.mkdir(parents=True, exist_ok=True)
                     tensorrt_provider_options = {
                         'device_id': self.device_id,
                         'trt_max_workspace_size': config.tensorrt_workspace_mb * 1024 * 1024,
                         'trt_fp16_enable': config.tensorrt_fp16,  # FP16 for ~30% speedup
                         'trt_engine_cache_enable': True,  # Cache TensorRT engines
-                        'trt_engine_cache_path': config.tensorrt_cache_dir,
+                        'trt_engine_cache_path': str(gpu_cache_path),
                     }
                     providers = [
                         ('TensorrtExecutionProvider', tensorrt_provider_options),
@@ -161,8 +168,15 @@ class MediaProcessor:
                         'CPUExecutionProvider'
                     ]
                 
-                # Initialize face analysis (can use TensorRT) - suppress verbose ONNX output
+                # Initialize face analysis - suppress verbose ONNX output
+                # Note: TensorRT can fail for some models (Myelin autotuning errors)
+                # If it fails and falls back to CPU, we reinitialize with CUDA only
                 logger.debug("Loading face analysis models (InsightFace)...")
+                cuda_only_providers = [
+                    ('CUDAExecutionProvider', cuda_provider_options),
+                    'CPUExecutionProvider'
+                ]
+
                 with suppress_insightface_output():
                     self.face_app = insightface.app.FaceAnalysis(
                         name=config.face_analysis_name,
@@ -173,11 +187,34 @@ class MediaProcessor:
                         ctx_id=self.device_id,
                         det_size=tuple(config.face_analysis_det_size)
                     )
-                
-                # Log actual providers being used
-                if hasattr(self.face_app.models, 'det_model') and hasattr(self.face_app.models['det_model'], 'session'):
-                    actual_providers = self.face_app.models['det_model'].session.get_providers()
-                    logger.debug("Face analysis using providers: %s", actual_providers)
+
+                # Check actual providers - if TensorRT failed and fell back to CPU, reinitialize with CUDA
+                actual_providers = []
+                if hasattr(self.face_app, 'models') and 'det_model' in self.face_app.models:
+                    det_model = self.face_app.models['det_model']
+                    if hasattr(det_model, 'session'):
+                        actual_providers = det_model.session.get_providers()
+                        logger.debug("Face analysis using providers: %s", actual_providers)
+
+                # If we wanted TensorRT but ended up with only CPU, reinitialize with CUDA
+                if self.use_tensorrt and actual_providers == ['CPUExecutionProvider']:
+                    logger.warning("TensorRT failed for face analysis, reinitializing with CUDA...")
+                    with suppress_insightface_output():
+                        self.face_app = insightface.app.FaceAnalysis(
+                            name=config.face_analysis_name,
+                            root=".",
+                            providers=cuda_only_providers,
+                        )
+                        self.face_app.prepare(
+                            ctx_id=self.device_id,
+                            det_size=tuple(config.face_analysis_det_size)
+                        )
+                    # Log the new providers
+                    if hasattr(self.face_app, 'models') and 'det_model' in self.face_app.models:
+                        det_model = self.face_app.models['det_model']
+                        if hasattr(det_model, 'session'):
+                            actual_providers = det_model.session.get_providers()
+                            logger.info("Face analysis reinitialized with providers: %s", actual_providers)
                 
                 # Initialize face swapper (CUDA only - TensorRT has compilation issues with this model)
                 logger.debug("Loading face swapper model (inswapper)...")

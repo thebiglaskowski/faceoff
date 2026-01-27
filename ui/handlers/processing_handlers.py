@@ -14,14 +14,14 @@ import numpy as np
 from PIL import Image
 import gradio as gr
 
-from core.face_processor import FaceMappingManager
+from processing.facade import FaceMappingManager
 from utils.validation import (
     validate_file_size, validate_image_resolution,
     validate_video_duration, validate_gif_frames, validate_media_type
 )
 from utils.constants import (
-    MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_TILE_SIZE,
-    DEFAULT_OUTSCALE, DEFAULT_USE_FP32, DEFAULT_PRE_PAD
+    MODEL_OPTIONS, SWINIR_MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_SWINIR_MODEL,
+    DEFAULT_TILE_SIZE, DEFAULT_OUTSCALE, DEFAULT_USE_FP32, DEFAULT_PRE_PAD
 )
 from processing.orchestrator import process_media
 from utils.error_handler import ErrorHandler, FriendlyError
@@ -30,6 +30,7 @@ from ui.helpers.face_mapping import (
     add_face_mapping as helper_add_mapping,
     clear_face_mappings as helper_clear_mappings
 )
+from ui.helpers.gallery_utils import invalidate_gallery_for_new_file
 
 logger = logging.getLogger("FaceOff")
 
@@ -61,7 +62,9 @@ def _process_input(
     pre_pad: int = None,
     restore_faces: bool = False,
     restoration_weight: float = 0.5,
-    tensorrt_fp16: bool = True
+    tensorrt_fp16: bool = True,
+    enhancement_model: str = "RealESRGAN",
+    restoration_model: str = "GFPGAN"
 ):
     """
     Core processing function for all media types.
@@ -116,11 +119,17 @@ def _process_input(
         # Update TensorRT FP16 config for this processing run
         config.update('gpu', 'tensorrt_fp16', value=tensorrt_fp16)
 
-        # Parse model selection
-        if model_selection and model_selection in MODEL_OPTIONS:
-            model_name = MODEL_OPTIONS[model_selection]["model_name"]
+        # Parse model selection based on enhancement framework
+        if enhancement_model == "SwinIR":
+            if model_selection and model_selection in SWINIR_MODEL_OPTIONS:
+                model_name = SWINIR_MODEL_OPTIONS[model_selection]["model_name"]
+            else:
+                model_name = SWINIR_MODEL_OPTIONS[DEFAULT_SWINIR_MODEL]["model_name"]
         else:
-            model_name = MODEL_OPTIONS[DEFAULT_MODEL]["model_name"]
+            if model_selection and model_selection in MODEL_OPTIONS:
+                model_name = MODEL_OPTIONS[model_selection]["model_name"]
+            else:
+                model_name = MODEL_OPTIONS[DEFAULT_MODEL]["model_name"]
 
         # Convert source to numpy array
         source_array = np.array(source_image)
@@ -134,12 +143,12 @@ def _process_input(
         output_dir.mkdir(exist_ok=True)
 
         logger.info(
-            "Processing %s with enhancement=%s, model=%s, denoise=%.2f, "
+            "Processing %s with enhancement=%s (%s), model=%s, denoise=%.2f, "
             "confidence=%.2f, tile=%d, outscale=%d, fp32=%s, prepad=%d, "
-            "restore=%s, weight=%.2f, tensorrt_fp16=%s",
-            media_type, enhance, model_name, denoise_strength, confidence,
-            tile_size, outscale, use_fp32, pre_pad, restore_faces, restoration_weight,
-            tensorrt_fp16
+            "restore=%s (%s), weight=%.2f, tensorrt_fp16=%s",
+            media_type, enhance, enhancement_model, model_name, denoise_strength, confidence,
+            tile_size, outscale, use_fp32, pre_pad, restore_faces, restoration_model,
+            restoration_weight, tensorrt_fp16
         )
 
         result_img, result_vid = process_media(
@@ -158,11 +167,16 @@ def _process_input(
             use_fp32=use_fp32,
             pre_pad=pre_pad,
             restore_faces=restore_faces,
-            restoration_weight=restoration_weight
+            restoration_weight=restoration_weight,
+            enhancement_model=enhancement_model,
+            restoration_model=restoration_model
         )
 
         logger.info("Processing complete!")
         logger.info("=" * 40)
+
+        # Invalidate gallery cache so new file appears immediately
+        invalidate_gallery_for_new_file(media_type)
 
         # Return appropriate result based on media type
         if media_type == "image":
@@ -205,14 +219,17 @@ def process_image(
     prepad: int,
     restore: bool,
     weight: float,
-    tensorrt_fp16: bool = True
+    tensorrt_fp16: bool = True,
+    enhancement_model: str = "RealESRGAN",
+    restoration_model: str = "GFPGAN"
 ):
     """Process an image face swap."""
     return _process_input(
         source_img, target_img, None,
         enhance, confidence, gpu, None,
         model, denoise, tile, outscale, fp32, prepad,
-        restore, weight, tensorrt_fp16
+        restore, weight, tensorrt_fp16,
+        enhancement_model, restoration_model
     )
 
 
@@ -230,14 +247,17 @@ def process_gif(
     prepad: int,
     restore: bool,
     weight: float,
-    tensorrt_fp16: bool = True
+    tensorrt_fp16: bool = True,
+    enhancement_model: str = "RealESRGAN",
+    restoration_model: str = "GFPGAN"
 ):
     """Process a GIF face swap."""
     return _process_input(
         source_img, None, target_file,
         enhance, confidence, gpu, None,
         model, denoise, tile, outscale, fp32, prepad,
-        restore, weight, tensorrt_fp16
+        restore, weight, tensorrt_fp16,
+        enhancement_model, restoration_model
     )
 
 
@@ -255,14 +275,17 @@ def process_video(
     prepad: int,
     restore: bool,
     weight: float,
-    tensorrt_fp16: bool = True
+    tensorrt_fp16: bool = True,
+    enhancement_model: str = "RealESRGAN",
+    restoration_model: str = "GFPGAN"
 ):
     """Process a video face swap."""
     return _process_input(
         source_img, None, target_file,
         enhance, confidence, gpu, None,
         model, denoise, tile, outscale, fp32, prepad,
-        restore, weight, tensorrt_fp16
+        restore, weight, tensorrt_fp16,
+        enhancement_model, restoration_model
     )
 
 

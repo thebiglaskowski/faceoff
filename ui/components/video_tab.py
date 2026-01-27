@@ -4,22 +4,16 @@ import gradio as gr
 from ui.helpers.gpu_utils import get_gpu_options
 from ui.helpers.face_detection import detect_faces_simple, detect_faces_with_thumbnails
 from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
-
-
-# Constants for enhancement models
-MODEL_OPTIONS = {
-    "RealESRGAN_x4plus": {"scale": 4, "supports_denoise": False},
-    "RealESRNet_x4plus": {"scale": 4, "supports_denoise": False},
-    "RealESRGAN_x4plus_anime_6B": {"scale": 4, "supports_denoise": False},
-    "RealESRGAN_x2plus": {"scale": 2, "supports_denoise": False},
-    "realesr-general-x4v3": {"scale": 4, "supports_denoise": True},
-}
-
-DEFAULT_MODEL = "RealESRGAN_x4plus"
-DEFAULT_TILE_SIZE = 256
-DEFAULT_OUTSCALE = 4
-DEFAULT_USE_FP32 = False
-DEFAULT_PRE_PAD = 10
+from utils.constants import (
+    MODEL_OPTIONS,
+    SWINIR_MODEL_OPTIONS,
+    DEFAULT_MODEL,
+    DEFAULT_SWINIR_MODEL,
+    DEFAULT_TILE_SIZE,
+    DEFAULT_OUTSCALE,
+    DEFAULT_USE_FP32,
+    DEFAULT_PRE_PAD,
+)
 
 
 def create_video_tab():
@@ -80,13 +74,29 @@ def create_video_tab():
                 clear_mappings_btn_vid = gr.Button("🗑️ Clear All Mappings", size="sm", variant="secondary")
         
         with gr.Row():
-            enhance_toggle_vid = gr.Checkbox(label="Enable Enhancement (Real-ESRGAN)", value=False)
+            enhance_toggle_vid = gr.Checkbox(label="Enable Enhancement", value=False)
             restore_faces_toggle_vid = gr.Checkbox(
-                label="Restore Faces (GFPGAN)", 
+                label="Restore Faces",
                 value=False,
                 info="Enhance face quality after swapping"
             )
-        
+
+        with gr.Row():
+            enhancement_model_selector_vid = gr.Dropdown(
+                choices=["RealESRGAN", "SwinIR"],
+                value="RealESRGAN",
+                label="Enhancement Framework",
+                info="RealESRGAN (faster) or SwinIR (transformer-based)",
+                visible=False
+            )
+            restoration_model_selector_vid = gr.Dropdown(
+                choices=["GFPGAN", "CodeFormer"],
+                value="GFPGAN",
+                label="Face Restoration Model",
+                info="GFPGAN (fast) or CodeFormer (better fidelity control)",
+                visible=False
+            )
+
         with gr.Row(visible=False) as restoration_row_vid:
             restoration_weight_slider_vid = gr.Slider(
                 minimum=0.0,
@@ -170,6 +180,8 @@ def create_video_tab():
         "clear_mappings_btn_vid": clear_mappings_btn_vid,
         "enhance_toggle_vid": enhance_toggle_vid,
         "restore_faces_toggle_vid": restore_faces_toggle_vid,
+        "enhancement_model_selector_vid": enhancement_model_selector_vid,
+        "restoration_model_selector_vid": restoration_model_selector_vid,
         "restoration_row_vid": restoration_row_vid,
         "restoration_weight_slider_vid": restoration_weight_slider_vid,
         "model_row_vid": model_row_vid,

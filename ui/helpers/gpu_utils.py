@@ -5,7 +5,7 @@ Helper functions for GPU selection and status display.
 import logging
 from typing import List
 
-from core.gpu_manager import GPUManager
+from processing.facade import GPUManager
 
 logger = logging.getLogger("FaceOff")
 
