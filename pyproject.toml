@@ -5,7 +5,7 @@
 name = "faceoff"
 version = "1.0.0"
 description = "Local GPU-accelerated face swapping application"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 
 [tool.pytest.ini_options]
 # Note: Main pytest config is in pytest.ini for compatibility
