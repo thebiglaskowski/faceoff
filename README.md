@@ -73,8 +73,9 @@ Sarah Connor?
    - **Manual Method**: [Download TensorRT](https://developer.nvidia.com/tensorrt) if needed
    - **Performance**: Provides 2-3x faster face detection and model inference
 
-5. **Python 3.11** - **Recommended** for 10-60% better performance vs 3.10
+5. **Python 3.12** - **Recommended** (3.10–3.12 supported; 3.13 is not compatible)
    - Anaconda/Miniconda recommended for easy environment management
+   - Note: Python 3.12 requires extra install steps for `basicsr` and `insightface` (see step 6 below)
 
 ## Optimized Setup Instructions
 
@@ -88,11 +89,19 @@ git clone https://github.com/thebiglaskowski/faceoff.git
 cd faceoff
 ```
 
-2. **Create Environment** (Python 3.11 for best performance):
-```powershell
-conda create -n faceoff python=3.11 -y
-conda activate faceoff
-```
+2. **Create Environment**:
+
+   **Python 3.12 (recommended — see extra steps below):**
+   ```powershell
+   conda create -n faceoff python=3.12 -y
+   conda activate faceoff
+   ```
+
+   **Python 3.11 (zero-workaround fallback):**
+   ```powershell
+   conda create -n faceoff python=3.11 -y
+   conda activate faceoff
+   ```
 
 3. **Install PyTorch with CUDA**:
 
@@ -140,19 +149,46 @@ print('✅ Fixed BasicSR compatibility')
    - [buffalo_l models](https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip) → extract to `models/buffalo_l/`
    - Real-ESRGAN weights download automatically on first use
 
-7. **Optional: Install gifsicle for better GIF compression**:
+7. **Python 3.12 extra steps** (skip if using Python 3.11):
+
+   **Fix basicsr** (`distutils` was removed in Python 3.12; `setuptools` provides a shim):
+   ```powershell
+   pip install "setuptools>=65" wheel
+   pip install basicsr>=1.4.2 --no-build-isolation
+   ```
+   If the install still fails with `KeyError: '__version__'`, patch `setup.py` first:
+   ```powershell
+   pip download basicsr==1.4.2 --no-deps -d "$env:TEMP\basicsr_dl"
+   cd "$env:TEMP\basicsr_dl"
+   tar xzf basicsr-1.4.2.tar.gz
+   (Get-Content basicsr-1.4.2\setup.py) -replace 'version=get_version\(\)', "version='1.4.2'" | Set-Content basicsr-1.4.2\setup.py
+   pip install basicsr-1.4.2\
+   cd -
+   ```
+
+   **Fix insightface** (no official cp312 Windows wheel; build from source using VS 2022 Build Tools):
+   ```powershell
+   pip install insightface --no-binary insightface
+   ```
+
+   **Reinstall gfpgan** without re-pulling the broken basicsr version:
+   ```powershell
+   pip install gfpgan>=1.3.8 --no-deps
+   ```
+
+8. **Optional: Install gifsicle for better GIF compression**:
    - [Download gifsicle for Windows](https://www.lcdf.org/gifsicle/)
    - Extract `gifsicle.exe` to `external/gifsicle/` folder
    - Provides ~60% better GIF compression than default PIL optimization
 
-8. **Verify Installation**:
+9. **Verify Installation**:
 
 ```powershell
 python -c "
 import torch, onnxruntime, gradio, cv2
 from realesrgan import RealESRGANer
 import insightface, tensorrt
-print(f'✅ Python: 3.11')
+print(f'✅ Python: {__import__("sys").version.split()[0]}')
 print(f'✅ PyTorch: {torch.__version__}')
 print(f'✅ CUDA Available: {torch.cuda.is_available()}')
 print(f'✅ TensorRT: {tensorrt.__version__}')
@@ -161,7 +197,7 @@ print('🚀 All dependencies working!')
 "
 ```
 
-9. **Fix TensorRT DLL Errors** (if you see "nvinfer_10.dll missing"):
+10. **Fix TensorRT DLL Errors** (if you see "nvinfer_10.dll missing"):
 
 ```powershell
 # Install NVIDIA CUDA libraries for TensorRT
@@ -169,7 +205,7 @@ pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12
 pip install nvidia-cusparse-cu12 nvidia-cusolver-cu12 nvidia-curand-cu12
 ```
 
-10. **Configure** (Optional):
+11. **Configure** (Optional):
    - Copy `config.example.yaml` to `config.yaml` (auto-created with defaults if missing)
    - Edit settings as needed - see [CONFIG_README.md](CONFIG_README.md) for details
 
@@ -180,7 +216,7 @@ This section covers installation on Windows Subsystem for Linux 2 (WSL2) using [
 > **Python version compatibility**
 > | Version | Status | Notes |
 > |---------|--------|-------|
-> | **3.12** | ✅ Recommended for WSL2 | Works with extra steps for `basicsr` and `insightface` (documented below) |
+> | **3.12** | ✅ Recommended | Works with extra steps for `basicsr` and `insightface` (documented below) |
 > | **3.11** | ✅ Fully supported | All packages install from PyPI without workarounds |
 > | **3.10** | ✅ Fully supported | 10-60% slower than 3.11; most compatible |
 > | **3.13** | ❌ Not compatible | `numpy<2.0` has no 3.13 wheels; `moviepy` 1.x is abandoned |
@@ -357,11 +393,11 @@ This section covers installation on Windows Subsystem for Linux 2 (WSL2) using [
 
 ---
 
-### Alternative Setup (Python 3.10)
+### Alternative Setup (Python 3.11)
 
-If you prefer the stable Python 3.10 setup, use `python=3.10` in step 2. Performance will be 10-60% slower but may be more compatible with some systems.
+If you want to skip the Python 3.12 workarounds, use `python=3.11` in step 2. All packages install from PyPI without any extra steps. For Python 3.10 (most compatible, slowest), use `python=3.10`.
 
-### Performance Comparison: Python 3.11 vs 3.10
+### Performance Comparison: Python 3.12/3.11 vs 3.10
 
 | Performance Metric | Python 3.10 | Python 3.11 | Improvement |
 |-------------------|--------------|--------------|-------------|
@@ -526,7 +562,7 @@ pip install -r requirements.txt --force-reinstall
 
 # Verify Python environment
 conda activate faceoff
-python --version  # Should show 3.10.x or 3.11.x
+python --version  # Should show 3.10.x, 3.11.x, or 3.12.x
 ```
 
 ### PyTorch Compatibility Issues
