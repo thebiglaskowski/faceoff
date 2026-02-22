@@ -173,6 +173,190 @@ pip install nvidia-cusparse-cu12 nvidia-cusolver-cu12 nvidia-curand-cu12
    - Copy `config.example.yaml` to `config.yaml` (auto-created with defaults if missing)
    - Edit settings as needed - see [CONFIG_README.md](CONFIG_README.md) for details
 
+### WSL2 Setup with uv (Linux/WSL2)
+
+This section covers installation on Windows Subsystem for Linux 2 (WSL2) using [uv](https://github.com/astral-sh/uv) as the Python environment manager. No Visual Studio or conda required.
+
+> **Python version compatibility**
+> | Version | Status | Notes |
+> |---------|--------|-------|
+> | **3.12** | ✅ Recommended for WSL2 | Works with extra steps for `basicsr` and `insightface` (documented below) |
+> | **3.11** | ✅ Fully supported | All packages install from PyPI without workarounds |
+> | **3.10** | ✅ Fully supported | 10-60% slower than 3.11; most compatible |
+> | **3.13** | ❌ Not compatible | `numpy<2.0` has no 3.13 wheels; `moviepy` 1.x is abandoned |
+
+#### WSL2 Prerequisites
+
+1. **NVIDIA GPU drivers on Windows** (not inside WSL2 — WSL2 inherits them):
+   - Install the latest [NVIDIA Game Ready or Studio driver](https://www.nvidia.com/Download/index.aspx) on the Windows host
+   - Run `nvidia-smi` inside WSL2 to confirm the GPU is visible
+
+2. **CUDA Toolkit inside WSL2** (the driver is shared from Windows; install only the toolkit):
+   ```bash
+   # Example for CUDA 12.4 — adjust version as needed
+   wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-keyring_1.1-1_all.deb
+   sudo dpkg -i cuda-keyring_1.1-1_all.deb
+   sudo apt update
+   sudo apt install -y cuda-toolkit-12-4
+   ```
+   Verify: `nvcc --version` and `nvidia-smi`
+
+3. **System dependencies**:
+   ```bash
+   sudo apt update
+   sudo apt install -y ffmpeg libmagic1 gifsicle build-essential
+   ```
+   - `ffmpeg` — video/audio processing
+   - `libmagic1` — file-type detection (replaces the Windows-only `python-magic-bin`)
+   - `gifsicle` — better GIF compression (~60% smaller than PIL)
+
+4. **uv** — fast Python package manager:
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   source $HOME/.local/bin/env   # or restart your shell
+   ```
+
+#### WSL2 Installation Steps
+
+1. **Clone Repository**:
+   ```bash
+   git clone https://github.com/thebiglaskowski/faceoff.git
+   cd faceoff
+   ```
+
+2. **Create Virtual Environment**:
+
+   **Python 3.12 (recommended for WSL2 — see extra steps below):**
+   ```bash
+   uv venv --python 3.12 .venv
+   source .venv/bin/activate
+   ```
+
+   **Python 3.11 (zero-workaround fallback):**
+   ```bash
+   uv venv --python 3.11 .venv
+   source .venv/bin/activate
+   ```
+
+3. **Install PyTorch with CUDA**:
+
+   ⚠️ **PyTorch Version Note**: Requires torch >= 2.6.0 for security (CVE-2025-32434) and SwinIR/CodeFormer support.
+
+   **For CUDA 12.4+ (Recommended):**
+   ```bash
+   uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+   ```
+
+   **For CUDA 12.1:**
+   ```bash
+   uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+   ```
+
+   **CPU-only (no GPU acceleration):**
+   ```bash
+   uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+   ```
+
+4. **Install All Dependencies**:
+   ```bash
+   uv pip install -r requirements.txt
+   ```
+
+   > **Note**: `python-magic-bin` in `requirements.txt` is Windows-only and will fail on Linux. Install `python-magic` instead:
+   > ```bash
+   > uv pip install python-magic
+   > ```
+
+5. **Fix BasicSR Compatibility** (if you get torchvision import errors):
+   ```bash
+   python -c "
+   import sys, os
+   site_packages = [p for p in sys.path if 'site-packages' in p][0]
+   file_path = os.path.join(site_packages, 'basicsr', 'data', 'degradations.py')
+   with open(file_path, 'r') as f: content = f.read()
+   content = content.replace(
+       'from torchvision.transforms.functional_tensor import rgb_to_grayscale',
+       'try:\n    from torchvision.transforms.functional_tensor import rgb_to_grayscale\nexcept ImportError:\n    from torchvision.transforms.functional import rgb_to_grayscale'
+   )
+   with open(file_path, 'w') as f: f.write(content)
+   print('Fixed BasicSR compatibility')
+   "
+   ```
+
+6. **Download Models**:
+   - [inswapper_128.onnx](https://huggingface.co/thebiglaskowski/inswapper_128.onnx/tree/main) → place in project root
+   - [buffalo_l models](https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip) → extract to `models/buffalo_l/`
+   - Real-ESRGAN weights download automatically on first use
+
+7. **Python 3.12 extra steps** (skip if using Python 3.11):
+
+   `basicsr` and `insightface` have no official Python 3.12 wheels and require workarounds.
+
+   **Fix basicsr** (`distutils` was removed in Python 3.12; `setuptools` provides a shim):
+   ```bash
+   # Pre-install setuptools so its distutils shim is available during basicsr's build
+   uv pip install "setuptools>=65" wheel
+   uv pip install basicsr>=1.4.2 --no-build-isolation
+   ```
+   If the install still fails with `KeyError: '__version__'`, run this patch first:
+   ```bash
+   pip download basicsr==1.4.2 --no-deps -d /tmp/basicsr_dl
+   cd /tmp/basicsr_dl && tar xzf basicsr-1.4.2.tar.gz
+   # Replace the version-detection line that fails in Python 3.12
+   sed -i "s/version=get_version()/version='1.4.2'/" basicsr-1.4.2/setup.py
+   uv pip install /tmp/basicsr_dl/basicsr-1.4.2/
+   cd -
+   ```
+
+   **Fix insightface** (PyPI only ships a source tarball — no cp312 wheel; build from source):
+   ```bash
+   sudo apt install -y cmake libopenblas-dev
+   uv pip install insightface --no-binary insightface
+   ```
+
+   **Reinstall gfpgan** (it pulls basicsr as a dependency — reinstall after basicsr is patched):
+   ```bash
+   uv pip install gfpgan>=1.3.8 --no-deps
+   ```
+
+8. **Verify Installation**:
+   ```bash
+   python -c "
+   import torch, onnxruntime, gradio, cv2
+   from realesrgan import RealESRGANer
+   import insightface
+   print(f'Python: {__import__(\"sys\").version.split()[0]}')
+   print(f'PyTorch: {torch.__version__}')
+   print(f'CUDA Available: {torch.cuda.is_available()}')
+   print(f'ONNX Providers: {onnxruntime.get_available_providers()}')
+   print('All dependencies working!')
+   "
+   ```
+
+9. **Run the Application**:
+   ```bash
+   source .venv/bin/activate   # if not already active
+   python main.py
+   ```
+
+   Opens at <http://127.0.0.1:7860/>
+
+#### WSL2-Specific Notes
+
+- **Performance bonus**: `torch.compile()` with Triton JIT compilation is Linux-only and activates automatically, providing 30-50% speedup for transformer models (SwinIR).
+- **TensorRT on WSL2**: TensorRT works inside WSL2 but requires the CUDA toolkit to be installed (step 2 above). If you see missing `.so` errors, install the NVIDIA CUDA libraries:
+  ```bash
+  uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 \
+                 nvidia-cusparse-cu12 nvidia-cusolver-cu12 nvidia-curand-cu12
+  ```
+- **File watching**: WSL2 inotify limits can cause issues with Gradio's auto-reload. Increase the limit if needed:
+  ```bash
+  echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+  ```
+- **Port forwarding**: Gradio's `http://127.0.0.1:7860/` is accessible from Windows browsers automatically in WSL2.
+
+---
+
 ### Alternative Setup (Python 3.10)
 
 If you prefer the stable Python 3.10 setup, use `python=3.10` in step 2. Performance will be 10-60% slower but may be more compatible with some systems.
