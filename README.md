@@ -229,11 +229,12 @@ This section covers installation on Windows Subsystem for Linux 2 (WSL2) using [
 
 2. **CUDA Toolkit inside WSL2** (the driver is shared from Windows; install only the toolkit):
    ```bash
-   # Example for CUDA 12.4 — adjust version as needed
    wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-keyring_1.1-1_all.deb
    sudo dpkg -i cuda-keyring_1.1-1_all.deb
    sudo apt update
-   sudo apt install -y cuda-toolkit-12-4
+   # Install the latest available version — check with: apt list cuda-toolkit-* 2>/dev/null | grep -v installed
+   # 12.4 is no longer available in the repo; use the newest listed (e.g. 13-1)
+   sudo apt install -y cuda-toolkit-13-1
    ```
    Verify: `nvcc --version` and `nvidia-smi`
 
@@ -278,7 +279,9 @@ This section covers installation on Windows Subsystem for Linux 2 (WSL2) using [
 
    ⚠️ **PyTorch Version Note**: Requires torch >= 2.6.0 for security (CVE-2025-32434) and SwinIR/CodeFormer support.
 
-   **For CUDA 12.4+ (Recommended):**
+   > **CUDA 13.x users**: PyTorch does not publish `cu13x` wheels. Use `cu124` regardless of which CUDA toolkit version you installed — the wheels are ABI-compatible with CUDA 13.x.
+
+   **For CUDA 12.4+ / 13.x (Recommended):**
    ```bash
    uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
    ```
@@ -303,7 +306,15 @@ This section covers installation on Windows Subsystem for Linux 2 (WSL2) using [
    > uv pip install python-magic
    > ```
 
-5. **Fix BasicSR Compatibility** (if you get torchvision import errors):
+5. **Install TensorRT** (recommended — provides 2-3x faster inference):
+   ```bash
+   uv pip install tensorrt tensorrt-cu13 tensorrt-cu13-bindings tensorrt-cu13-libs
+   ```
+   Verify: `python -c "import tensorrt; print(tensorrt.__version__)"`
+
+   > **Note**: The TensorRT Python wheel bundles all required `.so` libraries inside the venv. `main.py` preloads them into the process at startup via `ctypes` so `onnxruntime` can find them — no manual `LD_LIBRARY_PATH` configuration needed.
+
+6. **Fix BasicSR Compatibility** (if you get torchvision import errors):
    ```bash
    python -c "
    import sys, os
@@ -319,12 +330,12 @@ This section covers installation on Windows Subsystem for Linux 2 (WSL2) using [
    "
    ```
 
-6. **Download Models**:
+7. **Download Models**:
    - [inswapper_128.onnx](https://huggingface.co/thebiglaskowski/inswapper_128.onnx/tree/main) → place in project root
    - [buffalo_l models](https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip) → extract to `models/buffalo_l/`
-   - Real-ESRGAN weights download automatically on first use
+   - Real-ESRGAN and GFPGAN weights download automatically on first use
 
-7. **Python 3.12 extra steps** (skip if using Python 3.11):
+8. **Python 3.12 extra steps** (skip if using Python 3.11):
 
    `basicsr` and `insightface` have no official Python 3.12 wheels and require workarounds.
 
@@ -355,36 +366,33 @@ This section covers installation on Windows Subsystem for Linux 2 (WSL2) using [
    uv pip install gfpgan>=1.3.8 --no-deps
    ```
 
-8. **Verify Installation**:
+9. **Verify Installation**:
    ```bash
    python -c "
-   import torch, onnxruntime, gradio, cv2
+   import torch, onnxruntime, gradio, cv2, tensorrt
    from realesrgan import RealESRGANer
    import insightface
    print(f'Python: {__import__(\"sys\").version.split()[0]}')
    print(f'PyTorch: {torch.__version__}')
+   print(f'TensorRT: {tensorrt.__version__}')
    print(f'CUDA Available: {torch.cuda.is_available()}')
    print(f'ONNX Providers: {onnxruntime.get_available_providers()}')
    print('All dependencies working!')
    "
    ```
 
-9. **Run the Application**:
-   ```bash
-   source .venv/bin/activate   # if not already active
-   python main.py
-   ```
+10. **Run the Application**:
+    ```bash
+    source .venv/bin/activate   # if not already active
+    python main.py
+    ```
 
-   Opens at <http://127.0.0.1:7860/>
+    Opens at <http://127.0.0.1:7860/>
 
 #### WSL2-Specific Notes
 
 - **Performance bonus**: `torch.compile()` with Triton JIT compilation is Linux-only and activates automatically, providing 30-50% speedup for transformer models (SwinIR).
-- **TensorRT on WSL2**: TensorRT works inside WSL2 but requires the CUDA toolkit to be installed (step 2 above). If you see missing `.so` errors, install the NVIDIA CUDA libraries:
-  ```bash
-  uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 \
-                 nvidia-cusparse-cu12 nvidia-cusolver-cu12 nvidia-curand-cu12
-  ```
+- **TensorRT on WSL2**: Covered in step 5 above. The Python wheel installs all `.so` libraries inside the venv (`tensorrt_libs/`). Because `LD_LIBRARY_PATH` set from within a running Python process is not picked up by `dlopen` in the same process (glibc caches it at startup), `main.py` instead uses `ctypes.CDLL` to preload every library from `tensorrt_libs/` before `onnxruntime` tries to load its TensorRT provider. No manual environment variable configuration is needed.
 - **File watching**: WSL2 inotify limits can cause issues with Gradio's auto-reload. Increase the limit if needed:
   ```bash
   echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p

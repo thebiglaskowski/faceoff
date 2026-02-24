@@ -9,21 +9,57 @@ import sys
 import threading
 from pathlib import Path
 
-# Add NVIDIA/TensorRT library paths to PATH for TensorRT support
-# pip packages install DLLs in subdirectories not on PATH
-_site_packages = Path(sys.prefix) / 'Lib' / 'site-packages'
+# Add NVIDIA/TensorRT library paths so onnxruntime can find them at runtime.
+# pip installs these libraries inside site-packages, not in system library paths.
+import site as _site
+_site_packages_dirs = _site.getsitepackages() or []
+# Also include user site-packages and the venv's own site-packages
+_sp = Path(sys.prefix)
+for _candidate in [
+    _sp / 'Lib' / 'site-packages',   # Windows venv
+    _sp / 'lib' / f'python{sys.version_info.major}.{sys.version_info.minor}' / 'site-packages',  # Linux venv
+]:
+    if _candidate.exists() and str(_candidate) not in _site_packages_dirs:
+        _site_packages_dirs.append(str(_candidate))
 
-# Add tensorrt_libs directory (contains nvinfer_10.dll etc)
-_tensorrt_libs = _site_packages / 'tensorrt_libs'
-if _tensorrt_libs.exists():
-    os.environ['PATH'] = str(_tensorrt_libs) + os.pathsep + os.environ.get('PATH', '')
+import ctypes as _ctypes
 
-# Add nvidia subdirectories (cublas, cudnn, etc)
-_nvidia_path = _site_packages / 'nvidia'
-if _nvidia_path.exists():
-    for lib_dir in _nvidia_path.glob('*/bin'):
-        if lib_dir.is_dir():
-            os.environ['PATH'] = str(lib_dir) + os.pathsep + os.environ.get('PATH', '')
+def _preload_so(path: Path) -> None:
+    """Load a shared library into the process so later dlopen calls find it."""
+    try:
+        _ctypes.CDLL(str(path))
+    except OSError:
+        pass
+
+for _sp_dir in _site_packages_dirs:
+    _sp_path = Path(_sp_dir)
+
+    # tensorrt_libs: contains libnvinfer.so.10 (Linux) / nvinfer_10.dll (Windows)
+    _tensorrt_libs = _sp_path / 'tensorrt_libs'
+    if _tensorrt_libs.exists():
+        if sys.platform == 'win32':
+            os.environ['PATH'] = str(_tensorrt_libs) + os.pathsep + os.environ.get('PATH', '')
+        else:
+            # Setting LD_LIBRARY_PATH after process start doesn't affect dlopen in the
+            # same process (glibc caches it at startup). Preload the key libraries with
+            # ctypes so they're already in the process namespace when onnxruntime loads
+            # the TensorRT provider via dlopen.
+            for _so in sorted(_tensorrt_libs.glob('*.so.*')):
+                _preload_so(_so)
+            os.environ['LD_LIBRARY_PATH'] = str(_tensorrt_libs) + os.pathsep + os.environ.get('LD_LIBRARY_PATH', '')
+
+    # nvidia sub-packages: cublas, cudnn, etc.
+    _nvidia_path = _sp_path / 'nvidia'
+    if _nvidia_path.exists():
+        # Windows puts DLLs in bin/, Linux puts .so files in lib/
+        _lib_subdir = 'bin' if sys.platform == 'win32' else 'lib'
+        _path_var = 'PATH' if sys.platform == 'win32' else 'LD_LIBRARY_PATH'
+        for _lib_dir in _nvidia_path.glob(f'*/{_lib_subdir}'):
+            if _lib_dir.is_dir():
+                if sys.platform != 'win32':
+                    for _so in _lib_dir.glob('*.so.*'):
+                        _preload_so(_so)
+                os.environ[_path_var] = str(_lib_dir) + os.pathsep + os.environ.get(_path_var, '')
 
 # Suppress ONNX Runtime verbose logging (especially TensorRT provider errors)
 # Level 3 = WARNING, Level 4 = ERROR only

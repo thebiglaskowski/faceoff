@@ -47,7 +47,7 @@ nvidia-curand-cu12>=10.0.0
 # Core Utilities
 PyYAML>=6.0
 tqdm>=4.66.0
-python-magic-bin>=0.4.14  # File type detection (Windows)
+#python-magic-bin>=0.4.14  # File type detection (Windows)
 ffmpeg-python>=0.2.0
 gdown>=5.0.0  # Model downloads
 lpips>=0.1.4  # Perceptual loss
