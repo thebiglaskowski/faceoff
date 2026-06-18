@@ -11,6 +11,15 @@ import logging
 from pathlib import Path
 from contextlib import suppress
 
+# Compat shim: torchvision >=0.18 removed torchvision.transforms.functional_tensor.
+# Older basicsr (1.4.2), still pulled by gfpgan/realesrgan, imports rgb_to_grayscale
+# from that module.  Patch sys.modules before anyone else can import it.
+from types import ModuleType
+from torchvision.transforms.functional import rgb_to_grayscale
+_fts = ModuleType("torchvision.transforms.functional_tensor")
+_fts.rgb_to_grayscale = rgb_to_grayscale
+sys.modules["torchvision.transforms.functional_tensor"] = _fts
+
 # ---------------------------------------------------------------------------
 # NVIDIA / TensorRT library discovery (Linux-native).
 #
