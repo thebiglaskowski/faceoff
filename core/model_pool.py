@@ -214,6 +214,9 @@ class ModelPool:
                     cls._instance._initialized = False
         return cls._instance
 
+    _get_instance_lock = threading.Lock()
+    _cleanup_lock = threading.Lock()
+
     def __init__(self):
         if self._initialized:
             return
@@ -225,6 +228,25 @@ class ModelPool:
         self._initialized = True
 
         logger.info("ModelPool initialized")
+
+    @classmethod
+    def _get_instance(cls) -> 'ModelPool':
+        """Get the ModelPool singleton (thread-safe)."""
+        with cls._get_instance_lock:
+            if cls._instance is None:
+                cls._instance = cls.__new__(cls)
+                cls._instance._initialized = False
+                cls._instance.__init__()
+            return cls._instance
+
+    @classmethod
+    def _cleanup(cls) -> None:
+        """Cleanup the ModelPool singleton."""
+        with cls._cleanup_lock:
+            if cls._instance is not None:
+                cls._instance.cleanup()
+                cls._instance._initialized = False
+                cls._instance = None
 
     def set_model_path(self, model_path: str):
         """Set the inswapper model path."""
@@ -321,20 +343,9 @@ class ModelPool:
 
 
 # Module-level singleton accessor
-_model_pool: Optional[ModelPool] = None
-
-
-def get_model_pool() -> ModelPool:
-    """Get the global ModelPool singleton."""
-    global _model_pool
-    if _model_pool is None:
-        _model_pool = ModelPool()
-    return _model_pool
+get_model_pool = ModelPool._get_instance
 
 
 def cleanup_model_pool():
     """Clean up the global model pool."""
-    global _model_pool
-    if _model_pool is not None:
-        _model_pool.cleanup()
-        _model_pool = None
+    ModelPool._cleanup()

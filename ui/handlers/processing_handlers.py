@@ -23,7 +23,7 @@ from utils.constants import (
     MODEL_OPTIONS, SWINIR_MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_SWINIR_MODEL,
     DEFAULT_TILE_SIZE, DEFAULT_OUTSCALE, DEFAULT_USE_FP32, DEFAULT_PRE_PAD
 )
-from processing.orchestrator import process_media
+from processing.orchestrator import process_media, ProcessOptions
 from utils.error_handler import ErrorHandler, FriendlyError
 from utils.config_manager import config
 from ui.helpers.face_mapping import (
@@ -151,7 +151,7 @@ def _process_input(
             restoration_weight, tensorrt_fp16
         )
 
-        result_img, result_vid = process_media(
+        opts = ProcessOptions(
             source_image=source_array,
             dest_path=target_path,
             media_type=media_type,
@@ -169,8 +169,10 @@ def _process_input(
             restore_faces=restore_faces,
             restoration_weight=restoration_weight,
             enhancement_model=enhancement_model,
-            restoration_model=restoration_model
+            restoration_model=restoration_model,
         )
+
+        result_img, result_vid = process_media(opts)
 
         logger.info("Processing complete!")
         logger.info("=" * 40)

@@ -495,26 +495,24 @@ class TestProcessingPipeline:
     @pytest.mark.unit
     def test_orchestrator_signature_includes_model_params(self):
         """Test that orchestrator accepts model selection parameters."""
-        from processing.orchestrator import process_media
-        import inspect
+        from processing.orchestrator import ProcessOptions
+        import dataclasses
 
-        sig = inspect.signature(process_media)
-        param_names = list(sig.parameters.keys())
+        fields = {f.name for f in dataclasses.fields(ProcessOptions)}
 
-        assert 'enhancement_model' in param_names
-        assert 'restoration_model' in param_names
+        assert 'enhancement_model' in fields
+        assert 'restoration_model' in fields
 
     @pytest.mark.unit
     def test_default_enhancement_model(self):
         """Test that default enhancement model is RealESRGAN."""
-        from processing.orchestrator import process_media
-        import inspect
+        from processing.orchestrator import ProcessOptions
+        import dataclasses
 
-        sig = inspect.signature(process_media)
         defaults = {
-            k: v.default
-            for k, v in sig.parameters.items()
-            if v.default is not inspect.Parameter.empty
+            f.name: f.default
+            for f in dataclasses.fields(ProcessOptions)
+            if f.default is not dataclasses.MISSING
         }
 
         assert defaults.get('enhancement_model') == 'RealESRGAN'
@@ -522,14 +520,13 @@ class TestProcessingPipeline:
     @pytest.mark.unit
     def test_default_restoration_model(self):
         """Test that default restoration model is GFPGAN."""
-        from processing.orchestrator import process_media
-        import inspect
+        from processing.orchestrator import ProcessOptions
+        import dataclasses
 
-        sig = inspect.signature(process_media)
         defaults = {
-            k: v.default
-            for k, v in sig.parameters.items()
-            if v.default is not inspect.Parameter.empty
+            f.name: f.default
+            for f in dataclasses.fields(ProcessOptions)
+            if f.default is not dataclasses.MISSING
         }
 
         assert defaults.get('restoration_model') == 'GFPGAN'

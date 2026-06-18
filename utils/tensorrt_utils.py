@@ -13,22 +13,6 @@ from typing import List
 
 logger = logging.getLogger("FaceOff")
 
-# Add NVIDIA/TensorRT library paths to PATH
-# pip packages install DLLs in subdirectories not automatically on PATH
-_site_packages = Path(sys.prefix) / 'Lib' / 'site-packages'
-
-# Add tensorrt_libs directory (contains nvinfer_10.dll etc)
-_tensorrt_libs = _site_packages / 'tensorrt_libs'
-if _tensorrt_libs.exists() and str(_tensorrt_libs) not in os.environ.get('PATH', ''):
-    os.environ['PATH'] = str(_tensorrt_libs) + os.pathsep + os.environ.get('PATH', '')
-
-# Add nvidia subdirectories (cublas, cudnn, etc)
-_nvidia_path = _site_packages / 'nvidia'
-if _nvidia_path.exists():
-    for lib_dir in _nvidia_path.glob('*/bin'):
-        if lib_dir.is_dir() and str(lib_dir) not in os.environ.get('PATH', ''):
-            os.environ['PATH'] = str(lib_dir) + os.pathsep + os.environ.get('PATH', '')
-
 # Suppress ONNX Runtime TensorRT warnings during detection
 _original_stderr = None
 

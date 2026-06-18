@@ -24,18 +24,15 @@ def reset_model_pool():
     """Reset model pool singleton between tests."""
     from core import model_pool as mp_module
 
-    # Store original values
-    original_pool = mp_module._model_pool
+    # Store original value
     original_instance = mp_module.ModelPool._instance
 
     # Reset singleton state
-    mp_module._model_pool = None
     mp_module.ModelPool._instance = None
 
     yield
 
-    # Restore original values
-    mp_module._model_pool = original_pool
+    # Restore original value
     mp_module.ModelPool._instance = original_instance
 
 
@@ -356,7 +353,7 @@ class TestModelPoolCleanup:
 
         cleanup_model_pool()
 
-        assert mp_module._model_pool is None
+        assert mp_module.ModelPool._instance is None
 
 
 # =============================================================================
