@@ -28,10 +28,24 @@ def create_video_tab():
                 face_info_vid = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
                 source_faces_gallery_vid = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
             with gr.Column():
-                target_vid = gr.Video(label="Target Video", sources=None, autoplay=True)
+                # File upload avoids Gradio's in-browser video decoder (HEVC / odd
+                # profiles trigger "Video not playable"). First frame shown below.
+                target_vid = gr.File(
+                    label="Target Video",
+                    file_types=[".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"],
+                )
+                target_vid_preview = gr.Image(
+                    label="First Frame Preview",
+                    visible=False,
+                    show_label=True,
+                )
                 target_faces_gallery_vid = gr.Gallery(label="Target Faces (First Frame)", columns=4, height="auto", visible=False)
             with gr.Column():
-                result_vid = gr.Video(label="Swapped Result", autoplay=True)
+                result_vid = gr.Video(
+                    label="Swapped Result",
+                    format="mp4",
+                    autoplay=True,
+                )
         
         # Face mapping controls for Video
         with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
@@ -169,6 +183,7 @@ def create_video_tab():
     return {
         "source_vid": source_vid,
         "target_vid": target_vid,
+        "target_vid_preview": target_vid_preview,
         "result_vid": result_vid,
         "face_info_vid": face_info_vid,
         "source_faces_gallery_vid": source_faces_gallery_vid,

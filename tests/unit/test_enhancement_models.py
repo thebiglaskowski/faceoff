@@ -310,6 +310,44 @@ class TestHAT:
             assert "scale" in model_info, f"Missing scale for {model_name}"
             assert model_info["scale"] in [2, 4], f"Invalid scale for {model_name}"
             assert "description" in model_info, f"Missing description for {model_name}"
+            assert "arch" in model_info, f"Missing arch for {model_name}"
+            assert model_info["arch"]["window_size"] == 16
+            assert model_info["arch"]["embed_dim"] == 180
+
+    @pytest.mark.unit
+    def test_hat_base_uses_base_weights_not_large(self):
+        """HAT_Base must not point at HAT-L weights (arch mismatch)."""
+        from processing.hat_enhancement import HAT_MODELS
+
+        url = HAT_MODELS["HAT_Base_4x_ImageNet"]["url"]
+        assert "HAT-L" not in url
+        assert "HAT_SRx4_ImageNet-pretrain.pth" in url
+
+    @pytest.mark.unit
+    def test_hat_window_padding(self):
+        """HAT inputs must be padded to multiples of window_size (7)."""
+        import numpy as np
+        from processing.hat_enhancement import (
+            HAT_WINDOW_SIZE,
+            _hat_tile_dim,
+            _pad_to_window_size,
+        )
+
+        img = np.zeros((256, 256, 3), dtype=np.uint8)
+        padded, orig_h, orig_w = _pad_to_window_size(img, HAT_WINDOW_SIZE)
+        assert (orig_h, orig_w) == (256, 256)
+        assert padded.shape[0] % HAT_WINDOW_SIZE == 0
+        assert padded.shape[1] % HAT_WINDOW_SIZE == 0
+        assert _hat_tile_dim(100, 256, HAT_WINDOW_SIZE) % HAT_WINDOW_SIZE == 0
+
+    @pytest.mark.unit
+    def test_hat_checkpoint_extraction(self):
+        """HAT checkpoints should load params_ema when present."""
+        from processing.hat_enhancement import _extract_hat_checkpoint
+
+        weights = {"layer": 1}
+        assert _extract_hat_checkpoint({"params_ema": weights}) is weights
+        assert _extract_hat_checkpoint({"state_dict": weights}) is weights
 
     @pytest.mark.unit
     def test_hat_default_model(self):
@@ -336,6 +374,61 @@ class TestHAT:
         assert len(_hat_cache) == 0
 
     @pytest.mark.unit
+    def test_get_hat_model_serializes_concurrent_loads(self, mock_gpu):
+        """Concurrent _get_hat_model calls must not double-load the same GPU."""
+        import threading
+        from unittest.mock import MagicMock, patch
+
+        from processing.hat_enhancement import _get_hat_model, _hat_cache, clear_hat_cache
+
+        clear_hat_cache()
+        load_count = 0
+        model_tuple = (MagicMock(), MagicMock(), MagicMock(), 1.0)
+
+        def _fake_load(model_name, gpu_id, model_path):
+            nonlocal load_count
+            load_count += 1
+            return model_tuple
+
+        with patch(
+            "processing.hat_enhancement._load_hat_model_impl", side_effect=_fake_load
+        ):
+            errors = []
+
+            def _worker():
+                try:
+                    _get_hat_model("HAT_Base_4x_ImageNet", 0)
+                except Exception as exc:
+                    errors.append(exc)
+
+            threads = [threading.Thread(target=_worker) for _ in range(4)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+        assert not errors
+        assert load_count == 1
+        assert len(_hat_cache) == 1
+
+    @pytest.mark.unit
+    def test_preload_hat_models_is_sequential(self, mock_gpu):
+        from unittest.mock import patch
+
+        from processing.hat_enhancement import preload_hat_models
+
+        order = []
+
+        def _track_get(model_name, gpu_id, model_path=None):
+            order.append(gpu_id)
+            return (MagicMock(), MagicMock(), MagicMock(), 1.0)
+
+        with patch("processing.hat_enhancement._get_hat_model", side_effect=_track_get):
+            preload_hat_models([0, 1], "HAT_Base_4x_ImageNet")
+
+        assert order == [0, 1]
+
+    @pytest.mark.unit
     def test_get_available_hat_models(self):
         """Test that available HAT models can be retrieved."""
         from processing.hat_enhancement import get_available_hat_models, HAT_MODELS
@@ -343,6 +436,106 @@ class TestHAT:
         available = get_available_hat_models()
         assert available == HAT_MODELS
         assert available is not HAT_MODELS
+
+    @pytest.mark.unit
+    def test_should_use_tiled_when_vram_low(self, mock_gpu, temp_config, reset_config):
+        from unittest.mock import patch
+        from processing.hat_enhancement import _should_use_tiled_inference
+        from utils.memory_manager import MemoryManager
+
+        with patch.object(MemoryManager, "get_memory_stats", return_value={"free_mb": 500}):
+            assert _should_use_tiled_inference(200, 200, 256, gpu_id=0) is True
+
+    @pytest.mark.unit
+    def test_oom_tile_attempts_reduce_size(self):
+        from processing.hat_enhancement import _oom_tile_attempts
+
+        attempts = _oom_tile_attempts(256)
+        assert attempts[0] == 256
+        assert attempts[-1] == 64
+        assert len(attempts) == len(set(attempts))
+
+    @pytest.mark.unit
+    def test_hat_input_skips_external_mean_subtraction(self):
+        """HAT.forward() normalizes mean internally — do not subtract twice."""
+        import numpy as np
+        import torch
+        from processing.hat_enhancement import _apply_hat_model
+
+        class _RecordingModel(torch.nn.Module):
+            window_size = 16
+
+            def __init__(self):
+                super().__init__()
+                self.last_input_mean = None
+
+            def forward(self, x):
+                self.last_input_mean = float(x.mean().item())
+                batch, _, h, w = x.shape
+                out = torch.nn.functional.interpolate(x, scale_factor=4, mode="bilinear")
+                return torch.clamp(out, 0.0, 1.0)
+
+        model = _RecordingModel()
+        device = torch.device("cpu")
+        mean = torch.zeros(1, 3, 1, 1)
+        rgb = np.full((32, 32, 3), 128, dtype=np.uint8)
+        _apply_hat_model(rgb, model, device, mean, 1.0, gpu_id=0, tile_size=0)
+        assert model.last_input_mean is not None
+        assert abs(model.last_input_mean - (128 / 255.0)) < 0.02
+
+    @pytest.mark.unit
+    @pytest.mark.gpu
+    def test_hat_fp32_inference_avoids_fp16_nan(self, mock_gpu):
+        """HAT must not use FP16 autocast (produces NaN/black frames on consumer GPUs)."""
+        import numpy as np
+        import torch
+        from processing.hat_enhancement import _get_hat_model, clear_hat_cache
+
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA required")
+
+        clear_hat_cache()
+        model, device, mean, img_range = _get_hat_model("HAT_Base_4x_ImageNet", 0)
+        rgb = np.full((64, 64, 3), 128, dtype=np.uint8)
+        img = torch.from_numpy(
+            np.moveaxis(rgb.astype(np.float32) / 255.0, -1, 0)
+        ).unsqueeze(0).to(device)
+        with torch.no_grad():
+            with torch.autocast(device_type="cuda", dtype=torch.float16):
+                fp16_out = model(img)
+            fp32_out = model(img.float())
+        assert torch.isnan(fp16_out).any()
+        assert not torch.isnan(fp32_out).any()
+
+    @pytest.mark.unit
+    def test_tiled_inference_produces_nonzero_output(self):
+        """Tiled path must not return an all-black frame (weight_map bug regression)."""
+        import numpy as np
+        import torch
+        from processing.hat_enhancement import HAT_UPSCALE, _enhance_image_tiled
+
+        class _IdentityScaleModel(torch.nn.Module):
+            window_size = 16
+
+            def forward(self, x):
+                return torch.nn.functional.interpolate(
+                    x,
+                    scale_factor=HAT_UPSCALE,
+                    mode="bilinear",
+                    align_corners=False,
+                )
+
+        image = np.random.randint(20, 200, (320, 280, 3), dtype=np.uint8)
+        model = _IdentityScaleModel()
+        device = torch.device("cpu")
+        mean = torch.zeros(1, 3, 1, 1)
+        result = _enhance_image_tiled(
+            image, model, device, mean, img_range=1.0, tile_size=128, overlap=16
+        )
+
+        assert result.shape == (320 * HAT_UPSCALE, 280 * HAT_UPSCALE, 3)
+        assert int(result.max()) > 0
+        assert int(result.mean()) > 10
 
 
 # =============================================================================
@@ -481,56 +674,48 @@ class TestModelRouting:
         assert "CodeFormer" in restoration_options
 
     @pytest.mark.unit
-    def test_get_restorer_returns_gfpgan_by_default(self, mock_gpu):
-        """Test that _get_restorer returns GFPGAN by default."""
-        from processing.image_processing import _get_restorer
+    def test_restoration_session_uses_gfpgan_by_default(self, mock_gpu):
+        """RestorationSession should use GFPGAN by default."""
+        from processing.restoration_session import RestorationSession
 
-        # Patch at the location where FaceRestorer is used (image_processing imports it)
-        with patch('processing.image_processing.FaceRestorer') as mock_class:
+        with patch("processing.face_restoration.FaceRestorer") as mock_class:
             mock_restorer = MagicMock()
             mock_class.return_value = mock_restorer
-
-            restorer, restore_func = _get_restorer("GFPGAN", gpu_id=0)
-
+            session = RestorationSession("GFPGAN", gpu_id=0)
             mock_class.assert_called_once()
-            assert callable(restore_func)
+            session.close()
 
     @pytest.mark.unit
-    def test_get_restorer_returns_codeformer(self, mock_gpu):
-        """Test that _get_restorer returns CodeFormer when specified."""
-        from processing.image_processing import _get_restorer
+    def test_restoration_session_uses_codeformer(self, mock_gpu):
+        """RestorationSession should use CodeFormer when specified."""
+        from processing.restoration_session import RestorationSession
 
-        with patch('processing.codeformer_restoration.CodeFormerRestorer') as mock_class:
+        with patch(
+            "processing.codeformer_restoration._get_codeformer_restorer"
+        ) as mock_get:
             mock_restorer = MagicMock()
-            mock_class.return_value = mock_restorer
-
-            restorer, restore_func = _get_restorer("CodeFormer", gpu_id=0)
-
-            mock_class.assert_called_once()
-            assert callable(restore_func)
+            mock_get.return_value = mock_restorer
+            session = RestorationSession("CodeFormer", gpu_id=0)
+            mock_get.assert_called_once()
+            session.close()
 
     @pytest.mark.unit
-    def test_apply_enhancement_routes_to_swinir(self):
-        """Test that _apply_enhancement routes to SwinIR when specified."""
-        from processing.image_processing import _apply_enhancement
+    def test_in_memory_enhancer_routes_to_swinir(self):
+        """InMemoryEnhancer should call SwinIR for SwinIR model selection."""
+        import numpy as np
+        from processing.in_memory_enhancement import InMemoryEnhancer
 
-        with patch('processing.swinir_enhancement.enhance_image_swinir_file') as mock_swinir:
-            mock_swinir.return_value = Path("enhanced.png")
+        frame = np.zeros((8, 8, 3), dtype=np.uint8)
+        enhancer = InMemoryEnhancer(
+            "SwinIR", "Swin2SR_x4", [0], tile_size=256, outscale=4
+        )
 
-            result = _apply_enhancement(
-                output_path=Path("test.png"),
-                output_dir=Path("outputs"),
-                enhancement_model="SwinIR",
-                model_name="Swin2SR_x4",
-                tile_size=256,
-                outscale=4,
-                denoise_strength=0.5,
-                use_fp32=False,
-                pre_pad=10,
-                gpu_id=0
-            )
+        with patch("processing.swinir_enhancement.enhance_image_swinir") as mock_swinir:
+            mock_swinir.return_value = frame
+            result = enhancer.enhance_rgb_frames([frame])
 
-            mock_swinir.assert_called_once()
+        mock_swinir.assert_called_once()
+        assert len(result) == 1
 
 
 # =============================================================================

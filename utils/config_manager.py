@@ -135,6 +135,14 @@ class Config:
     @property
     def tensorrt_enabled(self) -> bool:
         return self.get('gpu', 'tensorrt_enabled', default=True)
+
+    @property
+    def gpu_frame_retention_enabled(self) -> bool:
+        return self.get('gpu', 'frame_retention_enabled', default=False)
+
+    @property
+    def gpu_paste_on_gpu(self) -> bool:
+        return self.get('gpu', 'paste_on_gpu', default=False)
     
     @property
     def tensorrt_fp16(self) -> bool:
@@ -213,6 +221,10 @@ class Config:
     @property
     def default_denoise_strength(self) -> float:
         return self.get('enhancement', 'defaults', 'denoise_strength', default=0.5)
+
+    @property
+    def enhancement_multi_gpu_enabled(self) -> bool:
+        return self.get('enhancement', 'multi_gpu_enabled', default=False)
     
     # Face restoration
     @property
@@ -227,18 +239,50 @@ class Config:
     def gfpgan_default_weight(self) -> float:
         return self.get('face_restoration', 'default_weight', default=0.5)
     
-    # Async pipeline
+    # Streaming pipeline
     @property
-    def async_pipeline_enabled(self) -> bool:
-        return self.get('async_pipeline', 'enabled', default=True)
-    
-    @property
-    def async_min_frames_threshold(self) -> int:
-        return self.get('async_pipeline', 'min_frames_threshold', default=10)
+    def streaming_enabled(self) -> bool:
+        return self.get('streaming', 'enabled', default=True)
 
     @property
-    def async_queue_size(self) -> int:
-        return self.get('async_pipeline', 'queue_size', default=32)
+    def streaming_chunk_size(self) -> int:
+        return self.get('streaming', 'chunk_size', default=32)
+
+    @property
+    def streaming_video_face_enhance(self) -> bool:
+        return self.get('streaming', 'video_face_enhance', default=False)
+
+    @property
+    def streaming_gif_decode_fps(self) -> float:
+        return float(self.get('streaming', 'gif_decode_fps', default=10.0))
+
+    @property
+    def streaming_hwaccel_decode(self) -> bool:
+        return self.get('streaming', 'hwaccel_decode', default=True)
+
+    @property
+    def streaming_nvenc_encode(self) -> bool:
+        return self.get('streaming', 'nvenc_encode', default=True)
+
+    @property
+    def streaming_video_codec(self) -> str:
+        return self.get('streaming', 'video_codec', default='libx264')
+
+    @property
+    def streaming_video_preset(self) -> str:
+        return self.get('streaming', 'video_preset', default='medium')
+
+    @property
+    def streaming_video_crf(self) -> int:
+        return self.get('streaming', 'video_crf', default=18)
+
+    @property
+    def compression_skip_optimized_video(self) -> bool:
+        return self.get('compression', 'skip_optimized_video', default=True)
+
+    @property
+    def preload_enhancement_on_startup(self) -> bool:
+        return self.get('model_cache', 'preload_enhancement_on_startup', default=False)
     
     # Logging
     @property
@@ -277,6 +321,14 @@ class Config:
     def log_json_file(self) -> str:
         return self.get('logging', 'json_log_file', default='app.json.log')
 
+    @property
+    def log_terminal_buffer_lines(self) -> int:
+        return self.get('logging', 'terminal_buffer_lines', default=3000)
+
+    @property
+    def log_terminal_auto_refresh_sec(self) -> float:
+        return float(self.get('logging', 'terminal_auto_refresh_sec', default=2))
+
     # Model cache
     @property
     def tensorrt_cache_dir(self) -> str:
@@ -314,7 +366,19 @@ class Config:
     @property
     def min_batch_size(self) -> int:
         return self.get('memory', 'min_batch_size', default=1)
-    
+
+    @property
+    def release_swap_models_before_enhance(self) -> bool:
+        return self.get('memory', 'release_swap_models_before_enhance', default=True)
+
+    @property
+    def hat_force_tiled_below_free_mb(self) -> int:
+        return self.get('memory', 'hat_force_tiled_below_free_mb', default=2048)
+
+    @property
+    def hat_oom_min_tile_size(self) -> int:
+        return self.get('memory', 'hat_oom_min_tile_size', default=64)
+
     # File formats
     @property
     def supported_image_formats(self) -> list:

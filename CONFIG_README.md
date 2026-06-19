@@ -30,11 +30,12 @@ max_gif_frames: 500
 ### gpu
 GPU processing settings:
 ```yaml
-batch_size: 4                # Frames processed per batch
+batch_size: 8                # Frames processed per batch (auto-reduces on OOM)
 max_batch_size: 16           # Maximum batch size
-tensorrt_enabled: true       # Enable TensorRT optimization
+tensorrt_enabled: true       # Enable TensorRT optimization (CUDA fallback if unavailable)
 tensorrt_fp16: true          # Use FP16 precision
 tensorrt_workspace_mb: 2048  # TensorRT workspace size
+frame_retention_enabled: true  # Wave 3: one GPU upload per decode chunk + swap IoBinding
 ```
 
 ### face_detection
@@ -74,11 +75,20 @@ model_version: "1.3"
 default_weight: 0.5
 ```
 
-### async_pipeline
-Async processing configuration:
+### streaming
+Chunked video/GIF pipeline (replaces legacy async_pipeline):
 ```yaml
 enabled: true
-min_frames_threshold: 10  # Minimum frames to use async pipeline
+chunk_size: 32              # Frames per chunk — caps RAM
+video_face_enhance: false   # GFPGAN inside ESRGAN per frame (slow for video)
+gif_decode_fps: 10
+hwaccel_decode: true        # FFmpeg CUDA decode when available
+nvenc_encode: true          # h264_nvenc when available
+```
+
+### enhancement
+```yaml
+multi_gpu_enabled: false    # RealESRGAN only; HAT/SwinIR always single-GPU
 ```
 
 ### logging

@@ -5,11 +5,12 @@ This module handles VRAM monitoring, automatic cache clearing,
 and adaptive batch size adjustment to prevent OOM errors.
 """
 
+import gc
 import logging
 import time
 import torch
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from utils.config_manager import config
 
 logger = logging.getLogger("FaceOff")
@@ -50,8 +51,12 @@ class MemoryManager:
         self.cache_stats = cache_stats
         self.mb_per_batch = config.mb_per_batch_estimate
 
-        logger.info("MemoryManager initialized for device %d (auto_clear=%s, threshold=%dMB)",
-                   device_id, self.auto_clear, self.clear_threshold_mb)
+        logger.debug(
+            "MemoryManager initialized for device %d (auto_clear=%s, threshold=%dMB)",
+            device_id,
+            self.auto_clear,
+            self.clear_threshold_mb,
+        )
     
     def get_memory_stats(self, use_cache: bool = True) -> Dict[str, float]:
         """
@@ -267,6 +272,99 @@ def clear_cuda_cache(device_id: int = 0) -> None:
     """
     manager = MemoryManager(device_id)
     manager.clear_cache(force=True)
+
+
+def refresh_gpu_memory(
+    device_id: int = 0,
+    *,
+    force: bool = True,
+    device_ids: Optional[List[int]] = None,
+) -> Dict[int, Dict[str, float]]:
+    """
+    Aggressively refresh PyTorch CUDA memory on one or more GPUs.
+
+    Runs garbage collection, empties the CUDA cache, and synchronizes devices.
+    """
+    gc.collect()
+
+    ids = device_ids if device_ids is not None else [device_id]
+    stats: Dict[int, Dict[str, float]] = {}
+
+    if not torch.cuda.is_available():
+        return stats
+
+    for did in ids:
+        with torch.cuda.device(did):
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        manager = MemoryManager(did)
+        manager.invalidate_cache()
+        if force:
+            manager.clear_cache(force=True)
+        stats[did] = manager.get_memory_stats(use_cache=False)
+
+    return stats
+
+
+def select_enhancement_gpu(
+    preferred: int = 0,
+    candidates: Optional[List[int]] = None,
+) -> int:
+    """Pick the GPU with the most free VRAM for enhancement."""
+    ids = candidates if candidates else [preferred]
+    if not torch.cuda.is_available() or not ids:
+        return preferred
+
+    best_id = ids[0]
+    best_free = -1.0
+    for did in ids:
+        stats = MemoryManager(did).get_memory_stats(use_cache=False)
+        if stats["free_mb"] > best_free:
+            best_free = stats["free_mb"]
+            best_id = did
+    return best_id
+
+
+def prepare_for_enhancement(
+    preferred_gpu: int = 0,
+    device_ids: Optional[List[int]] = None,
+    *,
+    release_swap_models: Optional[bool] = None,
+) -> int:
+    """
+    Free GPU memory before running enhancement models (HAT, ESRGAN, etc.).
+
+    Optionally unloads ONNX face-swap sessions that would otherwise compete
+    with PyTorch for VRAM on the same GPU.
+
+    Returns:
+        GPU device id selected for enhancement.
+    """
+    ids = device_ids if device_ids is not None else [preferred_gpu]
+    if release_swap_models is None:
+        release_swap_models = config.release_swap_models_before_enhance
+
+    if release_swap_models:
+        from core.model_pool import get_model_pool
+
+        pool = get_model_pool()
+        for did in ids:
+            pool.cleanup(did)
+        logger.info(
+            "Released face-swap ONNX models from GPU(s) %s before enhancement",
+            ids,
+        )
+
+    refresh_gpu_memory(device_ids=ids, force=True)
+    enhance_gpu = select_enhancement_gpu(preferred_gpu, ids)
+    stats = MemoryManager(enhance_gpu).get_memory_stats(use_cache=False)
+    logger.info(
+        "Enhancement GPU %d ready: %.0f MB free / %.0f MB total",
+        enhance_gpu,
+        stats["free_mb"],
+        stats["total_mb"],
+    )
+    return enhance_gpu
 
 
 def get_memory_stats(device_id: int = 0) -> dict:

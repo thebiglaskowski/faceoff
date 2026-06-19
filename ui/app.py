@@ -20,6 +20,7 @@ from ui.components.image_tab import create_image_tab
 from ui.components.gif_tab import create_gif_tab
 from ui.components.video_tab import create_video_tab
 from ui.components.gallery_tab import create_gallery_tab, update_gallery, refresh_gallery
+from ui.components.terminal_tab import create_terminal_tab
 from ui.helpers.gallery_utils import delete_file
 from ui.helpers.gpu_utils import get_gpu_status, refresh_gpu_info
 from ui.helpers.face_detection import detect_faces_simple, detect_faces_for_mapping, detect_faces_with_thumbnails
@@ -40,11 +41,18 @@ from ui.handlers.processing_handlers import (
     process_image,
     process_gif,
     process_video,
-    add_face_mapping_wrapper,
-    clear_face_mappings_wrapper,
+    add_face_mapping_image,
+    add_face_mapping_gif,
+    add_face_mapping_video,
+    clear_face_mappings_image,
+    clear_face_mappings_gif,
+    clear_face_mappings_video,
 )
+from ui.helpers.preview import validate_target_video_upload
 
 # Custom CSS styling
+GRADIO_THEME = gr.themes.Soft()
+
 CUSTOM_CSS = """
 :root {
     --primary-color: #7C3AED;
@@ -170,35 +178,64 @@ def refresh_gallery_videos(_result=None):
     return _refresh_gallery_for_type("Videos")
 
 
-def show_delete_controls(evt: gr.SelectData):
-    """Show delete controls when a file is selected in the gallery."""
-    logger.info(f"Gallery selection event - index: {evt.index}, value type: {type(evt.value)}")
-    logger.info(f"Gallery selection value: {evt.value}")
-    
+def show_delete_controls(evt: gr.SelectData, media_type_display: str):
+    """Show delete controls and processing settings when a gallery item is selected."""
+    from utils.output_metadata import format_settings_detail, load_output_metadata
+
+    logger.info(
+        "Gallery selection event - index: %s, value type: %s",
+        evt.index,
+        type(evt.value),
+    )
+
     if evt.index is None:
-        # No selection
-        return gr.update(visible=False), gr.update(visible=False), ""
-    
-    # Extract filename from caption (format: "filename.ext\nYYYY-MM-DD HH:MM:SS")
-    selected_filename = None
-    
-    if isinstance(evt.value, dict):
-        # Get caption which contains the original filename
-        caption = evt.value.get('caption', '')
-        if caption:
-            # Caption format is "filename.ext\ntimestamp"
-            selected_filename = caption.split('\n')[0] if '\n' in caption else caption
-            logger.info(f"Extracted filename from caption: {selected_filename}")
-    
-    if selected_filename:
         return (
-            gr.update(value=selected_filename, visible=True),  # selected_file_display (just filename)
-            gr.update(visible=True),  # delete_btn
-            ""  # delete_status (clear previous messages)
+            gr.update(visible=False),
+            gr.update(visible=False),
+            "",
+            gr.update(value="", visible=False),
         )
-    else:
-        logger.warning("Could not extract filename from gallery selection")
-        return gr.update(visible=False), gr.update(visible=False), ""
+
+    selected_filename = None
+    file_path = None
+
+    if isinstance(evt.value, dict):
+        caption = evt.value.get("caption", "")
+        if caption:
+            selected_filename = caption.split("\n")[0].strip()
+        file_path = evt.value.get("image", {}).get("path") if isinstance(
+            evt.value.get("image"), dict
+        ) else evt.value.get("image")
+    elif isinstance(evt.value, str):
+        file_path = evt.value
+        selected_filename = Path(evt.value).name
+
+    if not selected_filename and file_path:
+        selected_filename = Path(str(file_path)).name
+
+    if selected_filename:
+        media_type_map = {"Images": "image", "GIFs": "gif", "Videos": "video"}
+        internal_type = media_type_map.get(media_type_display, "image")
+        if not file_path:
+            file_path = str(Path("outputs") / internal_type / selected_filename)
+
+        metadata = load_output_metadata(file_path)
+        settings_md = format_settings_detail(metadata, file_path)
+
+        return (
+            gr.update(value=selected_filename, visible=True),
+            gr.update(visible=True),
+            "",
+            gr.update(value=settings_md, visible=True),
+        )
+
+    logger.warning("Could not extract filename from gallery selection")
+    return (
+        gr.update(visible=False),
+        gr.update(visible=False),
+        "",
+        gr.update(value="", visible=False),
+    )
 
 
 def delete_and_refresh(file_path: str, media_type_display: str, limit: str = "24"):
@@ -212,7 +249,8 @@ def delete_and_refresh(file_path: str, media_type_display: str, limit: str = "24
             gr.update(),  # gallery (no change)
             gr.update(),  # file_count_text (no change)
             gr.update(visible=False),  # delete_btn (hide)
-            gr.update(visible=False)  # selected_file_display (hide)
+            gr.update(visible=False),  # selected_file_display (hide)
+            gr.update(value="", visible=False),  # processing_settings_display (hide)
         )
     
     # Map display name to internal type
@@ -244,7 +282,8 @@ def delete_and_refresh(file_path: str, media_type_display: str, limit: str = "24
         gallery_update,  # gallery
         count_text_update,  # file_count_text
         gr.update(visible=False),  # delete_btn (hide after delete)
-        gr.update(visible=False)  # selected_file_display (hide after delete)
+        gr.update(visible=False),  # selected_file_display (hide after delete)
+        gr.update(value="", visible=False),  # processing_settings_display (hide after delete)
     )
 
 
@@ -268,13 +307,12 @@ def _is_hat_model(model_name: str) -> bool:
 
 
 def create_app():
-    """Create and configure the Gradio application."""
+    """Create and configure the Gradio application.
 
-    with gr.Blocks(
-        title="FaceOff - Face Swapper",
-        theme=gr.themes.Soft(),
-        css=CUSTOM_CSS
-    ) as demo:
+    Theme and CSS are passed to ``demo.launch()`` in ``main.py`` (Gradio 6+).
+    """
+
+    with gr.Blocks(title="FaceOff - Face Swapper") as demo:
         gr.HTML('<h1 class="header-text">👤 FaceOff</h1>')
         gr.Markdown('<div class="header-subtitle">AI Face Swapper - Advanced face swapping with enhancement options</div>')
         
@@ -290,6 +328,9 @@ def create_app():
             
             # Create Gallery Tab
             gallery_components = create_gallery_tab()
+
+            # Live application logs
+            create_terminal_tab()
         
         # Preset Management Section (at bottom, collapsible)
         gr.Markdown("---")
@@ -404,14 +445,19 @@ def create_app():
             ]
         )
         
+        img_components["target_img"].change(
+            clear_face_mappings_image,
+            outputs=[img_components["face_mapping_status"], img_components["current_mappings"]],
+        )
+
         img_components["add_mapping_btn"].click(
-            add_face_mapping_wrapper,
+            add_face_mapping_image,
             inputs=[img_components["mapping_source_idx"], img_components["mapping_target_idx"], img_components["current_mappings"]],
             outputs=[img_components["face_mapping_status"], img_components["current_mappings"]]
         )
         
         img_components["clear_mappings_btn"].click(
-            clear_face_mappings_wrapper,
+            clear_face_mappings_image,
             outputs=[img_components["face_mapping_status"], img_components["current_mappings"]]
         )
         
@@ -473,11 +519,17 @@ def create_app():
             outputs=[gif_components["face_info_gif"]]
         )
         
-        # GIF preview
+        # GIF preview (clear stale mappings when target GIF changes)
         gif_components["target_gif_file"].change(
             show_gif_preview,
             inputs=[gif_components["target_gif_file"]],
-            outputs=[gif_components["target_gif_preview"]]
+            outputs=[gif_components["target_gif_preview"]],
+        ).then(
+            clear_face_mappings_gif,
+            outputs=[
+                gif_components["face_mapping_status_gif"],
+                gif_components["current_mappings_gif"],
+            ],
         )
         
         # GIF face mapping
@@ -496,13 +548,13 @@ def create_app():
         )
         
         gif_components["add_mapping_btn_gif"].click(
-            add_face_mapping_wrapper,
+            add_face_mapping_gif,
             inputs=[gif_components["mapping_source_idx_gif"], gif_components["mapping_target_idx_gif"], gif_components["current_mappings_gif"]],
             outputs=[gif_components["face_mapping_status_gif"], gif_components["current_mappings_gif"]]
         )
         
         gif_components["clear_mappings_btn_gif"].click(
-            clear_face_mappings_wrapper,
+            clear_face_mappings_gif,
             outputs=[gif_components["face_mapping_status_gif"], gif_components["current_mappings_gif"]]
         )
         
@@ -564,6 +616,16 @@ def create_app():
             outputs=[vid_components["face_info_vid"]]
         )
         
+        vid_components["target_vid"].change(
+            validate_target_video_upload,
+            inputs=[vid_components["target_vid"]],
+            outputs=[
+                vid_components["face_mapping_status_vid"],
+                vid_components["current_mappings_vid"],
+                vid_components["target_vid_preview"],
+            ],
+        )
+
         # Video face mapping
         vid_components["detect_faces_btn_vid"].click(
             detect_faces_with_thumbnails,
@@ -580,13 +642,13 @@ def create_app():
         )
         
         vid_components["add_mapping_btn_vid"].click(
-            add_face_mapping_wrapper,
+            add_face_mapping_video,
             inputs=[vid_components["mapping_source_idx_vid"], vid_components["mapping_target_idx_vid"], vid_components["current_mappings_vid"]],
             outputs=[vid_components["face_mapping_status_vid"], vid_components["current_mappings_vid"]]
         )
         
         vid_components["clear_mappings_btn_vid"].click(
-            clear_face_mappings_wrapper,
+            clear_face_mappings_video,
             outputs=[vid_components["face_mapping_status_vid"], vid_components["current_mappings_vid"]]
         )
         
@@ -726,11 +788,13 @@ def create_app():
         # Gallery selection handler (show delete button when file selected)
         gallery_components["gallery"].select(
             fn=show_delete_controls,
+            inputs=[gallery_components["media_type_radio"]],
             outputs=[
                 gallery_components["selected_file_display"],
                 gallery_components["delete_btn"],
-                gallery_components["delete_status"]
-            ]
+                gallery_components["delete_status"],
+                gallery_components["processing_settings_display"],
+            ],
         )
         
         # Delete button handler
@@ -746,7 +810,8 @@ def create_app():
                 gallery_components["gallery"],
                 gallery_components["file_count_text"],
                 gallery_components["delete_btn"],
-                gallery_components["selected_file_display"]
+                gallery_components["selected_file_display"],
+                gallery_components["processing_settings_display"],
             ]
         )
         

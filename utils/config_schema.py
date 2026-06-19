@@ -69,11 +69,11 @@ class ConfigValidator:
         'face_restoration.default_weight': (float, lambda v: (0.0 <= v <= 1.0, max(0.0, min(v, 1.0))),
                                             0.5, "Restoration weight (0.0-1.0)"),
 
-        # Async pipeline
-        'async_pipeline.queue_size': (int, lambda v: (0 <= v <= 256, max(0, min(v, 256))),
-                                      32, "Queue size (0=unbounded, 1-256)"),
-        'async_pipeline.min_frames_threshold': (int, lambda v: (1 <= v <= 100, max(1, min(v, 100))),
-                                                10, "Min frames for async (1-100)"),
+        # Streaming pipeline
+        'streaming.chunk_size': (int, lambda v: (1 <= v <= 256, max(1, min(v, 256))),
+                               32, "Frames per streaming chunk (1-256)"),
+        'streaming.gif_decode_fps': (float, lambda v: (1.0 <= v <= 60.0, max(1.0, min(v, 60.0))),
+                                    10.0, "GIF decode FPS (1-60)"),
 
         # Memory
         'memory.clear_cache_threshold_mb': (int, lambda v: (128 <= v <= 16384, max(128, min(v, 16384))),

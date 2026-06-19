@@ -2,45 +2,41 @@
 Face detection helpers for UI.
 Consolidates duplicate face detection logic across UI components.
 """
-import cv2
-import gc
 import logging
 import gradio as gr
-import torch
+import numpy as np
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from typing import List, Tuple, Optional
 
-from processing.facade import FaceProcessor, sort_faces_by_position, filter_faces_by_confidence
-from utils.temp_manager import get_temp_manager
+from core.face_processor import sort_faces_by_position, filter_faces_by_confidence
+from core.media_processor import MediaProcessor
+from utils.config_manager import config
 
 logger = logging.getLogger("FaceOff")
 
+_ui_processor: Optional[MediaProcessor] = None
 
-def _clear_gpu_memory():
-    """
-    Clear GPU memory before heavy operations to prevent OOM errors.
 
-    ONNX Runtime's BFC arena can fragment memory, making it impossible to
-    allocate contiguous blocks even when total free memory is sufficient.
-    This clears caches and runs garbage collection to defragment.
-    """
-    # Run Python garbage collection first
-    gc.collect()
+def _get_ui_processor() -> MediaProcessor:
+    """Reuse preloaded model-pool processor (TensorRT when enabled)."""
+    global _ui_processor
+    if _ui_processor is None:
+        _ui_processor = MediaProcessor(
+            device_id=0,
+            use_tensorrt=config.tensorrt_enabled,
+            optimize_models=False,
+        )
+        logger.debug("UI face-detection processor initialized (TensorRT=%s)", config.tensorrt_enabled)
+    else:
+        _ui_processor._ensure_bound()
+    return _ui_processor
 
-    # Clear PyTorch CUDA cache
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
 
-    # Clear enhancement model caches (they hold large GPU memory)
-    try:
-        from processing.enhancement import clear_enhancement_cache
-        clear_enhancement_cache()
-    except ImportError:
-        pass
-
-    logger.debug("GPU memory cleared before face detection")
+def _pil_to_rgb_array(pil_image: Image.Image) -> np.ndarray:
+    if pil_image.mode != "RGB":
+        pil_image = pil_image.convert("RGB")
+    return np.array(pil_image)
 
 
 def add_index_overlay(face_pil: Image.Image, index: int) -> Image.Image:
@@ -140,23 +136,15 @@ def detect_faces_simple(pil_image: Image.Image, confidence: float = 0.5) -> str:
         return ""
 
     try:
-        # Clear GPU memory to prevent OOM from fragmentation
-        _clear_gpu_memory()
-
-        temp_manager = get_temp_manager()
-        
-        # Save temporarily
-        with temp_manager.temp_file("ui", suffix=".png") as temp_path:
-            pil_image.save(temp_path)
-            
-            # Use FaceProcessor for detection
-            processor = FaceProcessor(device_id=0, confidence=confidence)
-            info = processor.detect_faces_info(str(temp_path))
-            
-            return info
-            
+        processor = _get_ui_processor()
+        faces = processor.get_faces(_pil_to_rgb_array(pil_image))
+        faces = filter_faces_by_confidence(faces, confidence)
+        if not faces:
+            return "No faces detected"
+        scores = ", ".join(f"{getattr(f, 'det_score', 0):.2f}" for f in faces[:5])
+        return f"Detected {len(faces)} face(s) (scores: {scores})"
     except Exception as e:
-        logger.error(f"Face detection error: {e}")
+        logger.error("Face detection error: %s", e)
         return f"❌ Error: {str(e)}"
 
 
@@ -187,42 +175,21 @@ def detect_faces_for_mapping(
             gr.update(visible=False)
         )
 
-    # Clear GPU memory to prevent OOM from fragmentation
-    _clear_gpu_memory()
+    processor = _get_ui_processor()
 
-    temp_manager = get_temp_manager()
-    processor = FaceProcessor(device_id=0, confidence=face_confidence)
-    
     try:
-        # Detect source faces
-        with temp_manager.temp_file("ui", suffix=".jpg") as src_tmp:
-            if source_img.mode != 'RGB':
-                source_img = source_img.convert('RGB')
-            source_img.save(src_tmp)
-            
-            src_cv2 = cv2.imread(str(src_tmp))
-            src_cv2_rgb = cv2.cvtColor(src_cv2, cv2.COLOR_BGR2RGB)
-            
-            src_faces_raw = processor._processor.get_faces(src_cv2_rgb)
-            src_faces_raw = filter_faces_by_confidence(src_faces_raw, face_confidence)
-            src_faces_raw = sort_faces_by_position(src_faces_raw)
-            
-            src_faces = extract_face_thumbnails(src_cv2_rgb, src_faces_raw, with_index=True)
-        
-        # Detect target faces
-        with temp_manager.temp_file("ui", suffix=".jpg") as tgt_tmp:
-            if target_img.mode != 'RGB':
-                target_img = target_img.convert('RGB')
-            target_img.save(tgt_tmp)
-            
-            tgt_cv2 = cv2.imread(str(tgt_tmp))
-            tgt_cv2_rgb = cv2.cvtColor(tgt_cv2, cv2.COLOR_BGR2RGB)
-            
-            tgt_faces_raw = processor._processor.get_faces(tgt_cv2_rgb)
-            tgt_faces_raw = filter_faces_by_confidence(tgt_faces_raw, face_confidence)
-            tgt_faces_raw = sort_faces_by_position(tgt_faces_raw)
-            
-            tgt_faces = extract_face_thumbnails(tgt_cv2_rgb, tgt_faces_raw, with_index=True)
+        src_rgb = _pil_to_rgb_array(source_img)
+        tgt_rgb = _pil_to_rgb_array(target_img)
+
+        src_faces_raw = processor.get_faces(src_rgb)
+        src_faces_raw = filter_faces_by_confidence(src_faces_raw, face_confidence)
+        src_faces_raw = sort_faces_by_position(src_faces_raw)
+        src_faces = extract_face_thumbnails(src_rgb, src_faces_raw, with_index=True)
+
+        tgt_faces_raw = processor.get_faces(tgt_rgb)
+        tgt_faces_raw = filter_faces_by_confidence(tgt_faces_raw, face_confidence)
+        tgt_faces_raw = sort_faces_by_position(tgt_faces_raw)
+        tgt_faces = extract_face_thumbnails(tgt_rgb, tgt_faces_raw, with_index=True)
         
         # Check if faces were detected
         if not src_faces or not tgt_faces:
@@ -286,53 +253,34 @@ def detect_faces_with_thumbnails(source_img, target_file, face_confidence):
             gr.update(visible=False)
         )
 
-    # Clear GPU memory to prevent OOM from fragmentation
-    _clear_gpu_memory()
-
     from utils import video_io
-    import numpy as np
-    import subprocess
+    from utils.validation import resolve_gradio_file_path
 
-    temp_manager = get_temp_manager()
-    processor = FaceProcessor(device_id=0, confidence=face_confidence)
-    
+    processor = _get_ui_processor()
+
     try:
-        # Detect source faces
-        with temp_manager.temp_file("ui", suffix=".jpg") as src_tmp:
-            if source_img.mode != 'RGB':
-                source_img = source_img.convert('RGB')
-            source_img.save(src_tmp)
-            
-            src_cv2 = cv2.imread(str(src_tmp))
-            src_cv2_rgb = cv2.cvtColor(src_cv2, cv2.COLOR_BGR2RGB)
-            
-            src_faces_raw = processor._processor.get_faces(src_cv2_rgb)
-            src_faces_raw = filter_faces_by_confidence(src_faces_raw, face_confidence)
-            src_faces_raw = sort_faces_by_position(src_faces_raw)
-            
-            src_faces = extract_face_thumbnails(src_cv2_rgb, src_faces_raw, with_index=True)
-        
-        # Get target file path
-        target_path = target_file.name if hasattr(target_file, 'name') else target_file
-        
-        # Detect target faces from first frame
-        if target_path.lower().endswith('.gif'):
-            gif = Image.open(target_path)
-            first_frame = gif.convert('RGB')
-            first_frame_rgb = np.array(first_frame)
-            gif.close()
+        src_rgb = _pil_to_rgb_array(source_img)
+        src_faces_raw = processor.get_faces(src_rgb)
+        src_faces_raw = filter_faces_by_confidence(src_faces_raw, face_confidence)
+        src_faces_raw = sort_faces_by_position(src_faces_raw)
+        src_faces = extract_face_thumbnails(src_rgb, src_faces_raw, with_index=True)
+
+        target_path = resolve_gradio_file_path(target_file)
+
+        if target_path.lower().endswith(".gif"):
+            with video_io.StreamingFrameReader(
+                target_path,
+                fps=float(config.streaming_gif_decode_fps),
+                hwaccel=False,
+            ) as reader:
+                frames = reader.read_chunk(1)
+            first_frame_rgb = frames[0] if frames else np.array(Image.open(target_path).convert("RGB"))
         else:
-            meta = video_io.probe_video(target_path)
-            fps = float(meta.get('fps') or 30.0)
-            first_frame_path = temp_manager.get_temp_dir("ui") / "first_frame.png"
-            subprocess.run(
-                ["ffmpeg", "-y", "-ss", "0", "-i", target_path,
-                 "-frames:v", "1", "-q:v", "1", str(first_frame_path)],
-                capture_output=True,
-            )
-            first_frame_rgb = np.array(Image.open(first_frame_path))
-        
-        tgt_faces_raw = processor._processor.get_faces(first_frame_rgb)
+            with video_io.StreamingFrameReader(target_path, hwaccel=False) as reader:
+                frames = reader.read_chunk(1)
+            first_frame_rgb = frames[0] if frames else np.zeros((64, 64, 3), dtype=np.uint8)
+
+        tgt_faces_raw = processor.get_faces(first_frame_rgb)
         tgt_faces_raw = filter_faces_by_confidence(tgt_faces_raw, face_confidence)
         tgt_faces_raw = sort_faces_by_position(tgt_faces_raw)
         

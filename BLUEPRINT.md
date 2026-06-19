@@ -6,6 +6,9 @@
 
 > Generated from comprehensive code review on 2026-01-25
 > Overall Grade: **8.5/10** (Strong)
+>
+> **2026-06 update:** `processing/async_pipeline.py` was removed. Video/GIF now use
+> `processing/streaming_media.py`. References to `async_pipeline` below are historical.
 
 ---
 
@@ -750,6 +753,10 @@ User Input (Gradio UI)
 
 ---
 
-**Status: COMPLETE** (January 2026)
+**Status: COMPLETE** (January 2026) — **historical reference only**
 
-All critical and high-priority items implemented. Runtime Config UI and Model Management UI deferred as nice-to-have features.
+> **2026-06 update:** `processing/async_pipeline.py` was removed and replaced by
+> `processing/streaming_media.py` (chunked FFmpeg I/O + in-memory enhancement).
+> See `PROJECT_INTENT.md` for the current architecture.
+
+All critical and high-priority items implemented. Runtime Config UI and Model Management UI remain deferred as nice-to-have features.

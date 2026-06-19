@@ -115,7 +115,7 @@ preload_models(device_id=0)
 - `utils/memory_manager.py` - VRAM monitoring and OOM prevention
 
 **Files Modified:**
-- `processing/async_pipeline.py` - Integrated memory management
+- `processing/streaming_media.py` - Streaming pipeline with memory management
 
 **Features:**
 - Real-time VRAM monitoring
@@ -220,7 +220,7 @@ All features tested and validated:
 4. `processing/gif_processing.py` - Uses config.batch_size, adaptive settings
 5. `core/face_processor.py` - Uses config.face_confidence_threshold
 6. `utils/logging_setup.py` - Enhanced with config + rotation
-7. `processing/async_pipeline.py` - Integrated memory management
+7. `processing/streaming_media.py` - Streaming pipeline with memory management
 8. `main.py` - Added cache info display + optional preload
 
 ### Expected Runtime Files (Ignored by Git):
@@ -267,14 +267,19 @@ print(f"VRAM: {stats['utilization_pct']:.1f}% ({stats['allocated_mb']:.0f}/{stat
 
 ---
 
+## Deferred UI Features (not scheduled)
+
+- **Runtime config UI** — edit `config.yaml` settings from Gradio (see `BLUEPRINT.md` §2.2)
+- **Model management UI** — browse/clear model caches from UI (see `BLUEPRINT.md` §3.2)
+
 ## Next Steps (Optional Future Enhancements)
 
-1. **GPU Utilization Monitor** - Real-time GPU usage display in UI
-2. **Batch Size Auto-Tuning** - Automatically find optimal batch size
-3. **Model Warm-up** - Pre-warm all models on startup
-4. **Cache Cleanup Scheduler** - Auto-delete old cache files
-5. **Memory Profile Export** - Export memory usage graphs
-6. **Smart Prefetching** - Preload next frames while processing current
+1. **Scene-aware face mapping** — keyframe timeline for multi-scene GIF/video
+2. **GPU frame retention (Wave 3)** — keep frames on GPU through detect/swap/enhance
+3. **GPU utilization monitor** — real-time VRAM display in UI (terminal tab shows logs today)
+4. **Batch size auto-tuning** — automatically find optimal batch size per GPU
+5. **Cache cleanup scheduler** — auto-delete stale TensorRT/HAT cache files
+6. **ReSwapper quality mode** — diffusion-based swapper (slow; deferred)
 
 ---
 

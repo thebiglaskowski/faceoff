@@ -190,12 +190,12 @@ class TestGIFProcessingE2E:
         assert all(d == 100 for d in original_durations)
 
 
-class TestGIFWithAsyncPipeline:
-    """Tests for GIF processing with async pipeline."""
+class TestGIFWithStreamingPipeline:
+    """Tests for GIF processing with streaming pipeline."""
 
     @pytest.mark.integration
-    def test_async_pipeline_frame_ordering(self, mock_gif_processor):
-        """Test async pipeline maintains frame order."""
+    def test_streaming_pipeline_frame_ordering(self, mock_gif_processor):
+        """Test streaming pipeline maintains frame order."""
         # Simulate async processing that might reorder
         frame_indices = list(range(10))
         processed_order = []
@@ -207,7 +207,7 @@ class TestGIFWithAsyncPipeline:
         assert processed_order == frame_indices, "Frame order should be preserved"
 
     @pytest.mark.integration
-    def test_async_pipeline_error_handling(self, mock_gif_processor):
+    def test_streaming_pipeline_error_handling(self, mock_gif_processor):
         """Test pipeline handles frame processing errors gracefully."""
         frames = [np.zeros((100, 100, 3), dtype=np.uint8) for _ in range(5)]
 

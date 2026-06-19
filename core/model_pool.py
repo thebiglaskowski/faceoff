@@ -8,19 +8,49 @@ concurrent multi-GPU processing.
 
 import logging
 import threading
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from contextlib import contextmanager
 
+import numpy as np
 import torch
 import onnxruntime as ort
-import insightface
 from insightface.app import FaceAnalysis
 
 from utils.config_manager import config
-from utils.tensorrt_utils import is_tensorrt_available
+from utils.onnx_providers import (
+    build_face_analysis_providers,
+    build_swapper_providers,
+    is_tensorrt_runtime_available,
+    tensorrt_compile_guard,
+)
 
 logger = logging.getLogger("FaceOff")
+
+InstanceKey = Tuple[int, bool]
+
+
+def _trt_warmup_images() -> List[np.ndarray]:
+    """
+    Synthetic frames at common aspect ratios.
+
+    A plain black 640x640 tensor does not always trigger det_10g TensorRT engine
+    builds; real phone portrait/landscape shapes must be exercised at startup.
+    """
+    det_w, det_h = tuple(config.face_analysis_det_size)
+    rng = np.random.default_rng(42)
+    shapes = [
+        (det_h, det_w),
+        (1920, 1080),  # portrait phone — common GIF/photo source
+        (1080, 1920),  # landscape
+    ]
+    images: List[np.ndarray] = []
+    for height, width in shapes:
+        frame = np.full((height, width, 3), 128, dtype=np.uint8)
+        noise = rng.integers(0, 32, frame.shape, dtype=np.uint8)
+        frame = np.clip(frame.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+        images.append(frame)
+    return images
 
 
 class GPUModelInstance:
@@ -32,181 +62,307 @@ class GPUModelInstance:
     - Inswapper for face swapping
     """
 
-    def __init__(self, device_id: int, model_path: str, use_tensorrt: bool = False):
-        """
-        Initialize models for a specific GPU.
-
-        Args:
-            device_id: CUDA device ID
-            model_path: Path to inswapper model
-            use_tensorrt: Whether to use TensorRT for face detection
-        """
+    def __init__(
+        self,
+        device_id: int,
+        model_path: str,
+        use_tensorrt: bool = False,
+        tensorrt_fp16: Optional[bool] = None,
+    ):
         self.device_id = device_id
         self.model_path = model_path
         self.use_tensorrt = use_tensorrt
+        self.tensorrt_fp16 = (
+            config.tensorrt_fp16 if tensorrt_fp16 is None else tensorrt_fp16
+        )
         self._lock = threading.Lock()
 
-        # Set CUDA context for this device
         torch.cuda.set_device(device_id)
 
-        # Configure ONNX providers for this specific GPU
-        providers = self._get_providers()
+        logger.info("Initializing models for GPU %d...", device_id)
 
-        logger.info(f"Initializing models for GPU {device_id}...")
+        self._init_face_analysis()
+        if self.use_tensorrt:
+            self.warmup_face_detection()
 
-        # Initialize face analysis
-        self.face_app = FaceAnalysis(
-            name=config.face_analysis_name,
-            providers=providers
-        )
-        self.face_app.prepare(
-            ctx_id=device_id,
-            det_size=tuple(config.face_analysis_det_size)
-        )
+        swapper_providers = build_swapper_providers(device_id)
+        self.swapper = self._load_swapper(model_path, swapper_providers)
 
-        # Check actual providers - if TensorRT failed and fell back to CPU, reinitialize with CUDA
-        actual_providers = []
-        if hasattr(self.face_app, 'models') and 'det_model' in self.face_app.models:
-            det_model = self.face_app.models['det_model']
-            if hasattr(det_model, 'session'):
-                actual_providers = det_model.session.get_providers()
-                logger.debug(f"Face analysis using providers: {actual_providers}")
+        logger.info("GPU %d models initialized successfully", device_id)
 
-        # If we wanted TensorRT but ended up with only CPU, reinitialize with CUDA
-        if self.use_tensorrt and actual_providers == ['CPUExecutionProvider']:
-            logger.warning(f"TensorRT failed for face analysis on GPU {device_id}, reinitializing with CUDA...")
-            cuda_providers = self._get_cuda_only_providers()
-            self.face_app = FaceAnalysis(
+    def _init_face_analysis(self) -> None:
+        def _create_face_app(use_trt: bool) -> FaceAnalysis:
+            face_providers = build_face_analysis_providers(
+                self.device_id,
+                use_tensorrt=use_trt,
+                tensorrt_fp16=self.tensorrt_fp16,
+            )
+            face_app = FaceAnalysis(
                 name=config.face_analysis_name,
-                providers=cuda_providers
+                providers=face_providers,
             )
-            self.face_app.prepare(
-                ctx_id=device_id,
-                det_size=tuple(config.face_analysis_det_size)
+            face_app.prepare(
+                ctx_id=self.device_id,
+                det_size=tuple(config.face_analysis_det_size),
             )
-            # Log the new providers
-            if hasattr(self.face_app, 'models') and 'det_model' in self.face_app.models:
-                det_model = self.face_app.models['det_model']
-                if hasattr(det_model, 'session'):
-                    actual_providers = det_model.session.get_providers()
-                    logger.info(f"Face analysis reinitialized with providers: {actual_providers}")
+            return face_app
 
-        # Initialize inswapper with GPU-specific session (use CUDA only, TensorRT often fails)
-        cuda_providers = self._get_cuda_only_providers()
-        self.swapper = self._load_swapper(model_path, cuda_providers)
+        if self.use_tensorrt:
+            with tensorrt_compile_guard():
+                self.face_app = _create_face_app(True)
+                if self._det_providers() == ["CPUExecutionProvider"]:
+                    logger.warning(
+                        "TensorRT failed for face analysis on GPU %d, reinitializing with CUDA...",
+                        self.device_id,
+                    )
+                    self.use_tensorrt = False
+                    self.face_app = _create_face_app(False)
+                    logger.info(
+                        "Face analysis reinitialized with providers: %s",
+                        self._det_providers(),
+                    )
+        else:
+            self.face_app = _create_face_app(False)
 
-        logger.info(f"GPU {device_id} models initialized successfully")
+    def warmup_face_detection(self) -> None:
+        """Build/cache TensorRT detection engines for common input shapes."""
+        images = _trt_warmup_images()
+        logger.info(
+            "Warming TensorRT face detection on GPU %d (%d input shapes)...",
+            self.device_id,
+            len(images),
+        )
+        with tensorrt_compile_guard():
+            torch.cuda.set_device(self.device_id)
+            for image in images:
+                self.face_app.get(image)
+        logger.info("TensorRT face-detection warmup complete on GPU %d", self.device_id)
 
-    def _get_providers(self) -> List[tuple]:
-        """Get ONNX providers configured for this GPU."""
-        providers = []
+    def _det_providers(self) -> List[str]:
+        if not hasattr(self.face_app, "models"):
+            return []
+        for key in ("detection", "det_model"):
+            det = self.face_app.models.get(key)
+            if det is not None and hasattr(det, "session"):
+                return det.session.get_providers()
+        return []
 
-        # TensorRT provider (if available and enabled)
-        if self.use_tensorrt and is_tensorrt_available():
-            providers.append(('TensorrtExecutionProvider', {
-                'device_id': self.device_id,
-                'trt_max_workspace_size': config.tensorrt_workspace_mb * 1024 * 1024,
-                'trt_fp16_enable': config.tensorrt_fp16,
-                'trt_engine_cache_enable': True,
-                'trt_engine_cache_path': str(Path("cache") / f"tensorrt_gpu{self.device_id}"),
-            }))
-            logger.debug(f"TensorRT enabled for GPU {self.device_id}")
-
-        # CUDA provider (primary fallback)
-        # Use configurable memory limit to prevent BFC arena fragmentation
-        gpu_mem_limit_mb = config.get('gpu', 'onnx_mem_limit_mb', default=2048)
-        providers.append(('CUDAExecutionProvider', {
-            'device_id': self.device_id,
-            'arena_extend_strategy': 'kSameAsRequested',
-            'gpu_mem_limit': gpu_mem_limit_mb * 1024 * 1024,
-            'cudnn_conv_algo_search': 'EXHAUSTIVE',
-            'do_copy_in_default_stream': True,
-        }))
-
-        # CPU fallback
-        providers.append(('CPUExecutionProvider', {}))
-
-        return providers
-
-    def _get_cuda_only_providers(self) -> List[tuple]:
-        """Get ONNX providers with CUDA only (no TensorRT)."""
-        gpu_mem_limit_mb = config.get('gpu', 'onnx_mem_limit_mb', default=2048)
-        return [
-            ('CUDAExecutionProvider', {
-                'device_id': self.device_id,
-                'arena_extend_strategy': 'kSameAsRequested',
-                'gpu_mem_limit': gpu_mem_limit_mb * 1024 * 1024,
-                'cudnn_conv_algo_search': 'EXHAUSTIVE',
-                'do_copy_in_default_stream': True,
-            }),
-            ('CPUExecutionProvider', {}),
-        ]
-
-    def _load_swapper(self, model_path: str, providers: List[tuple]):
-        """Load inswapper model with GPU-specific session."""
+    def _load_swapper(self, model_path: str, providers: List):
         from insightface.model_zoo import get_model
 
-        # Create session options
         sess_options = ort.SessionOptions()
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         sess_options.intra_op_num_threads = 4
         sess_options.inter_op_num_threads = 4
 
-        # Load the model with our specific providers
-        swapper = get_model(model_path, providers=providers, session_options=sess_options)
-        return swapper
+        return get_model(model_path, providers=providers, session_options=sess_options)
 
     @contextmanager
     def acquire(self):
-        """
-        Acquire exclusive access to this GPU's models.
-
-        Usage:
-            with gpu_instance.acquire():
-                result = gpu_instance.swapper.get(...)
-        """
         with self._lock:
-            # Set CUDA context before using
             torch.cuda.set_device(self.device_id)
             yield self
 
     def get_faces(self, image):
-        """Detect faces using this GPU's face analysis."""
         with self._lock:
+            if not self.models_ready():
+                raise RuntimeError(
+                    f"GPU {self.device_id} face models were released; "
+                    "re-acquire from ModelPool before detection"
+                )
             torch.cuda.set_device(self.device_id)
             return self.face_app.get(image)
 
     def swap_face(self, frame, target_face, source_face, paste_back: bool = True):
-        """Perform face swap using this GPU's swapper."""
         with self._lock:
             torch.cuda.set_device(self.device_id)
-            return self.swapper.get(frame, target_face, source_face, paste_back=paste_back)
+            return self.swapper.get(
+                frame, target_face, source_face, paste_back=paste_back
+            )
+
+    def run_swapper_batch(
+        self,
+        blobs: np.ndarray,
+        src_stack: np.ndarray,
+        *,
+        use_iobinding: bool = False,
+        return_gpu: bool = False,
+    ):
+        """
+        Run batched inswapper ONNX inference.
+
+        When ``use_iobinding`` is True, inputs are uploaded via DLPack and outputs
+        stay on GPU until the final small D2H of swap predictions.
+        """
+        swapper = self.swapper
+        blobs_f32 = blobs.astype(np.float32, copy=False)
+        src_f32 = src_stack.astype(np.float32, copy=False)
+
+        with self._lock:
+            torch.cuda.set_device(self.device_id)
+            if use_iobinding and torch.cuda.is_available():
+                try:
+                    from torch.utils.dlpack import from_dlpack, to_dlpack
+
+                    blobs_t = torch.from_numpy(blobs_f32).to(
+                        f"cuda:{self.device_id}", non_blocking=True
+                    )
+                    src_t = torch.from_numpy(src_f32).to(
+                        f"cuda:{self.device_id}", non_blocking=True
+                    )
+                    io_binding = swapper.session.io_binding()
+                    io_binding.bind_ortvalue_input(
+                        swapper.input_names[0],
+                        ort.OrtValue.from_dlpack(to_dlpack(blobs_t.contiguous())),
+                    )
+                    io_binding.bind_ortvalue_input(
+                        swapper.input_names[1],
+                        ort.OrtValue.from_dlpack(to_dlpack(src_t.contiguous())),
+                    )
+                    io_binding.bind_output(
+                        swapper.output_names[0],
+                        "cuda",
+                        self.device_id,
+                    )
+                    swapper.session.run_with_iobinding(io_binding)
+                    ort_out = io_binding.get_outputs()[0]
+                    out_t = from_dlpack(ort_out.to_dlpack())
+                    if return_gpu:
+                        return out_t
+                    return out_t.detach().cpu().numpy()
+                except Exception as exc:
+                    logger.debug(
+                        "Swapper IoBinding failed on GPU %d (%s) — numpy fallback",
+                        self.device_id,
+                        exc,
+                    )
+
+            return swapper.session.run(
+                swapper.output_names,
+                {
+                    swapper.input_names[0]: blobs_f32,
+                    swapper.input_names[1]: src_f32,
+                },
+            )[0]
+
+    def swap_face_batch(
+        self,
+        image: np.ndarray,
+        target_faces: list,
+        source_face,
+        *,
+        use_iobinding: bool = False,
+        frame_gpu: Optional[torch.Tensor] = None,
+        paste_on_gpu: bool = False,
+    ):
+        """Batched multi-face swap with optional GPU IoBinding inference and paste."""
+        from insightface.utils import face_align
+        import cv2
+        from core.face_paste import ensure_rgb_image, paste_swapped_face
+        from utils.config_manager import config
+
+        if not target_faces:
+            if paste_on_gpu and frame_gpu is not None:
+                return frame_gpu
+            return image.copy()
+
+        gpu_paste = (
+            paste_on_gpu
+            and config.gpu_paste_on_gpu
+            and frame_gpu is not None
+            and torch.cuda.is_available()
+        )
+
+        swapper = self.swapper
+        crop_size = swapper.input_size[0]
+        blobs, maps = [], []
+
+        for face in target_faces:
+            aimg, M = face_align.norm_crop2(image, face.kps, crop_size)
+            blob = cv2.dnn.blobFromImage(
+                aimg,
+                1.0 / swapper.input_std,
+                swapper.input_size,
+                (swapper.input_mean,) * 3,
+                swapRB=True,
+            )
+            blobs.append(blob)
+            maps.append((M, aimg))
+
+        blobs_stack = np.concatenate(blobs, axis=0)
+        src_emb = source_face.normed_embedding.reshape((1, -1))
+        src_emb = np.dot(src_emb, swapper.emap)
+        src_emb /= np.linalg.norm(src_emb)
+        src_stack = np.repeat(src_emb, len(target_faces), axis=0)
+
+        try:
+            pred = self.run_swapper_batch(
+                blobs_stack,
+                src_stack,
+                use_iobinding=use_iobinding and gpu_paste,
+                return_gpu=gpu_paste,
+            )
+        except Exception:
+            swapped = ensure_rgb_image(image)
+            for face in target_faces:
+                swapped = self.swap_face(swapped, face, source_face)
+            if gpu_paste:
+                frame_gpu.copy_(torch.from_numpy(swapped).to(frame_gpu.device))
+                return frame_gpu
+            return swapped
+
+        if gpu_paste:
+            from core.face_paste_gpu import paste_swapped_face_gpu
+
+            swapped_gpu = frame_gpu
+            aimg_t = torch.from_numpy
+            for i, (M, aimg) in enumerate(maps):
+                if isinstance(pred, torch.Tensor):
+                    img_fake = pred[i].permute(1, 2, 0).clamp(0, 1)
+                    bgr_fake = (img_fake * 255.0).flip(-1)
+                else:
+                    img_fake = pred[i].transpose((1, 2, 0))
+                    bgr_fake = torch.from_numpy(
+                        np.clip(255 * img_fake, 0, 255).astype(np.uint8)[:, :, ::-1]
+                    ).to(swapped_gpu.device).float()
+                aimg_tensor = aimg_t(aimg).to(swapped_gpu.device).float()
+                swapped_gpu = paste_swapped_face_gpu(swapped_gpu, bgr_fake, aimg_tensor, M)
+            return swapped_gpu
+
+        swapped = ensure_rgb_image(image)
+        for i, (M, aimg) in enumerate(maps):
+            img_fake = pred[i].transpose((1, 2, 0))
+            bgr_fake = np.clip(255 * img_fake, 0, 255).astype(np.uint8)[:, :, ::-1]
+            swapped = paste_swapped_face(swapped, bgr_fake, aimg, M)
+        return swapped
+
+    def models_ready(self) -> bool:
+        """True when detection and swap models are loaded on this GPU."""
+        return (
+            getattr(self, "face_app", None) is not None
+            and getattr(self, "swapper", None) is not None
+        )
 
     def cleanup(self):
-        """Release model resources."""
         try:
-            del self.swapper
-            del self.face_app
+            if hasattr(self, "swapper"):
+                del self.swapper
+            if hasattr(self, "face_app"):
+                del self.face_app
             torch.cuda.set_device(self.device_id)
             torch.cuda.empty_cache()
-            logger.debug(f"Cleaned up GPU {self.device_id} models")
+            logger.debug("Cleaned up GPU %d models", self.device_id)
         except Exception as e:
-            logger.warning(f"Error cleaning up GPU {self.device_id}: {e}")
+            logger.warning("Error cleaning up GPU %d: %s", self.device_id, e)
 
 
 class ModelPool:
-    """
-    Thread-safe pool of GPU model instances.
+    """Thread-safe pool of GPU model instances."""
 
-    Manages isolated model instances per GPU to enable safe
-    concurrent multi-GPU processing.
-    """
-
-    _instance: Optional['ModelPool'] = None
+    _instance: Optional["ModelPool"] = None
     _lock = threading.Lock()
 
     def __new__(cls):
-        """Singleton pattern."""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -221,17 +377,15 @@ class ModelPool:
         if self._initialized:
             return
 
-        self._gpu_instances: Dict[int, GPUModelInstance] = {}
+        self._gpu_instances: Dict[InstanceKey, GPUModelInstance] = {}
         self._pool_lock = threading.Lock()
         self._model_path: Optional[str] = None
-        self._use_tensorrt: bool = config.tensorrt_enabled
         self._initialized = True
 
         logger.info("ModelPool initialized")
 
     @classmethod
-    def _get_instance(cls) -> 'ModelPool':
-        """Get the ModelPool singleton (thread-safe)."""
+    def _get_instance(cls) -> "ModelPool":
         with cls._get_instance_lock:
             if cls._instance is None:
                 cls._instance = cls.__new__(cls)
@@ -241,7 +395,6 @@ class ModelPool:
 
     @classmethod
     def _cleanup(cls) -> None:
-        """Cleanup the ModelPool singleton."""
         with cls._cleanup_lock:
             if cls._instance is not None:
                 cls._instance.cleanup()
@@ -249,87 +402,110 @@ class ModelPool:
                 cls._instance = None
 
     def set_model_path(self, model_path: str):
-        """Set the inswapper model path."""
         self._model_path = model_path
 
-    def get_instance(self, device_id: int) -> GPUModelInstance:
-        """
-        Get or create a model instance for a specific GPU.
+    def get_instance(
+        self,
+        device_id: int,
+        use_tensorrt: Optional[bool] = None,
+        tensorrt_fp16: Optional[bool] = None,
+    ) -> GPUModelInstance:
+        if use_tensorrt is None:
+            use_tensorrt = config.tensorrt_enabled
+        use_tensorrt = bool(use_tensorrt and is_tensorrt_runtime_available())
+        key: InstanceKey = (device_id, use_tensorrt)
 
-        Args:
-            device_id: CUDA device ID
-
-        Returns:
-            GPUModelInstance for the specified GPU
-        """
         with self._pool_lock:
-            if device_id not in self._gpu_instances:
-                if self._model_path is None:
-                    # Use default path from config
-                    self._model_path = config.inswapper_model_path
+            cached = self._gpu_instances.get(key)
+            if cached is not None and cached.models_ready():
+                return cached
+            if cached is not None:
+                logger.debug(
+                    "Evicting stale model instance for GPU %d (VRAM release)",
+                    device_id,
+                )
+                try:
+                    cached.cleanup()
+                except Exception as e:
+                    logger.warning(
+                        "Error cleaning stale GPU %d instance: %s", device_id, e
+                    )
+                del self._gpu_instances[key]
+            model_path = self._model_path or config.inswapper_model_path
 
-                self._gpu_instances[device_id] = GPUModelInstance(
-                    device_id=device_id,
-                    model_path=self._model_path,
-                    use_tensorrt=self._use_tensorrt
+        # Heavy ONNX/TRT init must not run under pool_lock (blocks other GPUs).
+        instance = GPUModelInstance(
+            device_id=device_id,
+            model_path=model_path,
+            use_tensorrt=use_tensorrt,
+            tensorrt_fp16=tensorrt_fp16,
+        )
+
+        with self._pool_lock:
+            if self._model_path is None:
+                self._model_path = model_path
+            existing = self._gpu_instances.get(key)
+            if existing is not None and existing.models_ready():
+                instance.cleanup()
+                return existing
+            if existing is not None:
+                try:
+                    existing.cleanup()
+                except Exception as e:
+                    logger.warning(
+                        "Error replacing stale GPU %d instance: %s", device_id, e
+                    )
+            self._gpu_instances[key] = instance
+            return instance
+
+    def get_instances(
+        self,
+        device_ids: List[int],
+        use_tensorrt: Optional[bool] = None,
+        tensorrt_fp16: Optional[bool] = None,
+    ) -> List[GPUModelInstance]:
+        if use_tensorrt is None:
+            use_tensorrt = config.tensorrt_enabled
+        trt_requested = bool(use_tensorrt and is_tensorrt_runtime_available())
+
+        if len(device_ids) > 1:
+            if trt_requested:
+                logger.info(
+                    "Multi-GPU mode: TensorRT face detection on GPU %d only; "
+                    "secondary GPU(s) use CUDA to avoid duplicate engine builds",
+                    device_ids[0],
+                )
+            else:
+                logger.info(
+                    "Multi-GPU mode: CUDA face detection on %d GPU(s)",
+                    len(device_ids),
                 )
 
-            return self._gpu_instances[device_id]
-
-    def get_instances(self, device_ids: List[int]) -> List[GPUModelInstance]:
-        """
-        Get model instances for multiple GPUs.
-
-        Note: TensorRT is automatically disabled for multi-GPU scenarios to avoid
-        Myelin autotuner race conditions that cause "Deserialization during
-        autotuning failed" errors when multiple CUDA contexts compile engines
-        simultaneously.
-
-        Args:
-            device_ids: List of CUDA device IDs
-
-        Returns:
-            List of GPUModelInstance objects
-        """
-        # Disable TensorRT for multi-GPU to avoid Myelin autotuner race conditions
-        if len(device_ids) > 1 and self._use_tensorrt:
-            logger.info("Disabling TensorRT for multi-GPU processing (avoids Myelin race conditions)")
-            original_tensorrt = self._use_tensorrt
-            self._use_tensorrt = False
-            instances = [self.get_instance(dev_id) for dev_id in device_ids]
-            self._use_tensorrt = original_tensorrt  # Restore for future single-GPU use
-            return instances
-
-        return [self.get_instance(dev_id) for dev_id in device_ids]
+        instances: List[GPUModelInstance] = []
+        for idx, dev_id in enumerate(device_ids):
+            trt_for_gpu = trt_requested and (len(device_ids) == 1 or idx == 0)
+            instances.append(
+                self.get_instance(
+                    dev_id,
+                    use_tensorrt=trt_for_gpu,
+                    tensorrt_fp16=tensorrt_fp16,
+                )
+            )
+        return instances
 
     @contextmanager
-    def acquire_gpu(self, device_id: int):
-        """
-        Acquire exclusive access to a GPU's models.
-
-        Args:
-            device_id: CUDA device ID
-
-        Usage:
-            with pool.acquire_gpu(0) as gpu:
-                result = gpu.swap_face(...)
-        """
-        instance = self.get_instance(device_id)
+    def acquire_gpu(self, device_id: int, use_tensorrt: Optional[bool] = None):
+        instance = self.get_instance(device_id, use_tensorrt=use_tensorrt)
         with instance.acquire():
             yield instance
 
     def cleanup(self, device_id: Optional[int] = None):
-        """
-        Clean up model instances.
-
-        Args:
-            device_id: Specific GPU to clean up, or None for all
-        """
         with self._pool_lock:
             if device_id is not None:
-                if device_id in self._gpu_instances:
-                    self._gpu_instances[device_id].cleanup()
-                    del self._gpu_instances[device_id]
+                for key in list(self._gpu_instances.keys()):
+                    if key[0] == device_id:
+                        self._gpu_instances[key].cleanup()
+                        del self._gpu_instances[key]
             else:
                 for instance in self._gpu_instances.values():
                     instance.cleanup()
@@ -338,14 +514,11 @@ class ModelPool:
         logger.info("ModelPool cleaned up")
 
     def is_gpu_initialized(self, device_id: int) -> bool:
-        """Check if a GPU instance is initialized."""
-        return device_id in self._gpu_instances
+        return any(key[0] == device_id for key in self._gpu_instances)
 
 
-# Module-level singleton accessor
 get_model_pool = ModelPool._get_instance
 
 
 def cleanup_model_pool():
-    """Clean up the global model pool."""
     ModelPool._cleanup()

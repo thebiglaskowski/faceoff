@@ -5,32 +5,40 @@
 # File Limits & Resource Constraints
 # =============================================================================
 limits:
-  max_file_size_mb: 500           # Maximum upload file size in MB
-  max_video_duration_sec: 300     # Maximum video duration in seconds (5 minutes)
-  max_image_pixels: 16777216      # Maximum image resolution (4096 * 4096 = 4K)
-  max_gif_frames: 500             # Maximum number of frames in GIF
+  max_file_size_mb: 500 # Maximum upload file size in MB
+  max_video_duration_sec: 300 # Maximum video duration in seconds (5 minutes)
+  max_image_pixels: 16777216 # Maximum image resolution (4096 * 4096 = 4K)
+  max_gif_frames: 500 # Maximum number of frames in GIF
 
 # =============================================================================
 # GPU & Performance Settings
 # =============================================================================
 gpu:
   # Frame batching for better GPU utilization
-  batch_size: 4                   # Frames to process per batch (1-16)
-  max_batch_size: 16              # Safety limit to prevent OOM
+  batch_size: 8 # Frames per batch — 8 balances throughput vs VRAM (auto-reduces on OOM)
+  max_batch_size: 16 # Safety limit to prevent OOM
 
   # Multi-GPU settings
-  workers_per_gpu: 4              # Worker threads per GPU
-  multi_gpu_video_enabled: true   # Enable multi-GPU for video/GIF face swapping
-                                  # Uses isolated model pool with per-GPU ONNX sessions
+  workers_per_gpu: 4 # Worker threads per GPU
+  multi_gpu_video_enabled:
+    true # Enable multi-GPU for video/GIF face swapping
+    # Uses isolated model pool with per-GPU ONNX sessions
 
   # TensorRT optimization (auto-enabled for face detection)
-  tensorrt_enabled: true          # Enable TensorRT optimization
-  tensorrt_fp16: true             # Use FP16 precision (faster)
-  tensorrt_workspace_mb: 2048     # Workspace size in MB
+  tensorrt_enabled: true # Enable TensorRT optimization
+  tensorrt_fp16: true # Use FP16 precision (faster)
+  tensorrt_workspace_mb: 2048 # Workspace size in MB
 
   # ONNX Runtime memory settings
-  onnx_mem_limit_mb: 2048         # Max GPU memory for ONNX sessions (MB)
-                                  # Lower this if you see BFC arena allocation errors
+  onnx_mem_limit_mb:
+    3072 # Headroom for TRT face-detection + inswapper on multi-GPU
+    # Lower this if you see BFC arena allocation errors
+  cudnn_conv_algo_search: HEURISTIC # HEURISTIC is safer on WSL2; EXHAUSTIVE is slower
+
+  # Wave 3 phase 1: one GPU upload per decode chunk + swap ONNX IoBinding (DLPack)
+  frame_retention_enabled: true
+  # Wave 3 phase 2: paste swap results on GPU; single D2H per chunk before encode
+  paste_on_gpu: true
 
 # =============================================================================
 # Face Detection Settings
@@ -43,14 +51,14 @@ face_detection:
   face_analysis_det_size: [640, 640]
 
   # Detection parameters
-  confidence_threshold: 0.5       # Minimum confidence (0.0-1.0)
-  iou_threshold: 0.3              # IoU threshold for face tracking (0.1-0.5)
-  ui_padding: 20                  # Padding around face thumbnails in UI
+  confidence_threshold: 0.5 # Minimum confidence (0.0-1.0)
+  iou_threshold: 0.3 # IoU threshold for face tracking (0.1-0.5)
+  ui_padding: 20 # Padding around face thumbnails in UI
 
   # Resolution-adaptive detection (faster processing)
-  adaptive_enabled: true          # Enable adaptive resolution
-  detection_scale: 0.5            # Detect at fraction of original (0.25-1.0)
-  min_resolution: 640             # Minimum resolution for detection
+  adaptive_enabled: true # Enable adaptive resolution
+  detection_scale: 0.5 # Detect at fraction of original (0.25-1.0)
+  min_resolution: 640 # Minimum resolution for detection
 
 # =============================================================================
 # Real-ESRGAN Enhancement Settings
@@ -58,46 +66,50 @@ face_detection:
 enhancement:
   # Default model
   default_model: "realesr-general-x4v3"
-  
+
   # Model options (Do not modify - these are system configurations)
   models:
     RealESRGAN_x4plus:
       display_name: "RealESRGAN_x4plus (General - Best for Photos)"
       supports_denoise: false
       description: "General purpose, best for photorealistic images"
-    
+
     RealESRGAN_x4plus_anime_6B:
       display_name: "RealESRGAN_x4plus_anime_6B (Anime/Illustrations)"
       supports_denoise: false
       description: "Optimized for anime and illustrated content"
-    
+
     RealESRNet_x4plus:
       display_name: "RealESRNet_x4plus (Conservative)"
       supports_denoise: false
       description: "More conservative, fewer artifacts"
-    
+
     realesr-general-x4v3:
       display_name: "realesr-general-x4v3 (With Denoise)"
       supports_denoise: true
       description: "General model with adjustable denoising"
-    
+
     realesr-animevideov3:
       display_name: "realesr-animevideov3 (Anime Video)"
       supports_denoise: false
       description: "Designed specifically for anime videos"
-    
+
     RealESRGAN_x2plus:
       display_name: "RealESRGAN_x2plus (Fast 2x)"
       supports_denoise: false
       description: "Faster 2x upscaling"
-  
+
+  # Multi-GPU enhancement shards frames across GPUs (RealESRGAN only).
+  # HAT and SwinIR always use a single GPU — parallel PyTorch inference races on WSL2.
+  multi_gpu_enabled: false
+
   # Default enhancement parameters
   defaults:
-    tile_size: 256                # Tile size (128-512, lower = less VRAM)
-    outscale: 4                   # Upscaling factor (2 or 4)
-    pre_pad: 0                    # Edge padding (0-20)
-    use_fp32: false               # Use FP32 precision (more VRAM)
-    denoise_strength: 0.5         # For models that support it (0.0-1.0)
+    tile_size: 256 # Tile size (128-512, lower = less VRAM)
+    outscale: 4 # Upscaling factor (2 or 4)
+    pre_pad: 0 # Edge padding (0-20)
+    use_fp32: false # Use FP32 precision (more VRAM)
+    denoise_strength: 0.5 # For models that support it (0.0-1.0)
 
 # =============================================================================
 # HAT (Hybrid Attention Transformer) Enhancement Settings
@@ -107,13 +119,13 @@ hat_enhancement:
   models:
     HAT_Base_4x_ImageNet:
       display_name: "HAT_Base_4x_ImageNet (General — Strong SR, 20.8M params)"
-      url: "https://huggingface.co/anchuang/HAT-L_SRx4_ImageNet-pretrain/resolve/main/HAT-L_SRx4_ImageNet-pretrain.pth"
+      url: "https://huggingface.co/Acly/hat/resolve/main/HAT_SRx4_ImageNet-pretrain.pth"
       scale: 4
       description: "HAT Base 4x pre-trained on ImageNet — strong general SR"
-    
+
     HAT_Base_4x_GAN_sharper:
       display_name: "HAT_Base_4x_GAN_sharper (Real-World Sharpness)"
-      url: "https://huggingface.co/anchuang/Real_HAT_GAN_SRx4_sharper/resolve/main/Real_HAT_GAN_sharper.pth"
+      url: "https://huggingface.co/Acly/hat/resolve/main/Real_HAT_GAN_sharper.pth"
       scale: 4
       description: "HAT GAN 4x — sharper perceptual quality for real-world SR"
 
@@ -126,17 +138,17 @@ swinir:
       model_id: "Swin2SR_RealWorld_x4"
       scale: 4
       description: "Real-world SR 4x - Best for degraded images"
-    
+
     Swin2SR_x4:
       model_id: "Swin2SR_x4"
       scale: 4
       description: "Classical SR 4x - Standard upscaling"
-    
+
     Swin2SR_Compressed_x4:
       model_id: "Swin2SR_Compressed_x4"
       scale: 4
       description: "Compressed SR 4x - For JPEG artifacts"
-    
+
     Swin2SR_x2:
       model_id: "Swin2SR_x2"
       scale: 2
@@ -146,17 +158,31 @@ swinir:
 # Face Restoration (GFPGAN) Settings
 # =============================================================================
 face_restoration:
-  enabled_by_default: false       # Enable GFPGAN by default
-  model_version: "1.3"            # GFPGAN model version
-  default_weight: 0.5             # Restoration weight (0.0-1.0)
+  enabled_by_default: false # Enable GFPGAN by default
+  model_version: "1.3" # GFPGAN model version
+  default_weight: 0.5 # Restoration weight (0.0-1.0)
 
 # =============================================================================
-# Async Pipeline Settings
+# Streaming Pipeline Settings (video + GIF)
 # =============================================================================
-async_pipeline:
-  enabled: true                   # Use async pipeline for videos/GIFs
-  min_frames_threshold: 10        # Minimum frames to use async (below uses sync)
-  queue_size: 32                  # Maximum queue size (0=unbounded, 16-64 recommended)
+streaming:
+  enabled: true # Chunked decode→process→encode (no full-RAM / PNG round-trips)
+  chunk_size: 32 # Frames per chunk — caps RAM; auto-reduced on OOM
+  video_face_enhance: false # GFPGAN inside RealESRGAN per frame (~2x slower); use restore_faces instead
+  gif_decode_fps: 10 # GIF frame extraction rate for processing
+  hwaccel_decode: true # FFmpeg CUDA hwaccel when available (falls back to software)
+  nvenc_encode: true # h264_nvenc for video output when available
+  video_codec: "libx264" # Fallback / forced software encoder
+  video_preset: "medium"
+  video_crf: 18
+
+# =============================================================================
+# Output Compression (post-process)
+# =============================================================================
+compression:
+  enabled: true
+  skip_optimized_video: true # Skip re-encode when output is already NVENC/h264
+  min_image_size_mb: 5 # Only compress images larger than this
 
 # =============================================================================
 # Logging Configuration
@@ -164,20 +190,24 @@ async_pipeline:
 logging:
   # File settings
   log_file: "app.log"
-  max_file_size_mb: 10            # Maximum log file size before rotation
-  backup_count: 5                 # Number of backup log files to keep
+  max_file_size_mb: 25 # Larger rotation size while actively debugging
+  backup_count: 5 # Number of backup log files to keep
 
   # Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
-  console_level: "INFO"           # Console output level
-  file_level: "DEBUG"             # File output level
+  console_level: "INFO" # Launch terminal — verbose while hunting issues
+  file_level: "DEBUG" # app.log — full detail with rotation
 
   # Log format
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   date_format: "%Y-%m-%d %H:%M:%S"
 
-  # Structured logging (JSON format for log aggregation tools)
-  json_format: false              # Enable JSON log output
-  json_log_file: "app.json.log"   # Separate file for JSON logs
+  # In-app Logs tab (ui/components/terminal_tab.py)
+  terminal_buffer_lines: 5000 # Ring buffer capacity for live UI viewer
+  terminal_auto_refresh_sec: 2 # Auto-refresh interval (0 = manual refresh only)
+
+  # Structured logging (JSON format for log aggregation / jq analysis)
+  json_format: true # Also write app.json.log alongside app.log
+  json_log_file: "app.json.log" # Separate file for JSON logs
 
 # =============================================================================
 # Model Caching Settings
@@ -185,27 +215,30 @@ logging:
 model_cache:
   # TensorRT engine caching
   tensorrt_cache_dir: "cache/tensorrt"
-  tensorrt_cache_enabled: true
-  
-  # Model preloading (load models at startup to avoid first-run delay)
-  preload_on_startup: false       # Set to true to preload all models
+  tensorrt_cache_enabled: true # Persist TRT engines per GPU (gpu_0, gpu_1, …)
+
+  # Model preloading — warms all CUDA GPUs sequentially at startup (TRT compile lock safe)
+  preload_on_startup: true # Eliminates first-request delay on multi-GPU jobs
   preload_models:
-    - "buffalo_l"                 # Face detection model
-    - "inswapper_128"             # Face swapping model
-    # Enhancement models loaded on-demand due to size
+    - "buffalo_l" # Face detection model
+    - "inswapper_128" # Face swapping model
+  preload_enhancement_on_startup: false # Warm default enhancement model in background
 
 # =============================================================================
 # Memory Management
 # =============================================================================
 memory:
   # Automatic VRAM management
-  auto_clear_cache: true          # Clear CUDA cache between processing stages
-  clear_cache_threshold_mb: 1024  # Clear if free VRAM below this (MB)
-  mb_per_batch_estimate: 500      # Estimated MB per batch for optimal sizing
+  auto_clear_cache: true # Clear CUDA cache between processing stages
+  clear_cache_threshold_mb: 1536 # Proactive cache clear before enhancement handoff
+  mb_per_batch_estimate: 400 # Slightly conservative batch VRAM estimate for sizing
+  release_swap_models_before_enhance: true # Unload ONNX face-swap models before HAT/ESRGAN
+  hat_force_tiled_below_free_mb: 3072 # Force tiled HAT when free VRAM is below this (MB)
+  hat_oom_min_tile_size: 64 # Smallest tile size when retrying after OOM
 
   # Emergency fallback settings
-  reduce_batch_on_oom: true       # Reduce batch size if OOM detected
-  min_batch_size: 1               # Minimum batch size before failing
+  reduce_batch_on_oom: true # Reduce batch size if OOM detected
+  min_batch_size: 1 # Minimum batch size before failing
 
 # =============================================================================
 # Supported File Formats
@@ -217,13 +250,13 @@ file_formats:
     - ".png"
     - ".bmp"
     - ".webp"
-  
+
   videos:
     - ".mp4"
     - ".webp"
     - ".avi"
     - ".mov"
-  
+
   gifs:
     - ".gif"
 
@@ -241,8 +274,8 @@ directories:
 # Cleanup Settings
 # =============================================================================
 cleanup:
-  enabled: true                   # Enable automatic cleanup of old files
-  max_age_hours: 24               # Delete files older than this (hours)
+  enabled: true # Enable automatic cleanup of old files
+  max_age_hours: 24 # Delete files older than this (hours)
 
 # =============================================================================
 # UI Settings
@@ -250,16 +283,16 @@ cleanup:
 ui:
   server_name: "127.0.0.1"
   server_port: 7860
-  share: false                    # Create public Gradio link
-  theme: "default"                # Gradio theme
+  share: false # Create public Gradio link
+  theme: "default" # Gradio theme
 
   # Gradio queue settings (prevents request overload)
-  queue_max_size: 20              # Maximum pending requests in queue
-  queue_concurrency_limit: 4      # Maximum concurrent processing tasks
+  queue_max_size: 20 # Maximum pending requests in queue
+  queue_concurrency_limit: 4 # Maximum concurrent processing tasks
 
 # =============================================================================
 # Model Cache Settings
 # =============================================================================
 model_cache_limits:
-  max_models_per_cache: 5         # Maximum models to keep in memory per cache
-  eviction_policy: "lru"          # Eviction policy: "lru" (least recently used)
+  max_models_per_cache: 5 # Maximum models to keep in memory per cache
+  eviction_policy: "lru" # Eviction policy: "lru" (least recently used)

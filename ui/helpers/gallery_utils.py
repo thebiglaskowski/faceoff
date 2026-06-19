@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
 from datetime import datetime
 
+from utils.output_metadata import build_gallery_caption, metadata_path_for
+
 logger = logging.getLogger("FaceOff")
 
 # Cache for gallery file lists
@@ -91,13 +93,8 @@ def get_media_files(output_dir: str, media_type: str, max_files: int = 50) -> Li
         
         # Build full file list for cache (not limited)
         for file_path in all_files:
-            # Get file modification time for caption
             mod_time = datetime.fromtimestamp(file_path.stat().st_mtime)
-            time_str = mod_time.strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Create caption with filename and timestamp
-            caption = f"{file_path.name}\n{time_str}"
-            
+            caption = build_gallery_caption(file_path, mod_time)
             media_files.append((str(file_path), caption))
         
         # Update cache with all files
@@ -203,8 +200,11 @@ def delete_file(file_path: str, media_type: str) -> Tuple[bool, str]:
         if media_type not in str(path.parent):
             return False, f"❌ File type mismatch: {path.name}"
         
-        # Delete the file
         path.unlink()
+
+        meta_path = metadata_path_for(path)
+        if meta_path.exists():
+            meta_path.unlink()
         
         # Invalidate cache for this media type
         _gallery_cache[media_type] = {'files': [], 'timestamp': 0, 'dir_mtime': 0}

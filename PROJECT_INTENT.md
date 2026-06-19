@@ -1,7 +1,7 @@
 # FaceOff Project Intent
 
 > **Status**: Authoritative operating specification
-> **Last Updated**: 2026-01-27
+> **Last Updated**: 2026-06-19
 > **Supersedes**: BLUEPRINT.md (now historical reference only)
 
 ---
@@ -24,7 +24,7 @@ It provides a **Gradio web UI** for interactive use on a single machine or local
 | Enhancement | Real-ESRGAN, SwinIR (optional) | `processing/enhancement.py`, `processing/swinir_enhancement.py` |
 | Face restoration | GFPGAN, CodeFormer (optional) | `processing/face_restoration.py`, `processing/codeformer_restoration.py` |
 | Multi-GPU | Per-GPU ONNX session isolation | `core/model_pool.py` |
-| Async processing | 3-stage pipeline for video/GIF | `processing/async_pipeline.py` |
+| Streaming video/GIF | Chunked decode→swap→enhance→encode | `processing/streaming_media.py` |
 
 ---
 
@@ -47,8 +47,8 @@ It provides a **Gradio web UI** for interactive use on a single machine or local
 | TensorRT optimization | 2-3x faster inference | Optional, cached engines in `cache/tensorrt/` |
 | Batch processing | Configurable batch size (1-16) | `config.yaml: gpu.batch_size` |
 | Memory efficiency | Prevent OOM, auto-reduce batch | `utils/memory_manager.py` |
-| Async pipeline | Overlap I/O and compute | `processing/async_pipeline.py` |
-| Multi-GPU | Distribute frames across GPUs | `core/model_pool.py` with isolated sessions |
+| Streaming pipeline | Bounded RAM; FFmpeg I/O; in-memory enhance | `processing/streaming_media.py`, `utils/video_io.py` |
+| Multi-GPU | VRAM-aware frame split (swap); single-GPU PyTorch enhance | `core/model_pool.py`, `processing/gpu_scheduler.py` |
 
 ---
 
@@ -109,7 +109,8 @@ It provides a **Gradio web UI** for interactive use on a single machine or local
 | `main.py` | Entry point, signal handling, Gradio launch | ~150 |
 | `ui/app.py` | Gradio UI composition | ~665 |
 | `processing/orchestrator.py` | Unified processing entry | ~246 |
-| `processing/async_pipeline.py` | 3-stage frame pipeline | ~363 |
+| `processing/streaming_media.py` | Chunked video/GIF pipeline | ~390 |
+| `processing/in_memory_enhancement.py` | Multi-GPU-safe in-RAM enhance | ~180 |
 | `core/model_pool.py` | Per-GPU ONNX session management | ~326 |
 | `core/media_processor.py` | InsightFace initialization | ~422 |
 | `utils/config_manager.py` | Singleton config (74 properties) | ~448 |

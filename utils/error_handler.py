@@ -192,16 +192,50 @@ class ErrorHandler:
         if "permissionerror" in error_type.lower() or "permission denied" in error_str:
             return ErrorHandler._handle_permission_error(context)
         
+        # GPU / ONNX runtime errors (cuDNN, execution provider failures)
+        if any(
+            x in error_str
+            for x in (
+                "cudnn",
+                "ep_fail",
+                "execution provider",
+                "sublibrary_version_mismatch",
+                "libcudnn",
+            )
+        ) or error_type in ("EPFail", "RuntimeException"):
+            return ErrorHandler._handle_gpu_runtime_error(error, context)
+
         # Model initialization errors
         if "model" in error_str and ("failed" in error_str or "initialization" in error_str):
             return ErrorHandler._handle_model_error(error, context)
         
         # Invalid mapping errors
-        if "invalid mapping" in error_str or "out of range" in error_str:
+        if (
+            "invalid mapping" in error_str
+            or "out of range" in error_str
+            or "no valid face mappings" in error_str
+            or "face mappings did not match" in error_str
+        ):
             return ErrorHandler._handle_invalid_mapping_error(context)
         
+        # Path validation (must precede media handler — paths may contain ".gif")
+        if "path not allowed" in error_str or "path traversal" in error_str:
+            return ErrorHandler._handle_path_validation_error(error, context)
+
         # Video/GIF processing errors
-        if any(x in error_str for x in ["video", "gif", "frame", "codec"]):
+        if any(
+            x in error_str
+            for x in [
+                "codec",
+                "unsupported format",
+                "failed to process frame",
+                "frame extraction",
+                "streaming encode",
+                "streaming decode",
+            ]
+        ):
+            return ErrorHandler._handle_media_error(error, context)
+        if error_type in ("FileNotFoundError",) and context.get("media_type") in ("video", "gif"):
             return ErrorHandler._handle_media_error(error, context)
         
         # Generic fallback
@@ -311,6 +345,34 @@ class ErrorHandler:
         )
     
     @staticmethod
+    def _handle_gpu_runtime_error(error: Exception, context: dict) -> FriendlyError:
+        """Handle CUDA/cuDNN/ONNX Runtime execution provider failures."""
+        suggestions = [
+            "Set gpu.tensorrt_enabled: false in config.yaml if TensorRT is not installed",
+            "Run: uv run python scripts/verify_gpu_stack.py",
+            "Pin nvidia-cudnn-cu12 to 9.20.x to match onnxruntime-gpu (see pyproject.toml)",
+            "Restart the application after changing dependencies (uv sync)",
+            "Use a single GPU selection instead of 'All GPUs' while debugging",
+        ]
+
+        message = (
+            "ONNX Runtime failed on the GPU. This is usually a CUDA/cuDNN or "
+            "TensorRT version mismatch — not a face-swap logic error.\n\n"
+            "Common causes:\n"
+            "• cuDNN sub-library version mismatch (CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH)\n"
+            "• TensorRT / ONNX Runtime mismatch (pin tensorrt>=10.9,<11 for ORT 1.22+)\n"
+            "• TensorRT libs not preloaded — restart via python main.py\n"
+            "• Mixed NVIDIA library paths on LD_LIBRARY_PATH"
+        )
+
+        return FriendlyError(
+            title="GPU Runtime Error",
+            message=message,
+            suggestions=suggestions,
+            technical_details=str(error),
+        )
+
+    @staticmethod
     def _handle_model_error(error: Exception, context: dict) -> FriendlyError:
         """Handle model initialization errors."""
         suggestions = [
@@ -360,6 +422,26 @@ class ErrorHandler:
             suggestions=suggestions
         )
     
+    @staticmethod
+    def _handle_path_validation_error(error: Exception, context: dict) -> FriendlyError:
+        """Handle rejected or unsafe file paths."""
+        file_path = context.get("file_path", str(error))
+        suggestions = [
+            "Re-upload the file using the Gradio file picker",
+            "Avoid manually editing file paths",
+            "Save the file under the project's inputs/ directory if using a custom workflow",
+        ]
+        message = (
+            "The uploaded file path could not be accepted.\n\n"
+            f"Path: {file_path}"
+        )
+        return FriendlyError(
+            title="Invalid File Path",
+            message=message,
+            suggestions=suggestions,
+            technical_details=str(error),
+        )
+
     @staticmethod
     def _handle_media_error(error: Exception, context: dict) -> FriendlyError:
         """Handle video/GIF processing errors."""

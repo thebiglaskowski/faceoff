@@ -2,8 +2,10 @@
 Input validation functions for files, media, and parameters.
 """
 import logging
+import tempfile
 import magic
 from pathlib import Path
+from typing import Any, List, Optional, Tuple
 from PIL import Image
 from utils.constants import (
     MAX_FILE_SIZE_MB,
@@ -13,6 +15,45 @@ from utils.constants import (
 )
 
 logger = logging.getLogger("FaceOff")
+
+
+def _allowed_path_roots() -> tuple[Path, ...]:
+    """Directories from which user-supplied media paths are accepted."""
+    roots = [
+        Path("inputs").resolve(),
+        Path("outputs").resolve(),
+        Path.cwd().resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    ]
+    # Gradio uploads land under $TMPDIR/gradio/ on Linux/WSL
+    gradio_tmp = Path(tempfile.gettempdir()) / "gradio"
+    if gradio_tmp.exists():
+        roots.append(gradio_tmp.resolve())
+    return tuple(roots)
+
+
+def validate_safe_path(file_path: str) -> Path:
+    """
+    Resolve a user-supplied path and reject directory traversal escapes.
+
+    Allows project dirs (inputs/, outputs/) and OS/Gradio temp upload paths.
+
+    Raises:
+        ValueError: If the resolved path is outside allowed directories.
+    """
+    raw = Path(file_path)
+    if any(part == ".." for part in raw.parts):
+        raise ValueError(f"Path traversal not allowed: {file_path}")
+
+    resolved = raw.expanduser().resolve()
+    if not resolved.exists():
+        raise ValueError(f"Path does not exist: {file_path}")
+
+    for root in _allowed_path_roots():
+        if resolved == root or root in resolved.parents:
+            return resolved
+
+    raise ValueError(f"Path not allowed: {file_path}")
 
 
 def validate_file_size(file_path: str, max_size_mb: int = MAX_FILE_SIZE_MB) -> None:
@@ -142,6 +183,68 @@ def validate_media_type(file_path: str) -> str:
     raise ValueError(
         f"Unsupported media type: {mime_type}. "
         "Only images, GIFs, and videos are allowed."
+    )
+
+
+def resolve_gradio_file_path(file_obj: Any) -> str:
+    """Resolve a Gradio File/upload value to a filesystem path."""
+    if file_obj is None:
+        raise ValueError("No file provided")
+
+    # Gradio Video may pass (video_path, subtitles_path) tuples.
+    if isinstance(file_obj, (tuple, list)) and file_obj:
+        return resolve_gradio_file_path(file_obj[0])
+
+    if isinstance(file_obj, dict):
+        for key in ("path", "name"):
+            value = file_obj.get(key)
+            if value:
+                return str(value)
+        raise ValueError("Invalid file object: missing path")
+
+    if hasattr(file_obj, "path") and file_obj.path:
+        return str(file_obj.path)
+    if hasattr(file_obj, "name") and file_obj.name:
+        return str(file_obj.name)
+    return str(file_obj)
+
+
+def is_animated_gif_image(image: Image.Image) -> bool:
+    """Return True when a PIL image represents a multi-frame GIF."""
+    if image is None:
+        return False
+    if getattr(image, "format", None) == "GIF":
+        return getattr(image, "n_frames", 1) > 1
+    return getattr(image, "n_frames", 1) > 1
+
+
+def validate_face_mappings_or_raise(
+    face_mappings: Optional[List[Tuple[int, int]]],
+    src_face_count: int,
+    dst_face_count: int,
+) -> None:
+    """
+    Ensure at least one face mapping is valid for detected face counts.
+
+    Raises:
+        ValueError: When mappings were provided but none apply to detected faces.
+    """
+    if not face_mappings:
+        return
+
+    valid = [
+        (src_idx, dst_idx)
+        for src_idx, dst_idx in face_mappings
+        if src_idx < src_face_count and dst_idx < dst_face_count
+    ]
+    if valid:
+        return
+
+    raise ValueError(
+        f"No valid face mappings for detected faces "
+        f"(source: {src_face_count}, target: {dst_face_count}). "
+        f"Configured mappings: {face_mappings}. "
+        "Use Detect Faces on this target, then update mappings."
     )
 
 

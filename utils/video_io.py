@@ -7,11 +7,67 @@ All operations are subprocess-based; no Python video codec dependencies.
 import logging
 import re
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Union
 
+import numpy as np
+
 logger = logging.getLogger("FaceOff")
+
+
+class _FfmpegStderrDrain:
+    """
+    Drain FFmpeg stderr in the background.
+
+    If stderr is PIPE and nobody reads it, the ~64KB kernel buffer fills,
+    FFmpeg blocks, and the Python side deadlocks on stdin/stdout I/O.
+    """
+
+    def __init__(
+        self,
+        proc: subprocess.Popen,
+        *,
+        label: str = "ffmpeg",
+        max_bytes: int = 262144,
+    ):
+        self._buf = bytearray()
+        self._max_bytes = max_bytes
+        self._lock = threading.Lock()
+        self._thread: Optional[threading.Thread] = None
+        if proc.stderr is not None:
+            self._thread = threading.Thread(
+                target=self._run,
+                args=(proc.stderr,),
+                name=f"{label}-stderr-drain",
+                daemon=True,
+            )
+            self._thread.start()
+
+    def _run(self, stderr) -> None:
+        try:
+            while True:
+                chunk = stderr.read(4096)
+                if not chunk:
+                    break
+                with self._lock:
+                    if len(self._buf) < self._max_bytes:
+                        room = self._max_bytes - len(self._buf)
+                        self._buf.extend(chunk[:room])
+        finally:
+            try:
+                stderr.close()
+            except OSError:
+                pass
+
+    def get_text(self) -> str:
+        with self._lock:
+            return bytes(self._buf).decode("utf-8", errors="replace")
+
+    def join(self, timeout: float = 2.0) -> None:
+        if self._thread is not None:
+            self._thread.join(timeout=timeout)
 
 
 # =============================================================================
@@ -128,7 +184,325 @@ def probe_gif(gif_path: str) -> dict:
 
 
 # =============================================================================
-# Frame extraction (video -> frames)
+# Streaming I/O (piped raw RGB — no PNG round-trips)
+# =============================================================================
+
+_NVENC_AVAILABLE: Optional[bool] = None
+
+
+def nvenc_available() -> bool:
+    """Return True if FFmpeg reports h264_nvenc encoder."""
+    global _NVENC_AVAILABLE
+    if _NVENC_AVAILABLE is not None:
+        return _NVENC_AVAILABLE
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        _NVENC_AVAILABLE = result.returncode == 0 and "h264_nvenc" in result.stdout
+    except Exception:
+        _NVENC_AVAILABLE = False
+    return _NVENC_AVAILABLE
+
+
+def _hwaccel_decode_args(enabled: bool) -> List[str]:
+    if not enabled:
+        return []
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-hwaccels"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and "cuda" in result.stdout:
+            return ["-hwaccel", "cuda"]
+    except Exception:
+        pass
+    return []
+
+
+class StreamingFrameReader:
+    """Decode video/GIF frames via FFmpeg raw RGB pipe in bounded chunks."""
+
+    def __init__(
+        self,
+        media_path: str,
+        fps: Optional[float] = None,
+        hwaccel: bool = False,
+    ):
+        self.media_path = str(media_path)
+        meta = probe_video(self.media_path)
+        self.width = int(meta.get("width") or 0)
+        self.height = int(meta.get("height") or 0)
+        self.fps = float(fps or meta.get("fps") or 30.0)
+        if self.fps <= 0:
+            self.fps = 30.0
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError(f"Invalid media dimensions for {self.media_path}")
+
+        self._frame_bytes = self.width * self.height * 3
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
+        cmd.extend(_hwaccel_decode_args(hwaccel))
+        cmd.extend(["-i", self.media_path, "-vf", f"fps={self.fps}", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"])
+        self._proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self._stderr_drain = _FfmpegStderrDrain(self._proc, label="decode")
+        self.frames_read = 0
+        logger.info(
+            "Streaming decode started: %s (%dx%d @ %.2f fps)",
+            Path(self.media_path).name,
+            self.width,
+            self.height,
+            self.fps,
+        )
+
+    def read_chunk(self, count: int) -> List[np.ndarray]:
+        frames: List[np.ndarray] = []
+        if self._proc.stdout is None:
+            return frames
+        for _ in range(count):
+            data = self._proc.stdout.read(self._frame_bytes)
+            if len(data) < self._frame_bytes:
+                break
+            frame = np.frombuffer(data, dtype=np.uint8).reshape(
+                self.height, self.width, 3
+            ).copy()
+            frames.append(frame)
+            self.frames_read += 1
+        return frames
+
+    def close(self) -> None:
+        if self._proc.stdout:
+            self._proc.stdout.close()
+        self._stderr_drain.join()
+        stderr_text = self._stderr_drain.get_text()
+        self._proc.wait(timeout=30)
+        if self._proc.returncode not in (0, None) and self.frames_read == 0:
+            logger.warning(
+                "Streaming decode ended rc=%s: %s",
+                self._proc.returncode,
+                stderr_text[:300],
+            )
+
+    def __enter__(self) -> "StreamingFrameReader":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        self.close()
+        return False
+
+
+class StreamingVideoWriter:
+    """Encode raw RGB frames to MP4 via FFmpeg stdin pipe."""
+
+    def __init__(
+        self,
+        output_path: Union[str, Path],
+        width: int,
+        height: int,
+        fps: float,
+        audio_path: Optional[Union[str, Path]] = None,
+        codec: str = "libx264",
+        preset: str = "medium",
+        crf: int = 18,
+        use_nvenc: bool = False,
+        pix_fmt: str = "yuv420p",
+    ):
+        self.output_path = Path(output_path)
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.frames_written = 0
+        self._finalized = False
+
+        video_codec = "h264_nvenc" if use_nvenc and nvenc_available() else codec
+        cmd = [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "rawvideo", "-pix_fmt", "rgb24",
+            "-s", f"{width}x{height}", "-r", str(fps),
+            "-i", "pipe:0",
+        ]
+        if audio_path:
+            cmd.extend(["-i", str(audio_path), "-map", "0:v:0", "-map", "1:a:0", "-shortest"])
+        if video_codec == "h264_nvenc":
+            cmd.extend(["-c:v", "h264_nvenc", "-preset", "p4", "-cq", str(crf)])
+        else:
+            cmd.extend(["-c:v", video_codec, "-preset", preset, "-crf", str(crf)])
+        if audio_path:
+            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+        cmd.extend(["-pix_fmt", pix_fmt, "-movflags", "+faststart", str(self.output_path)])
+
+        self._proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self._stderr_drain = _FfmpegStderrDrain(self._proc, label="encode")
+        logger.info(
+            "Streaming encode started: %s (%dx%d @ %.2f fps, codec=%s)",
+            self.output_path.name,
+            width,
+            height,
+            fps,
+            video_codec,
+        )
+
+    def write_frames(self, frames: List[np.ndarray]) -> None:
+        if self._proc.stdin is None:
+            return
+        for frame in frames:
+            arr = np.asarray(frame)
+            if arr.dtype != np.uint8:
+                arr = np.clip(arr, 0, 255).astype(np.uint8)
+            if arr.shape[:2] != (self.height, self.width):
+                raise ValueError(
+                    f"Frame shape {arr.shape} does not match writer {self.height}x{self.width}"
+                )
+            if arr.shape[2] == 4:
+                arr = arr[:, :, :3]
+            if not arr.flags["C_CONTIGUOUS"]:
+                arr = np.ascontiguousarray(arr)
+            data = arr.tobytes()
+            view = memoryview(data)
+            offset = 0
+            while offset < len(view):
+                written = self._proc.stdin.write(view[offset:])
+                if written == 0:
+                    raise BrokenPipeError("FFmpeg encode stdin closed unexpectedly")
+                offset += written
+            self.frames_written += 1
+        if self._proc.stdin:
+            self._proc.stdin.flush()
+
+    def finalize(self) -> bool:
+        if self._finalized:
+            return self.output_path.exists()
+        self._finalized = True
+        if self._proc.stdin:
+            self._proc.stdin.close()
+        self._stderr_drain.join(timeout=5.0)
+        stderr = self._stderr_drain.get_text()
+        self._proc.wait(timeout=600)
+        ok = self._proc.returncode == 0 and self.output_path.exists()
+        if ok:
+            logger.info("Streaming encode complete: %d frames → %s", self.frames_written, self.output_path)
+        else:
+            logger.error("Streaming encode failed (rc=%s): %s", self._proc.returncode, stderr[:500])
+        return ok
+
+    def __enter__(self) -> "StreamingVideoWriter":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if exc_type is None:
+            self.finalize()
+        elif self._proc.stdin:
+            self._proc.stdin.close()
+            self._proc.kill()
+        return False
+
+
+class StreamingGifWriter:
+    """Write GIF frames via temp disk files — bounded RAM, variable durations."""
+
+    def __init__(
+        self,
+        output_path: Union[str, Path],
+        temp_dir: Union[str, Path],
+        durations: Optional[List[int]] = None,
+    ):
+        self.output_path = Path(output_path)
+        self.temp_dir = Path(temp_dir)
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        self.durations = durations or []
+        self.frames_written = 0
+        self._finalized = False
+
+    def write_frames(self, frames: List[np.ndarray]) -> None:
+        import cv2
+
+        for frame in frames:
+            arr = np.asarray(frame)
+            if arr.dtype != np.uint8:
+                arr = np.clip(arr, 0, 255).astype(np.uint8)
+            fpath = self.temp_dir / f"frame_{self.frames_written:06d}.png"
+            cv2.imwrite(str(fpath), cv2.cvtColor(arr, cv2.COLOR_RGB2BGR))
+            self.frames_written += 1
+
+    def finalize(self) -> bool:
+        if self._finalized:
+            return self.output_path.exists()
+        self._finalized = True
+        if self.frames_written == 0:
+            logger.error("No frames to write GIF")
+            return False
+
+        paths = sorted(self.temp_dir.glob("frame_*.png"))
+        from PIL import Image
+
+        pil_frames = []
+        for p in paths:
+            pil_frames.append(Image.open(p).convert("RGBA"))
+
+        durations = self.durations
+        if not durations or len(durations) != len(pil_frames):
+            default_ms = int(1000 / 10.0)
+            durations = [default_ms] * len(pil_frames)
+        elif len(durations) > len(pil_frames):
+            durations = durations[: len(pil_frames)]
+        elif len(durations) < len(pil_frames):
+            durations = (durations * ((len(pil_frames) // len(durations)) + 1))[
+                : len(pil_frames)
+            ]
+
+        try:
+            pil_frames[0].save(
+                str(self.output_path),
+                save_all=True,
+                append_images=pil_frames[1:],
+                loop=0,
+                duration=durations,
+                optimize=True,
+            )
+            logger.info(
+                "Streaming GIF encode complete: %d frames → %s",
+                self.frames_written,
+                self.output_path,
+            )
+            return True
+        except Exception as exc:
+            logger.error("Streaming GIF encode failed: %s", exc)
+            return False
+
+    def cleanup(self) -> None:
+        import shutil
+
+        if self.temp_dir.exists():
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def __enter__(self) -> "StreamingGifWriter":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        try:
+            if exc_type is None:
+                self.finalize()
+        finally:
+            self.cleanup()
+        return False
+
+
+# =============================================================================
+# Frame extraction (video -> frames) — legacy / tests only
 # =============================================================================
 
 @dataclass
@@ -208,77 +582,8 @@ def extract_video_frames(
         return []
 
 
-def extract_video_frames_raw(
-    video_path: str,
-    output_dir: Union[str, Path],
-    start_time: float = 0.0,
-    duration: Optional[float] = None,
-    fmt: str = "yuv420p",
-) -> Path:
-    """
-    Extract raw YUV frame sequence into a single binary file.
-
-    Much faster than PNG per-frame when all you need is raw pixel data.
-    Callers must parse the binary blob.
-
-    Returns path to the raw file.
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    raw_path = output_dir / "frames.raw"
-
-    meta = probe_video(video_path)
-    height = int(meta.get("height") or 480)
-    width = int(meta.get("width") or 640)
-    fps = float(meta.get("fps") or 30.0)
-    stride = ((width + 31) // 32) * 32  # align to 32px
-
-    try:
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", str(start_time),
-            "-i", video_path,
-        ]
-        if duration:
-            cmd.extend(["-t", str(duration)])
-        cmd.extend([
-            "-vf", f"fps={fps}",
-            "-pix_fmt", fmt,
-            "-s", f"{width}x{height}",
-            str(raw_path),
-        ])
-
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=600
-        )
-        if result.returncode != 0:
-            logger.error(
-                "FFmpeg raw extract failed: %s", result.stderr.strip()[:500]
-            )
-            return Path()
-
-        frame_count = 0
-        if raw_path.exists() and raw_path.stat().st_size > 0:
-            # Estimate frame count from file size
-            bytes_per_frame = stride * height + stride * height // 4 + stride * height // 4
-            if bytes_per_frame > 0:
-                frame_count = int(raw_path.stat().st_size / bytes_per_frame)
-
-        logger.info(
-            "Extracted %d raw frames (%d bytes) from video",
-            frame_count, raw_path.stat().st_size if raw_path.exists() else 0,
-        )
-        return raw_path
-
-    except FileNotFoundError:
-        logger.error("ffmpeg not found on PATH")
-    except Exception as e:
-        logger.error("FFmpeg raw extract error: %s", e)
-    return Path()
-
-
 # =============================================================================
-# Video writing (frames -> video)
+# Video writing (frames -> video) — legacy fallback
 # =============================================================================
 
 def write_video_from_pil_frames(
@@ -346,6 +651,7 @@ def write_video_from_pil_frames(
                 "-preset", preset,
                 "-crf", str(crf),
                 "-pix_fmt", pix_fmt,
+                "-movflags", "+faststart",
             ])
 
             if audio_path:

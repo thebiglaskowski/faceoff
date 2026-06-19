@@ -357,3 +357,98 @@ class TestEdgeCases:
         test_file.write_text("test")
 
         validate_file_size(str(test_file), max_size_mb=1)
+
+
+class TestValidateSafePath:
+    """Tests for validate_safe_path (Gradio uploads + traversal rejection)."""
+
+    def test_allows_gradio_temp_upload(self, tmp_path):
+        import tempfile
+        from utils.validation import validate_safe_path
+
+        gradio_dir = Path(tempfile.gettempdir()) / "gradio" / "abc123"
+        gradio_dir.mkdir(parents=True, exist_ok=True)
+        gif_file = gradio_dir / "gif (1).gif"
+        gif_file.write_bytes(b"GIF89a")
+
+        result = validate_safe_path(str(gif_file))
+        assert result == gif_file.resolve()
+
+    def test_allows_project_inputs(self, tmp_path):
+        from utils.validation import validate_safe_path
+
+        inputs = Path("inputs").resolve()
+        inputs.mkdir(exist_ok=True)
+        test_file = inputs / "safe_test.gif"
+        test_file.write_bytes(b"GIF89a")
+        try:
+            assert validate_safe_path(str(test_file)) == test_file.resolve()
+        finally:
+            test_file.unlink(missing_ok=True)
+
+    def test_rejects_path_traversal(self, tmp_path):
+        from utils.validation import validate_safe_path
+
+        with pytest.raises(ValueError, match="traversal"):
+            validate_safe_path("../../etc/passwd")
+
+    def test_rejects_paths_outside_allowed_roots(self, tmp_path):
+        from utils.validation import validate_safe_path
+
+        outside = tmp_path / "outside.gif"
+        outside.write_bytes(b"GIF89a")
+        # tmp_path is under system tempdir, so this should be allowed
+        validate_safe_path(str(outside))
+
+        blocked = Path("/etc/hosts")
+        if blocked.exists():
+            with pytest.raises(ValueError, match="not allowed"):
+                validate_safe_path(str(blocked))
+
+
+class TestGradioPathAndMappings:
+    """Tests for Gradio path resolution and face-mapping validation."""
+
+    def test_resolve_gradio_file_path_from_dict(self):
+        from utils.validation import resolve_gradio_file_path
+
+        assert resolve_gradio_file_path({"path": "/tmp/test.gif"}) == "/tmp/test.gif"
+
+    def test_resolve_gradio_file_path_from_string(self, tmp_path):
+        from utils.validation import resolve_gradio_file_path
+
+        gif_path = tmp_path / "clip.gif"
+        gif_path.write_bytes(b"GIF89a")
+        assert resolve_gradio_file_path(str(gif_path)) == str(gif_path)
+
+    def test_resolve_gradio_file_path_from_video_tuple(self, tmp_path):
+        from utils.validation import resolve_gradio_file_path
+
+        video_path = tmp_path / "clip.mp4"
+        video_path.write_bytes(b"\x00")
+        assert resolve_gradio_file_path((str(video_path), None)) == str(video_path)
+
+    def test_validate_face_mappings_or_raise_accepts_valid(self):
+        from utils.validation import validate_face_mappings_or_raise
+
+        validate_face_mappings_or_raise([(0, 1)], src_face_count=1, dst_face_count=2)
+
+    def test_validate_face_mappings_or_raise_rejects_invalid(self):
+        from utils.validation import validate_face_mappings_or_raise
+
+        with pytest.raises(ValueError, match="No valid face mappings"):
+            validate_face_mappings_or_raise([(0, 1)], src_face_count=1, dst_face_count=1)
+
+    def test_is_animated_gif_image_detects_multi_frame(self):
+        from PIL import Image
+        from utils.validation import is_animated_gif_image
+
+        frames = [
+            Image.new("RGB", (8, 8), color=(255, 0, 0)),
+            Image.new("RGB", (8, 8), color=(0, 255, 0)),
+        ]
+        gif = Image.new("RGB", (8, 8))
+        gif.format = "GIF"
+        gif.n_frames = 2
+        assert is_animated_gif_image(gif) is True
+        assert is_animated_gif_image(Image.new("RGB", (8, 8))) is False

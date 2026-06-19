@@ -88,10 +88,18 @@ face_restoration:
   model_version: "1.3"
   default_weight: 0.5
 
-async_pipeline:
+streaming:
   enabled: true
-  min_frames_threshold: 5
-  queue_size: 16
+  chunk_size: 16
+  video_face_enhance: false
+  gif_decode_fps: 10
+  hwaccel_decode: false
+  nvenc_encode: false
+
+compression:
+  enabled: true
+  skip_optimized_video: true
+  min_image_size_mb: 5
 
 logging:
   log_file: "test.log"
@@ -175,6 +183,10 @@ def mock_gpu():
     mock_device_props.total_memory = 8 * 1024 * 1024 * 1024  # 8GB
     mock_device_props.name = "Mock GPU"
 
+    from utils.memory_manager import MemoryManager
+
+    MemoryManager.clear_all_caches()
+
     with patch.multiple(
         'torch.cuda',
         is_available=MagicMock(return_value=True),
@@ -187,6 +199,7 @@ def mock_gpu():
         OutOfMemoryError=RuntimeError,  # Map OOM to RuntimeError for testing
     ):
         yield
+        MemoryManager.clear_all_caches()
 
 
 @pytest.fixture

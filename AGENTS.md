@@ -53,7 +53,8 @@ UI must never import `core/` directly; it goes through `processing/orchestrator.
 | `main.py` | Server entry, signal handlers, `LRUModelCache` shim for torchvision compatibility |
 | `processing/orchestrator.py` | **`process_media(opts)`** — single entry for all media processing. Accepts a `ProcessOptions` dataclass (24 fields). |
 | `core/model_pool.py` | Per-GPU ONNX session isolation — use `get_instance()` / `cleanup()` |
-| `processing/async_pipeline.py` | 3-stage overlapped frame pipeline (detect → swap → enhance) |
+| `processing/streaming_media.py` | Chunked video/GIF pipeline (decode → swap → enhance → encode) |
+| `processing/in_memory_enhancement.py` | In-memory enhancement; HAT/SwinIR single-GPU for CUDA stability |
 
 ---
 
@@ -63,7 +64,7 @@ UI must never import `core/` directly; it goes through `processing/orchestrator.
 
 2. **FFmpeg is required** and must be on `$PATH`. Video/GIF decoding was rewritten from `moviepy` to direct FFmpeg subprocess calls (see `processing/video_processing.py`, `processing/gif_processing.py`). Moviepy is fully removed and `utils/video_io.pyi` provides type stubs for pyi compatibility.
 
-3. **Multi-GPU uses round-robin frame distribution.** An audit flagged VRAM-based load balancing as the next improvement.
+3. **Multi-GPU face swap** uses VRAM-aware scheduling (`processing/gpu_scheduler.py`). **HAT/SwinIR enhancement** always runs on a single GPU (most free VRAM) to avoid WSL2 CUDA allocator races.
 
 4. **Thread safety:** all shared mutable state must use `threading.Lock()`. The `model_pool.py` singleton is the main shared resource.
 
@@ -88,11 +89,22 @@ UI must never import `core/` directly; it goes through `processing/orchestrator.
 
 ---
 
-## Pending Work (as of last commit — HAT+Wave 2+Wave 3 done)
+## Pending Work
 
-- **Wave 2:** Batch face swap ONNX calls in `core/media_processor.py`.
-- **Wave 3:** GPU frame retention in `core/model_pool.py` to eliminate CPU↔GPU copy.
-- **ReSwapper** (deferred): Diffusion-based, slow, requires reference images. Needs dual-engine "Fast"/"Quality" mode.
+- **Scene-aware face mapping** — keyframe timeline for multi-scene GIF/video (`.planning/designs/scene-aware-face-mapping.md`)
+- **Wave 3 (phase 3+):** GPU detection, zero-copy NVDEC/NVENC, GPU enhancement chain
+- **ReSwapper** (deferred): Diffusion-based quality mode; needs dual-engine Fast/Quality toggle
+- **Deferred UI:** Runtime config editor, model management UI (see `BLUEPRINT.md`)
+
+## Completed (recent)
+
+- Streaming pipeline replaced `async_pipeline.py`
+- Batch face swap ONNX (`swap_face_batch`) — Wave 2
+- HAT multi-GPU stability (serialized load, single-GPU inference)
+- Face detection pool rebind after VRAM release
+- Wave 3 phase 1: chunk GPU upload + swap IoBinding (`gpu.frame_retention_enabled`)
+- Wave 3 phase 2: GPU paste-back + single D2H per chunk (`gpu.paste_on_gpu`, `core/face_paste_gpu.py`)
+- FFmpeg stderr drain fix (`utils/video_io.py`) — prevents streaming encode/decode hangs
 
 ---
 

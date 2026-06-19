@@ -69,12 +69,14 @@ class TestHATIntegration:
 
     @pytest.mark.integration
     def test_image_processing_has_hat_enhancement(self):
-        """Test image_processing module imports HAT."""
+        """Test image_processing routes enhancement through InMemoryEnhancer."""
         from processing import image_processing
         src = open(image_processing.__file__).read()
 
-        # HAT enhancement should be imported and used
-        assert "hat_enhancement" in src or "enhance_image" in src
+        assert "InMemoryEnhancer" in src
+        from processing.in_memory_enhancement import InMemoryEnhancer
+
+        assert hasattr(InMemoryEnhancer, "enhance_rgb_image")
 
     @pytest.mark.integration
     def test_video_processing_has_hat_enhancement(self):

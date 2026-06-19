@@ -4,11 +4,13 @@ Main entry point for the application.
 """
 
 import atexit
-import ctypes as _ctypes
 import logging
 import os
 import signal
 import sys
+
+# Headless-safe matplotlib backend before any dependency imports pyplot.
+os.environ.setdefault("MPLBACKEND", "Agg")
 from contextlib import suppress
 from pathlib import Path
 
@@ -32,26 +34,29 @@ _torch_load = torch.load
 torch.load = lambda *a, **k: _torch_load(*a, **{**k, "weights_only": False})
 
 # ---------------------------------------------------------------------------
-# NVIDIA / TensorRT library discovery (Linux-native).
-#
-# pip installs these libraries inside site-packages so later dlopen calls
-# can find them. On Linux we need to preload the shared objects so they stay
-# in the process namespace when onnxruntime loads the TensorRT provider via
-# dlopen.
+# Logging + NVIDIA libs — MUST run before any onnxruntime import.
+# LD_LIBRARY_PATH changes do not affect an already-running process; we dlopen
+# cuDNN/TensorRT from wheel paths with RTLD_GLOBAL instead.
 # ---------------------------------------------------------------------------
-from utils.tensorrt_utils import is_tensorrt_available
 from utils.config_manager import config
+from utils.logging_setup import setup_logging
+from utils.onnx_providers import preload_nvidia_libraries, setup_nvidia_library_path
+
+# Suppress ONNX Runtime verbose logging (especially TensorRT provider errors).
+os.environ.setdefault("ORT_LOGGING_LEVEL", "3")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+setup_logging()
+setup_nvidia_library_path()
+preload_nvidia_libraries()
+
+from utils.tensorrt_utils import is_tensorrt_available
 from utils.model_cache import get_cache_info
 from processing.model_preloader import preload_models
-from ui.app import create_app
+from ui.app import CUSTOM_CSS, GRADIO_THEME, create_app
 
 logger = logging.getLogger("FaceOff")
 
-# Suppress ONNX Runtime verbose logging (especially TensorRT provider errors).
-# Level 3 = WARNING, Level 4 = ERROR only. This must be set BEFORE importing onnxruntime.
-os.environ.setdefault("ORT_LOGGING_LEVEL", "3")
-
-# Check TensorRT availability early and cache the result.
 _tensorrt_ok = is_tensorrt_available()
 
 # Track if shutdown is in progress to prevent double cleanup.
@@ -63,44 +68,6 @@ try:
     _shutdown_lock = threading.Lock()
 except ImportError:
     _shutdown_lock = None
-
-
-def _preload_lib(path: Path) -> None:
-    """Load a shared library into the process so later dlopen calls find it."""
-    with suppress(OSError):
-        _ctypes.CDLL(str(path))
-
-
-_PRELOAD_DIRS: list[Path] = []
-
-_sp = Path(sys.prefix)
-for _sub in (
-    _sp / "Lib" / "site-packages",  # Windows venv (keep for cross-platform compat)
-    _sp
-    / "lib"
-    / f"python{sys.version_info.major}.{sys.version_info.minor}"
-    / "site-packages",
-):
-    if not _sub.exists():
-        continue
-
-    # -- tensorrt_libs: contains libnvinfer.so* --
-    _trt = _sub / "tensorrt_libs"
-    if _trt.exists():
-        _PRELOAD_DIRS.append(_trt)
-        os.environ["LD_LIBRARY_PATH"] = (
-            str(_trt) + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
-        )
-
-    # -- nvidia sub-packages: cublas, cudnn, etc. --
-    _nvidia = _sub / "nvidia"
-    if _nvidia.exists():
-        for _lib_dir in _nvidia.glob("*/lib"):
-            if _lib_dir.is_dir():
-                _PRELOAD_DIRS.append(_lib_dir)
-                os.environ["LD_LIBRARY_PATH"] = (
-                    str(_lib_dir) + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
-                )
 
 
 def cleanup_resources() -> None:
@@ -188,7 +155,7 @@ if __name__ == "__main__":
     # Optional: Preload models in background to reduce first-run delay.
     if config.preload_on_startup:
         logger.info("Model preloading enabled - compiling TensorRT engines...")
-        preload_models(device_id=0)
+        preload_models()
 
     # Launch Gradio app.
     demo = create_app()
@@ -209,6 +176,9 @@ if __name__ == "__main__":
             server_name=config.server_name,
             server_port=config.server_port,
             share=config.share,
+            theme=GRADIO_THEME,
+            css=CUSTOM_CSS,
+            max_file_size=f"{config.max_file_size_mb}mb",
         )
     except OSError as exc:
         if "Cannot find empty port" in str(exc):
@@ -221,6 +191,9 @@ if __name__ == "__main__":
                         server_name=config.server_name,
                         server_port=port,
                         share=config.share,
+                        theme=GRADIO_THEME,
+                        css=CUSTOM_CSS,
+                        max_file_size=f"{config.max_file_size_mb}mb",
                     )
                     logger.info("Successfully started on port %d", port)
                     break

@@ -65,15 +65,21 @@ def create_gallery_tab():
                 delete_btn = gr.Button("🗑️ Delete Selected File", variant="stop", size="sm", visible=False)
         
         delete_status = gr.Markdown(value="", visible=False)
+
+        processing_settings_display = gr.Markdown(
+            value="",
+            label="Processing Settings",
+            visible=False,
+        )
         
         # Info text
         gr.Markdown("""
         **Tips:**
-        - Click on any item to view it in full size
-        - Use arrow keys or swipe to navigate between images
+        - Click any item to preview it and see the settings used to create it
+        - Captions under thumbnails show a short settings summary
         - Adjust "Files to Show" for faster/slower loading
         - Files are sorted by newest first
-        - Select a file to enable delete option
+        - Select a file to view full settings or delete it
         """)
     
     return {
@@ -84,7 +90,8 @@ def create_gallery_tab():
         "file_count_text": file_count_text,
         "selected_file_display": selected_file_display,
         "delete_btn": delete_btn,
-        "delete_status": delete_status
+        "delete_status": delete_status,
+        "processing_settings_display": processing_settings_display,
     }
 
 

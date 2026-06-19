@@ -18,7 +18,7 @@ import sys
 import torch
 from pathlib import Path
 from PIL import Image
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 
 from utils.lru_cache import LRUModelCache
 
@@ -247,6 +247,7 @@ def enhance_image_swinir(
     model_name: str = DEFAULT_SWINIR_MODEL,
     gpu_id: int = 0,
     tile_size: int = 0,  # Not used by Swin2SR but kept for API compatibility
+    clear_cache: bool = True,
 ) -> Optional[np.ndarray]:
     """
     Enhance image using Swin2SR.
@@ -261,8 +262,7 @@ def enhance_image_swinir(
         Enhanced image (BGR format) or None if failed
     """
     try:
-        # Clear some GPU memory first
-        if torch.cuda.is_available():
+        if clear_cache and torch.cuda.is_available():
             torch.cuda.empty_cache()
 
         # Get model
@@ -298,173 +298,6 @@ def enhance_image_swinir(
     except Exception as e:
         logger.error("Swin2SR enhancement failed: %s", e, exc_info=True)
         return None
-
-
-def enhance_image_swinir_file(
-    input_path: Union[str, Path],
-    output_dir: Union[str, Path],
-    model_name: str = DEFAULT_SWINIR_MODEL,
-    gpu_id: int = 0,
-) -> Optional[Path]:
-    """
-    Enhance an image file using Swin2SR.
-
-    This function replaces the original file with the enhanced version,
-    matching the behavior of RealESRGAN's enhance_image_single_gpu.
-
-    Args:
-        input_path: Path to input image
-        output_dir: Output directory
-        model_name: Swin2SR model variant
-        gpu_id: GPU device ID
-
-    Returns:
-        Path to enhanced image (same as input_path) or None if failed
-    """
-    import shutil
-    import time
-
-    input_path = Path(input_path)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Read image
-    img = cv2.imread(str(input_path), cv2.IMREAD_COLOR)
-    if img is None:
-        logger.error("Failed to read image: %s", input_path)
-        return None
-
-    # Enhance
-    enhanced = enhance_image_swinir(img, model_name, gpu_id)
-    if enhanced is None:
-        return None
-
-    # Save to temporary file first
-    temp_output_path = output_dir / f"{input_path.stem}_swinir_temp{input_path.suffix}"
-    cv2.imwrite(str(temp_output_path), enhanced)
-
-    # Replace original with enhanced version (with retry for file locking)
-    max_retries = 5
-    for attempt in range(max_retries):
-        try:
-            # Delete original file first if it exists
-            if input_path.exists():
-                input_path.unlink()
-            time.sleep(0.1)  # Brief delay to ensure file is released
-            shutil.move(str(temp_output_path), str(input_path))
-            logger.info("Swin2SR enhanced image saved: %s", input_path)
-            return input_path
-        except (PermissionError, FileExistsError) as e:
-            if attempt < max_retries - 1:
-                logger.warning("File locked, retrying... (attempt %d/%d)", attempt + 1, max_retries)
-                time.sleep(0.5)
-            else:
-                logger.error("Failed to move enhanced file after %d attempts: %s", max_retries, e)
-                # Clean up temp file
-                if temp_output_path.exists():
-                    temp_output_path.unlink()
-                return None
-
-    return None
-
-
-def enhance_frames_swinir(
-    frames_dir: Union[str, Path],
-    output_dir: Union[str, Path],
-    media_type: str = "video",
-    fps: Optional[float] = None,
-    audio=None,
-    model_name: str = DEFAULT_SWINIR_MODEL,
-    gpu_id: int = 0,
-    frame_durations: Optional[List[int]] = None,
-) -> Optional[Union[Tuple[List, any], List[Image.Image]]]:
-    """
-    Enhance frames using Swin2SR.
-
-    Args:
-        frames_dir: Directory containing frames
-        output_dir: Output directory
-        media_type: "video" or "gif"
-        fps: Frames per second (for video)
-        audio: Audio track (for video)
-        model_name: Swin2SR model variant
-        gpu_id: GPU device ID
-        frame_durations: Frame durations for GIF
-
-    Returns:
-        For video: Tuple of (enhanced_frames, output_path)
-        For GIF: List of PIL Images
-        None if failed
-    """
-    from tqdm import tqdm
-
-    frames_dir = Path(frames_dir)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Get frame files
-    frame_files = sorted(frames_dir.glob("*.png")) + sorted(frames_dir.glob("*.jpg"))
-    if not frame_files:
-        logger.error("No frames found in %s", frames_dir)
-        return None
-
-    logger.info("Enhancing %d frames with Swin2SR (model=%s, GPU=%d)",
-                len(frame_files), model_name, gpu_id)
-
-    enhanced_frames = []
-    enhanced_pil_frames = []
-
-    # Process frames
-    for frame_path in tqdm(frame_files, desc="Swin2SR Enhancement", unit="frame"):
-        # Read frame
-        img = cv2.imread(str(frame_path), cv2.IMREAD_COLOR)
-        if img is None:
-            logger.warning("Failed to read frame: %s", frame_path)
-            continue
-
-        # Enhance frame
-        enhanced = enhance_image_swinir(img, model_name, gpu_id)
-        if enhanced is None:
-            # Fall back to original frame
-            logger.warning("Enhancement failed for frame %s, using original", frame_path.name)
-            enhanced = img
-
-        # Save enhanced frame
-        output_path = output_dir / frame_path.name
-        cv2.imwrite(str(output_path), enhanced)
-
-        # Convert for return
-        enhanced_rgb = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
-        enhanced_frames.append(enhanced_rgb)
-        enhanced_pil_frames.append(Image.fromarray(enhanced_rgb))
-
-    if not enhanced_frames:
-        logger.error("No frames were enhanced")
-        return None
-
-    # Return based on media type
-    if media_type == "gif":
-        logger.info("Swin2SR GIF enhancement complete: %d frames", len(enhanced_pil_frames))
-        return enhanced_pil_frames
-    else:
-    # Write video directly via video_io instead of creating a clip
-        output_path = output_dir / f"enhanced_{Path(frames_dir).name}.mp4"
-        from utils import video_io
-        success = video_io.write_video_from_pil_frames(
-            enhanced_pil_frames,
-            str(output_path),
-            fps=fps or 30.0,
-            codec="libx264",
-            preset="medium",
-            crf=18,
-        )
-        if not success:
-            logger.error("Failed to write Swin2SR enhanced video to %s", output_path)
-            return None
-
-        logger.info("Swin2SR video enhancement complete: %d frames @ %.2f fps -> %s",
-                    len(enhanced_frames), fps or 30.0, output_path)
-        return enhanced_frames, str(output_path)
 
 
 def get_available_swinir_models() -> dict:

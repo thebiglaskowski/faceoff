@@ -1,6 +1,6 @@
 [project]
 name = "faceoff"
-version = "2.8.0"
+version = "2.9.0"
 description = "Local GPU-accelerated face swapping application"
 requires-python = ">=3.10,<3.13"
 dependencies = [
@@ -35,9 +35,10 @@ dependencies = [
     "codeformer-pip>=0.0.4",
 
     # Performance / GPU acceleration
-    "tensorrt>=10.0.0",
+    # ORT 1.22+ TensorRT EP links against libnvinfer.so.10 — TRT 11 is incompatible
+    "tensorrt>=10.9,<11",
     "nvidia-cublas-cu12>=12.0.0",
-    "nvidia-cudnn-cu12>=9.0.0",
+    "nvidia-cudnn-cu12>=9.20.0,<9.21.0",
     "nvidia-cufft-cu12>=11.0.0",
     "nvidia-cusparse-cu12>=12.0.0",
     "nvidia-cusolver-cu12>=11.0.0",

@@ -76,13 +76,9 @@ class TestImageProcessingE2E:
         """Test complete image processing with one face detected."""
         from processing.image_processing import ImageProcessor
 
-        with patch(
-            "processing.image_processing.MediaProcessor",
-            return_value=mock_media_processor,
-        ):
-            processor = ImageProcessor.__new__(ImageProcessor)
-            processor.processor = mock_media_processor
-            processor.logger = MagicMock()
+        processor = ImageProcessor.__new__(ImageProcessor)
+        processor.processor = mock_media_processor
+        processor.logger = MagicMock()
 
         # Simulate the process flow
         source_img = mock_media_processor.read_image(str(source_face_image))

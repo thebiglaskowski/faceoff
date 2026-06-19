@@ -121,6 +121,16 @@ class ResolutionAdaptiveProcessor:
         
         return faces
     
+    def detect_faces_adaptive_gpu(
+        self,
+        gpu_instance,
+        frame: np.ndarray,
+    ) -> List:
+        """Resolution-adaptive detection via a pooled GPU instance."""
+        downscaled, scale_factor = self.downscale_for_detection(frame)
+        faces = gpu_instance.get_faces(downscaled)
+        return self.scale_face_coordinates(faces, scale_factor)
+
     def detect_faces_adaptive(
         self,
         processor,

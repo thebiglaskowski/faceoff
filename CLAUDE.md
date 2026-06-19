@@ -35,7 +35,7 @@ uv run pytest tests/unit/ -v
 uv run pytest tests/ --cov=. --cov-report=term-missing
 
 # Run specific test file
-uv run pytest tests/unit/test_async_pipeline.py -v
+uv run pytest tests/unit/test_streaming_pipeline.py -v
 
 # Run lint (isort check, black check)
 uv run isort --check --diff .
@@ -69,7 +69,8 @@ tests/                  # Unit and integration tests
 | `config.yaml` | All configurable settings | Yes - affects all users |
 | `main.py` | Entry point, signal handlers | Yes - startup/shutdown |
 | `core/model_pool.py` | GPU session isolation | Yes - thread safety critical |
-| `processing/async_pipeline.py` | 3-stage frame pipeline | Yes - concurrency |
+| `processing/streaming_media.py` | Chunked video/GIF pipeline | Yes - concurrency |
+| `processing/in_memory_enhancement.py` | In-memory enhancement | Yes - multi-GPU CUDA |
 | `utils/config_manager.py` | Singleton config access | Yes - used everywhere |
 
 ---
@@ -110,7 +111,7 @@ from utils.config_manager import config
 batch_size = config.batch_size
 
 # Hierarchical get (for nested/optional settings)
-queue_size = config.get('async_pipeline', 'queue_size', default=32)
+chunk_size = config.streaming_chunk_size
 ```
 
 ### Thread Safety

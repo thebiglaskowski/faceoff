@@ -15,6 +15,7 @@ from processing.gif_processing import process_gif
 from utils.config_manager import config
 from utils.error_handler import ErrorHandler, FriendlyError
 from utils.compression import compress_media_file
+from utils.output_metadata import save_output_metadata
 
 logger = logging.getLogger("FaceOff")
 
@@ -40,6 +41,8 @@ class ProcessOptions:
     restoration_weight: float = 0.5
     enhancement_model: str = "RealESRGAN"
     restoration_model: str = "GFPGAN"
+    tensorrt_fp16: bool = True
+    model_display: Optional[str] = None
 
 
 def parse_gpu_selection(gpu_selection: Optional[str]) -> List[int]:
@@ -118,8 +121,15 @@ def process_media(opts: ProcessOptions) -> Tuple[Optional[str], Optional[str]]:
     # Parse GPU selection
     device_ids = parse_gpu_selection(opts.gpu_selection)
     
-    # Multi-GPU face swapping for videos/GIFs is now supported via the model pool
-    # This uses isolated ONNX sessions per GPU with proper CUDA context management
+    if opts.media_type == "image" and len(device_ids) > 1:
+        logger.info(
+            "Image processing uses single GPU %d (%d GPUs available)",
+            device_ids[0],
+            len(device_ids),
+        )
+        device_ids = [device_ids[0]]
+
+    # Multi-GPU face swapping for videos/GIFs uses the model pool
     if len(device_ids) > 1 and opts.media_type in ["video", "gif"]:
         if config.multi_gpu_video_enabled:
             logger.info("Multi-GPU enabled for %s with %d GPUs (using model pool)",
@@ -139,9 +149,10 @@ def process_media(opts: ProcessOptions) -> Tuple[Optional[str], Optional[str]]:
     # ONNX optimization is disabled in config - it creates corrupted model files during Multi-GPU runs
     # TensorRT is always attempted if available (automatic optimization for face detection)
     processor = MediaProcessor(
-        device_id=primary_device, 
-        use_tensorrt=config.tensorrt_enabled, 
-        optimize_models=False  # Never optimize - causes corruption
+        device_id=primary_device,
+        use_tensorrt=config.tensorrt_enabled,
+        optimize_models=False,
+        tensorrt_fp16=opts.tensorrt_fp16,
     )
     
     # Route to appropriate processing function
@@ -163,7 +174,6 @@ def process_media(opts: ProcessOptions) -> Tuple[Optional[str], Optional[str]]:
                 opts.enhance, opts.tile_size, opts.outscale, opts.face_confidence,
                 device_ids, opts.face_mappings, opts.model_name, opts.denoise_strength,
                 opts.use_fp32, opts.pre_pad, opts.restore_faces, opts.restoration_weight,
-                use_async_pipeline=True,
                 enhancement_model=opts.enhancement_model,
                 restoration_model=opts.restoration_model
             )
@@ -173,7 +183,6 @@ def process_media(opts: ProcessOptions) -> Tuple[Optional[str], Optional[str]]:
                 opts.enhance, opts.tile_size, opts.outscale, opts.face_confidence,
                 device_ids, opts.face_mappings, opts.model_name, opts.denoise_strength,
                 opts.use_fp32, opts.pre_pad, opts.restore_faces, opts.restoration_weight,
-                use_async_pipeline=True,
                 enhancement_model=opts.enhancement_model,
                 restoration_model=opts.restoration_model
             )
@@ -195,6 +204,9 @@ def process_media(opts: ProcessOptions) -> Tuple[Optional[str], Optional[str]]:
                     logger.warning(f"⚠️ Compression failed: {message}")
             except Exception as comp_error:
                 logger.error(f"❌ Compression error: {comp_error}", exc_info=True)
+
+        if output_to_compress:
+            save_output_metadata(output_to_compress, opts)
         
         return result_path, video_path
     

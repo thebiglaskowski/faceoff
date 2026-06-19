@@ -2,12 +2,14 @@
 Compression utilities for optimizing output file sizes while maintaining quality.
 """
 import logging
-from pathlib import Path
-from PIL import Image
-import subprocess
-import shutil
-from typing import Tuple, Optional
 import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Tuple, Optional
+
+from PIL import Image
 
 logger = logging.getLogger("FaceOff")
 
@@ -40,12 +42,15 @@ EXTERNAL_GIFSICLE = PROJECT_ROOT / "external" / "gifsicle" / "gifsicle.exe"
 
 
 def _find_gifsicle() -> Optional[str]:
-    """Find gifsicle executable in local external folder or system PATH."""
-    # Check local external folder first
-    if EXTERNAL_GIFSICLE.exists():
-        return str(EXTERNAL_GIFSICLE)
-    # Fall back to system PATH
-    return shutil.which('gifsicle')
+    """Find gifsicle executable — system PATH on Linux/macOS, bundled exe on Windows."""
+    if sys.platform == "win32":
+        if EXTERNAL_GIFSICLE.exists():
+            return str(EXTERNAL_GIFSICLE)
+    else:
+        system_gifsicle = shutil.which("gifsicle")
+        if system_gifsicle:
+            return system_gifsicle
+    return shutil.which("gifsicle")
 
 
 def compress_image(input_path: str, output_path: Optional[str] = None, quality: int = 95) -> Tuple[bool, str, dict]:
@@ -375,6 +380,36 @@ def _format_bytes(bytes_val: int) -> str:
     return f"{bytes_val:.1f} TB"
 
 
+def should_skip_compression(file_path: str, media_type: str) -> bool:
+    """Return True when post-process compression would add little value."""
+    from utils.config_manager import config
+
+    if not config.get("compression", "enabled", default=True):
+        return True
+
+    path = Path(file_path)
+    if not path.exists():
+        return True
+
+    if media_type == "video" and config.get("compression", "skip_optimized_video", default=True):
+        try:
+            from utils import video_io
+
+            meta = video_io.probe_video(str(path))
+            codec = (meta.get("video_codec") or "").lower()
+            if codec in ("h264", "hevc", "h265", "av1"):
+                return True
+        except Exception:
+            pass
+
+    if media_type == "image":
+        min_mb = config.get("compression", "min_image_size_mb", default=5)
+        if path.stat().st_size < min_mb * 1024 * 1024:
+            return True
+
+    return False
+
+
 def compress_media_file(file_path: str, media_type: str, **kwargs) -> Tuple[bool, str, dict]:
     """
     Compress media file based on type.
@@ -387,6 +422,9 @@ def compress_media_file(file_path: str, media_type: str, **kwargs) -> Tuple[bool
     Returns:
         Tuple of (success, message, stats_dict)
     """
+    if should_skip_compression(file_path, media_type):
+        return True, "Skipped compression (already optimized)", {"skipped": True}
+
     if media_type == "image":
         return compress_image(file_path, **kwargs)
     elif media_type == "gif":

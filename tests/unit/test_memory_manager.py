@@ -363,3 +363,36 @@ class TestEdgeCases:
         # Mock only has 1 GPU, but manager shouldn't fail at init
         manager = MemoryManager(device_id=99)
         assert manager.device_id == 99
+
+
+class TestRefreshAndEnhancementPrep:
+    """Tests for staged memory refresh helpers."""
+
+    def test_refresh_gpu_memory_calls_empty_cache(self, mock_gpu, temp_config, reset_config):
+        from utils.memory_manager import refresh_gpu_memory
+        import torch.cuda as cuda
+
+        stats = refresh_gpu_memory(0, force=True)
+        assert 0 in stats
+        cuda.empty_cache.assert_called()
+
+    def test_select_enhancement_gpu_prefers_most_free(self, mock_gpu, temp_config, reset_config):
+        from unittest.mock import patch
+        from utils.memory_manager import MemoryManager, select_enhancement_gpu
+
+        with patch.object(MemoryManager, "get_memory_stats") as mock_stats:
+            mock_stats.side_effect = [
+                {"free_mb": 500, "total_mb": 8000, "allocated_mb": 7500, "reserved_mb": 7600, "utilization_pct": 90},
+                {"free_mb": 3000, "total_mb": 8000, "allocated_mb": 5000, "reserved_mb": 5100, "utilization_pct": 60},
+            ]
+            assert select_enhancement_gpu(0, [0, 1]) == 1
+
+    def test_prepare_for_enhancement_releases_swap_models(self, mock_gpu, temp_config, reset_config):
+        from unittest.mock import MagicMock, patch
+        from utils.memory_manager import prepare_for_enhancement
+
+        mock_pool = MagicMock()
+        with patch("core.model_pool.get_model_pool", return_value=mock_pool):
+            gpu = prepare_for_enhancement(0, device_ids=[0, 1])
+        assert gpu == 0
+        assert mock_pool.cleanup.call_count == 2

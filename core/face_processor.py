@@ -187,7 +187,11 @@ class FaceProcessor:
         self.device_id = device_id
         self.confidence = confidence if confidence is not None else config.face_confidence_threshold
         # CRITICAL: Disable ONNX optimization - it creates corrupted model files
-        self._processor = MediaProcessor(device_id=device_id, optimize_models=False)
+        self._processor = MediaProcessor(
+            device_id=device_id,
+            use_tensorrt=False,
+            optimize_models=False,
+        )
         logger.info("FaceProcessor initialized on device %d", device_id)
     
     def detect_faces_info(self, image_path: str) -> str:
