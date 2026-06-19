@@ -2,23 +2,34 @@
 FaceOff - AI Face Swapper
 Main entry point for the application.
 """
+
 import atexit
+import ctypes as _ctypes
+import logging
 import os
 import signal
 import sys
-import ctypes as _ctypes
-import logging
-from pathlib import Path
 from contextlib import suppress
+from pathlib import Path
 
-# Compat shim: torchvision >=0.18 removed torchvision.transforms.functional_tensor.
+# Compatibility shim: torchvision >=0.18 removed torchvision.transforms.functional_tensor.
 # Older basicsr (1.4.2), still pulled by gfpgan/realesrgan, imports rgb_to_grayscale
-# from that module.  Patch sys.modules before anyone else can import it.
+# from that module.  Create a fake module so the old import path still works.
+import torch
 from types import ModuleType
 from torchvision.transforms.functional import rgb_to_grayscale
-_fts = ModuleType("torchvision.transforms.functional_tensor")
-_fts.rgb_to_grayscale = rgb_to_grayscale
-sys.modules["torchvision.transforms.functional_tensor"] = _fts
+
+_mod = ModuleType("torchvision.transforms.functional_tensor")
+_mod.rgb_to_grayscale = rgb_to_grayscale
+sys.modules["torchvision.transforms.functional_tensor"] = _mod
+
+# Patch torch.load for GFPGAN dependency chain.
+# WARNING: PyTorch 2.6+ defaults weights_only=True to prevent trojaned .pth files.
+# These packages omit the parameter, so we pass weights_only=False as a
+# compatibility shim. This is a conscious security relaxation for a
+# local-only desktop tool — all model files are user-supplied.
+_torch_load = torch.load
+torch.load = lambda *a, **k: _torch_load(*a, **{**k, "weights_only": False})
 
 # ---------------------------------------------------------------------------
 # NVIDIA / TensorRT library discovery (Linux-native).
@@ -48,6 +59,7 @@ _shutdown_in_progress = False
 _shutdown_lock = _Lock = None
 try:
     import threading
+
     _shutdown_lock = threading.Lock()
 except ImportError:
     _shutdown_lock = None
@@ -63,8 +75,11 @@ _PRELOAD_DIRS: list[Path] = []
 
 _sp = Path(sys.prefix)
 for _sub in (
-    _sp / "Lib" / "site-packages",   # Windows venv (keep for cross-platform compat)
-    _sp / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages",
+    _sp / "Lib" / "site-packages",  # Windows venv (keep for cross-platform compat)
+    _sp
+    / "lib"
+    / f"python{sys.version_info.major}.{sys.version_info.minor}"
+    / "site-packages",
 ):
     if not _sub.exists():
         continue
@@ -73,7 +88,9 @@ for _sub in (
     _trt = _sub / "tensorrt_libs"
     if _trt.exists():
         _PRELOAD_DIRS.append(_trt)
-        os.environ["LD_LIBRARY_PATH"] = str(_trt) + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+        os.environ["LD_LIBRARY_PATH"] = (
+            str(_trt) + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+        )
 
     # -- nvidia sub-packages: cublas, cudnn, etc. --
     _nvidia = _sub / "nvidia"
@@ -81,7 +98,9 @@ for _sub in (
         for _lib_dir in _nvidia.glob("*/lib"):
             if _lib_dir.is_dir():
                 _PRELOAD_DIRS.append(_lib_dir)
-                os.environ["LD_LIBRARY_PATH"] = str(_lib_dir) + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+                os.environ["LD_LIBRARY_PATH"] = (
+                    str(_lib_dir) + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+                )
 
 
 def cleanup_resources() -> None:
@@ -103,24 +122,28 @@ def cleanup_resources() -> None:
 
     try:
         from core.model_pool import cleanup_model_pool
+
         cleanup_model_pool()
     except Exception as exc:
         logger.debug("Model pool cleanup: %s", exc)
 
     try:
         from processing.swinir_enhancement import clear_swinir_cache
+
         clear_swinir_cache()
     except Exception as exc:
         logger.debug("SwinIR cache cleanup: %s", exc)
 
     try:
         from processing.codeformer_restoration import clear_codeformer_cache
+
         clear_codeformer_cache()
     except Exception as exc:
         logger.debug("CodeFormer cache cleanup: %s", exc)
 
     try:
         import torch
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     except Exception as exc:
@@ -189,7 +212,9 @@ if __name__ == "__main__":
         )
     except OSError as exc:
         if "Cannot find empty port" in str(exc):
-            logger.info("Port %s is busy, trying alternative ports...", config.server_port)
+            logger.info(
+                "Port %s is busy, trying alternative ports...", config.server_port
+            )
             for port in range(7861, 7871):
                 try:
                     demo.launch(
