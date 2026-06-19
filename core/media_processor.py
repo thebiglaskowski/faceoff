@@ -409,9 +409,6 @@ class MediaProcessor:
             img_white = cv2.warpAffine(
                 img_white, IM, (swapped.shape[1], swapped.shape[0]), borderValue=0.0
             )
-            # Ensure 3D so arithmetic with 3D arrays works (prevents broadcasting error)
-            if img_white.ndim == 2:
-                img_white = img_white[..., np.newaxis]
             fake_diff = cv2.warpAffine(
                 fake_diff, IM, (swapped.shape[1], swapped.shape[0]), borderValue=0.0
             )
@@ -431,10 +428,11 @@ class MediaProcessor:
             kernel = np.ones((k, k), np.uint8)
             img_mask = cv2.erode(img_mask, kernel, iterations=1)
             kernel = np.ones((2, 2), np.uint8)
+            # Convert img_white to 3D inline for arithmetic with 3D arrays (prevents broadcasting)
             fake_diff = cv2.warpAffine(
                 np.clip(
                     (bgr_fake - swapped.astype(np.float32)).astype(np.uint8)
-                    + img_white,
+                    + img_white[..., np.newaxis],
                     0,
                     255,
                 ),
@@ -447,7 +445,7 @@ class MediaProcessor:
             diff_mask_mat = cv2.warpAffine(
                 np.clip(
                     (bgr_fake - swapped.astype(np.float32)).astype(np.uint8)
-                    + img_white,
+                    + img_white[..., np.newaxis],
                     0,
                     255,
                 ),
