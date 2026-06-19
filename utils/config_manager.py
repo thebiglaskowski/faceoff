@@ -477,3 +477,24 @@ def get_swinir_model_options() -> Dict[str, Dict[str, Any]]:
             "description": "Classical SR 2x - Fast, good for clean images"
         }
     }
+
+
+def get_hat_model_options() -> Dict[str, Dict[str, Any]]:
+    """
+    Get HAT (Hybrid Attention Transformer) models in UI-compatible format.
+
+    Returns:
+        Dict mapping display names to model configurations
+    """
+    return {
+        "HAT_Base_4x_ImageNet (General)": {
+            "model_name": "HAT_Base_4x_ImageNet",
+            "scale": 4,
+            "description": "HAT Base 4x pre-trained on ImageNet — strong general SR"
+        },
+        "HAT_Base_4x_GAN_sharper (Real-World Sharpness)": {
+            "model_name": "HAT_Base_4x_GAN_sharper",
+            "scale": 4,
+            "description": "HAT GAN 4x — sharper perceptual quality for real-world SR"
+        },
+    }

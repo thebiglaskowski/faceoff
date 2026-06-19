@@ -392,11 +392,10 @@ def enhance_frames_swinir(
         frame_durations: Frame durations for GIF
 
     Returns:
-        For video: Tuple of (enhanced_frames, video_clip)
+        For video: Tuple of (enhanced_frames, output_path)
         For GIF: List of PIL Images
         None if failed
     """
-    from moviepy.editor import ImageSequenceClip
     from tqdm import tqdm
 
     frames_dir = Path(frames_dir)
@@ -448,18 +447,24 @@ def enhance_frames_swinir(
         logger.info("Swin2SR GIF enhancement complete: %d frames", len(enhanced_pil_frames))
         return enhanced_pil_frames
     else:
-        # Create video clip
-        if fps is None:
-            fps = 30.0
+    # Write video directly via video_io instead of creating a clip
+        output_path = output_dir / f"enhanced_{Path(frames_dir).name}.mp4"
+        from utils import video_io
+        success = video_io.write_video_from_pil_frames(
+            enhanced_pil_frames,
+            str(output_path),
+            fps=fps or 30.0,
+            codec="libx264",
+            preset="medium",
+            crf=18,
+        )
+        if not success:
+            logger.error("Failed to write Swin2SR enhanced video to %s", output_path)
+            return None
 
-        clip = ImageSequenceClip([np.array(f) for f in enhanced_frames], fps=fps)
-
-        if audio is not None:
-            clip = clip.set_audio(audio)
-
-        logger.info("Swin2SR video enhancement complete: %d frames @ %.2f fps",
-                    len(enhanced_frames), fps)
-        return enhanced_frames, clip
+        logger.info("Swin2SR video enhancement complete: %d frames @ %.2f fps -> %s",
+                    len(enhanced_frames), fps or 30.0, output_path)
+        return enhanced_frames, str(output_path)
 
 
 def get_available_swinir_models() -> dict:

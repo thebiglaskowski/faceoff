@@ -76,7 +76,8 @@ def create_enhancement_controls(tab_suffix: str = "") -> Dict[str, Any]:
             choices=list(MODEL_OPTIONS.keys()),
             value=DEFAULT_MODEL,
             label="Enhancement Model",
-            info="Select upscaling model"
+            info="Select upscaling model",
+            allow_custom_value=True,
         )
         denoise_slider = gr.Slider(
             minimum=0,

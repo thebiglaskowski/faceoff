@@ -385,6 +385,22 @@ def process_gif(
                     gpu_id=gpu_id,
                     frame_durations=frame_durations
                 )
+            elif enhancement_model == "HAT":
+                from processing.hat_enhancement import enhance_frames_hat
+
+                if model_name.startswith("HAT_"):
+                    hat_model = model_name
+                else:
+                    hat_model = "HAT_Base_4x_ImageNet"
+
+                enhanced_frames = enhance_frames_hat(
+                    temp_frames_dir,
+                    enhanced_output_dir,
+                    media_type="gif",
+                    model_name=hat_model,
+                    gpu_id=gpu_id,
+                    frame_durations=frame_durations
+                )
             elif len(device_ids) > 1:
                 logger.info("Using multi-GPU GIF enhancement with %d GPUs", len(device_ids))
                 enhanced_frames = enhance_frames_multi_gpu(

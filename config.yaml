@@ -57,7 +57,7 @@ face_detection:
 # =============================================================================
 enhancement:
   # Default model
-  default_model: "RealESRGAN_x4plus"
+  default_model: "realesr-general-x4v3"
   
   # Model options (Do not modify - these are system configurations)
   models:
@@ -98,6 +98,49 @@ enhancement:
     pre_pad: 0                    # Edge padding (0-20)
     use_fp32: false               # Use FP32 precision (more VRAM)
     denoise_strength: 0.5         # For models that support it (0.0-1.0)
+
+# =============================================================================
+# HAT (Hybrid Attention Transformer) Enhancement Settings
+# =============================================================================
+hat_enhancement:
+  # Available HAT model variants
+  models:
+    HAT_Base_4x_ImageNet:
+      display_name: "HAT_Base_4x_ImageNet (General — Strong SR, 20.8M params)"
+      url: "https://huggingface.co/anchuang/HAT-L_SRx4_ImageNet-pretrain/resolve/main/HAT-L_SRx4_ImageNet-pretrain.pth"
+      scale: 4
+      description: "HAT Base 4x pre-trained on ImageNet — strong general SR"
+    
+    HAT_Base_4x_GAN_sharper:
+      display_name: "HAT_Base_4x_GAN_sharper (Real-World Sharpness)"
+      url: "https://huggingface.co/anchuang/Real_HAT_GAN_SRx4_sharper/resolve/main/Real_HAT_GAN_sharper.pth"
+      scale: 4
+      description: "HAT GAN 4x — sharper perceptual quality for real-world SR"
+
+# =============================================================================
+# SwinIR Enhancement Settings
+# =============================================================================
+swinir:
+  models:
+    Swin2SR_RealWorld_x4:
+      model_id: "Swin2SR_RealWorld_x4"
+      scale: 4
+      description: "Real-world SR 4x - Best for degraded images"
+    
+    Swin2SR_x4:
+      model_id: "Swin2SR_x4"
+      scale: 4
+      description: "Classical SR 4x - Standard upscaling"
+    
+    Swin2SR_Compressed_x4:
+      model_id: "Swin2SR_Compressed_x4"
+      scale: 4
+      description: "Compressed SR 4x - For JPEG artifacts"
+    
+    Swin2SR_x2:
+      model_id: "Swin2SR_x2"
+      scale: 2
+      description: "Classical SR 2x - Fast, good for clean images"
 
 # =============================================================================
 # Face Restoration (GFPGAN) Settings

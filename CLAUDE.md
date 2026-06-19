@@ -19,23 +19,27 @@ FaceOff is a local, GPU-accelerated face swapping application. See `PROJECT_INTE
 ## Build & Test Commands
 
 ```bash
-# Activate environment
-conda activate faceoff-test
+# Sync env (conda is obsolete — use uv only)
+uv sync
 
 # Run application
-python main.py
+uv run python main.py
 
 # Run all tests
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run unit tests only
-pytest tests/unit/ -v
+uv run pytest tests/unit/ -v
 
 # Run with coverage
-pytest tests/ --cov=. --cov-report=term-missing
+uv run pytest tests/ --cov=. --cov-report=term-missing
 
 # Run specific test file
-pytest tests/unit/test_async_pipeline.py -v
+uv run pytest tests/unit/test_async_pipeline.py -v
+
+# Run lint (isort check, black check)
+uv run isort --check --diff .
+uv run black --check .
 ```
 
 ---
@@ -223,10 +227,10 @@ def test_something(mock_gpu, temp_config):
 
 ## Before Committing
 
-1. Run tests: `pytest tests/ -v`
-2. Check no new warnings in logs
-3. Verify UI still works: `python main.py`
-4. Test with actual media files if touching processing code
+1. Run `isort --check --diff .` and `black --check .` — fix any drift
+2. Run `pytest tests/ -v` — all tests must pass
+3. Check logs: no new warnings, no OOM
+4. If touching processing code, test with real media files
 
 ---
 

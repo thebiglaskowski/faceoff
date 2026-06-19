@@ -167,7 +167,7 @@ class CodeFormerRestorer:
                 connect_list=['32', '64', '128', '256']
             ).to(self._device)
 
-            checkpoint = torch.load(str(model_path), map_location=self._device)
+            checkpoint = torch.load(str(model_path), map_location=self._device, weights_only=False)
             self._restorer.load_state_dict(
                 checkpoint['params_ema'] if 'params_ema' in checkpoint else checkpoint,
                 strict=True

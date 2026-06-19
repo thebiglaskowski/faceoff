@@ -106,11 +106,8 @@ class TestValidateVideoDuration:
         """Should pass for videos under limit."""
         from utils.validation import validate_video_duration
 
-        with patch('utils.validation.VideoFileClip') as mock_clip:
-            mock_instance = MagicMock()
-            mock_instance.duration = 30  # 30 seconds
-            mock_instance.close = MagicMock()
-            mock_clip.return_value = mock_instance
+        with patch('utils.video_io.probe_video') as mock_probe:
+            mock_probe.return_value = {'duration': 30}
 
             validate_video_duration(str(tmp_path / "test.mp4"))
 
@@ -118,11 +115,8 @@ class TestValidateVideoDuration:
         """Should raise for videos over limit."""
         from utils.validation import validate_video_duration
 
-        with patch('utils.validation.VideoFileClip') as mock_clip:
-            mock_instance = MagicMock()
-            mock_instance.duration = 600  # 10 minutes (over 5 min limit)
-            mock_instance.close = MagicMock()
-            mock_clip.return_value = mock_instance
+        with patch('utils.video_io.probe_video') as mock_probe:
+            mock_probe.return_value = {'duration': 600}
 
             with pytest.raises(ValueError) as exc_info:
                 validate_video_duration(str(tmp_path / "long.mp4"))
@@ -133,8 +127,8 @@ class TestValidateVideoDuration:
         """Should raise for invalid video files."""
         from utils.validation import validate_video_duration
 
-        with patch('utils.validation.VideoFileClip') as mock_clip:
-            mock_clip.side_effect = Exception("Cannot open file")
+        with patch('utils.video_io.probe_video') as mock_probe:
+            mock_probe.side_effect = Exception("Cannot open file")
 
             with pytest.raises(ValueError) as exc_info:
                 validate_video_duration(str(tmp_path / "invalid.mp4"))

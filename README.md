@@ -219,7 +219,7 @@ This section covers installation on Windows Subsystem for Linux 2 (WSL2) using [
 > | **3.12** | ✅ Recommended | Works with extra steps for `basicsr` and `insightface` (documented below) |
 > | **3.11** | ✅ Fully supported | All packages install from PyPI without workarounds |
 > | **3.10** | ✅ Fully supported | 10-60% slower than 3.11; most compatible |
-> | **3.13** | ❌ Not compatible | `numpy<2.0` has no 3.13 wheels; `moviepy` 1.x is abandoned |
+> | **3.13** | ❌ Not compatible | `numpy<2.0` has no 3.13 wheels; BasicSR has limited support |
 
 #### WSL2 Prerequisites
 
@@ -422,24 +422,19 @@ If you want to skip the Python 3.12 workarounds, use `python=3.11` in step 2. Al
 **Common Issues:**
 
 1. **"ModuleNotFoundError: No module named 'magic'"**:
-   ```powershell
-   pip install python-magic-bin
-   ```
+    ```powershell
+    pip install python-magic-bin
+    ```
 
 2. **torchvision import errors with BasicSR**:
-   - Run the BasicSR compatibility fix in step 5 above
+    - Run the BasicSR compatibility fix in step 5 above
 
 3. **NumPy compatibility warnings**:
-   ```powershell
-   pip install "numpy>=1.21.2,<2.0" --force-reinstall
-   ```
+    ```powershell
+    pip install "numpy>=1.21.2,<2.0" --force-reinstall
+    ```
 
-4. **MoviePy import errors**:
-   ```powershell
-   pip install moviepy==1.0.3 imageio==2.31.6 --force-reinstall
-   ```
-
-5. **CUDA/GPU not detected**:
+4. **CUDA/GPU not detected**:
    - Verify CUDA installation: `nvidia-smi`
    - Reinstall PyTorch with correct CUDA version
    - Check GPU drivers are up to date
@@ -730,7 +725,37 @@ faceoff/
 
 ## Version History
 
-### v2.7.0 (Current) - Enhancement & Stability Release
+### v2.8.0 (Current) - HAT Enhancement Release
+
+**New Features:**
+
+- ✅ **HAT (Hybrid Attention Transformer) Enhancement**: Third enhancement framework alongside Real-ESRGAN and SwinIR
+- ✅ **HAT-Base 4x ImageNet**: General-purpose super-resolution with strong performance
+- ✅ **HAT GAN 4x Sharper**: Perceptually sharper upscaling for real-world images
+- 🚀 **Three-Framework Dropdown**: UI supports selecting RealESRGAN, SwinIR, or HAT
+- 🚀 **Tiled Inference**: Large images use overlapping tile-based processing to manage VRAM
+- ✅ **Comprehensive HAT Test Suite**: Integration tests covering image, video, GIF pipelines
+- ✅ **Pyi Type Stubs**: Added `utils/video_io.pyi` for mypy compatibility
+
+**Performance Optimizations:**
+
+- 🚀 **LRU Model Caching**: Bounded caching across all enhancement frameworks
+- 🚀 **Thread-Safe Cache Management**: LRUModelCache with explicit cleanup functions
+- 🚀 **Batch HAT Inference**: Optimized frame-by-frame processing for video/GIF
+
+**Bug Fixes:**
+
+- 🔧 **MoviePy Removal**: Legacy moviepy dependency fully removed from pyproject.toml and docs
+- 🔧 **torchvision Compatibility**: Patched `rgb_to_grayscale` import for Python 3.11/3.12
+- 🔧 **Cache Cleanup**: Proper `_hat_cache_cleanup()` function for evicted model entries
+
+**Architecture:**
+
+- 📁 **Parallel Enhancement Modules**: `enhancement.py` (Real-ESRGAN), `swinir_enhancement.py`, `hat_enhancement.py` share unified API
+- 📁 **Config-Driven Model Selection**: HAT models registered in `config.yaml` and `utils/constants.py`
+- 📁 **Processing Facade**: Image/video/GIF processing all route through HAT when selected
+
+### v2.7.0 - Enhancement & Stability Release
 
 **New Features:**
 

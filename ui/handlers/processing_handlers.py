@@ -20,7 +20,7 @@ from utils.validation import (
     validate_video_duration, validate_gif_frames, validate_media_type
 )
 from utils.constants import (
-    MODEL_OPTIONS, SWINIR_MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_SWINIR_MODEL,
+    MODEL_OPTIONS, SWINIR_MODEL_OPTIONS, HAT_MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_SWINIR_MODEL,
     DEFAULT_TILE_SIZE, DEFAULT_OUTSCALE, DEFAULT_USE_FP32, DEFAULT_PRE_PAD
 )
 from processing.orchestrator import process_media, ProcessOptions
@@ -125,6 +125,11 @@ def _process_input(
                 model_name = SWINIR_MODEL_OPTIONS[model_selection]["model_name"]
             else:
                 model_name = SWINIR_MODEL_OPTIONS[DEFAULT_SWINIR_MODEL]["model_name"]
+        elif enhancement_model == "HAT":
+            if model_selection and model_selection in HAT_MODEL_OPTIONS:
+                model_name = HAT_MODEL_OPTIONS[model_selection]["model_name"]
+            else:
+                model_name = HAT_MODEL_OPTIONS[DEFAULT_HAT_MODEL]["model_name"]
         else:
             if model_selection and model_selection in MODEL_OPTIONS:
                 model_name = MODEL_OPTIONS[model_selection]["model_name"]

@@ -5,7 +5,6 @@ import logging
 import magic
 from pathlib import Path
 from PIL import Image
-from moviepy.editor import VideoFileClip
 from utils.constants import (
     MAX_FILE_SIZE_MB,
     MAX_VIDEO_DURATION_SEC,
@@ -64,9 +63,9 @@ def validate_video_duration(video_path: str) -> None:
         ValueError: If video duration exceeds limit
     """
     try:
-        clip = VideoFileClip(video_path)
-        duration = clip.duration
-        clip.close()
+        from utils import video_io
+        meta = video_io.probe_video(video_path)
+        duration = meta.get('duration', 0) or 0
         
         if duration > MAX_VIDEO_DURATION_SEC:
             minutes = duration / 60

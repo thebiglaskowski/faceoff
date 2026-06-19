@@ -19,7 +19,7 @@ import tempfile
 
 @pytest.fixture
 def mock_video_clip():
-    """Create a mock VideoFileClip for testing without actual video files."""
+    """Create a mock video clip for testing without actual video files."""
     clip = MagicMock()
     clip.fps = 30
     clip.duration = 2.0  # 2 second video

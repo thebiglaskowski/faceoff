@@ -229,7 +229,7 @@ class AsyncPipeline:
                         swapped = task.frame.copy()
                         
                         if self.face_mappings:
-                            # Use face mappings
+                            # Use face mappings (per-face swap required)
                             for src_idx, dst_idx in self.face_mappings:
                                 if (src_idx < len(self.src_faces) and 
                                     dst_idx < len(task.detected_faces) and 
@@ -240,13 +240,13 @@ class AsyncPipeline:
                                         self.src_faces[src_idx], 
                                         paste_back=True
                                     )
-                        else:
-                            # Default: swap first source to all detected faces
-                            for face in task.detected_faces:
-                                if self.src_faces and face is not None:
-                                    swapped = self.processor.swapper.get(
-                                        swapped, face, self.src_faces[0], paste_back=True
-                                    )
+                        elif self.src_faces:
+                            # Default: swap first source to all detected faces (batched ONNX)
+                            valid_faces = [f for f in task.detected_faces if f is not None]
+                            if valid_faces:
+                                swapped = self.processor.swap_face_batch(
+                                    task.frame, valid_faces, self.src_faces[0]
+                                )
                         
                         task.swapped_frame = swapped
                         

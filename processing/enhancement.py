@@ -15,8 +15,8 @@ from pathlib import Path
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple, Union
-from moviepy.editor import ImageSequenceClip
 
+from utils import video_io
 from utils.temp_manager import get_temp_manager
 from utils.lru_cache import LRUModelCache
 
@@ -454,7 +454,7 @@ def enhance_frames_single_gpu(
     pre_pad: int = 0,
     maintain_dimensions: bool = False,
     original_size: Optional[Tuple[int, int]] = None
-) -> Optional[Union[Tuple[List, ImageSequenceClip], List[Image.Image]]]:
+) -> Optional[Union[Tuple[List, str], List[Image.Image]]]:
     """
     Enhance video or GIF frames using single GPU.
 
@@ -475,7 +475,7 @@ def enhance_frames_single_gpu(
         original_size: Original (width, height) if maintain_dimensions is True
 
     Returns:
-        For video: (frames, enhanced_clip)
+        For video: (frames, output_path) where output_path is the written video file
         For GIF: list of PIL Images
         None if failed
     """
@@ -552,11 +552,23 @@ def enhance_frames_single_gpu(
 
     # Return format depends on media type
     if media_type == "video":
-        enhanced_clip = ImageSequenceClip(enhanced_frames, fps=fps)
-        if audio:
-            enhanced_clip = enhanced_clip.set_audio(audio)
-        logger.info("Enhanced video: %d frames", len(enhanced_frames))
-        return enhanced_frames, enhanced_clip
+        from utils import video_io
+        from PIL import Image as PILImage
+        output_path = output_dir / f"enhanced_{Path(frames_dir).name}.mp4"
+        pil_frames = [PILImage.fromarray(f) for f in enhanced_frames]
+        success = video_io.write_video_from_pil_frames(
+            pil_frames,
+            str(output_path),
+            fps=fps or 30.0,
+            codec="libx264",
+            preset="medium",
+            crf=18,
+        )
+        if not success:
+            logger.error("Failed to write enhanced video to %s", output_path)
+            return None
+        logger.info("Enhanced video saved: %d frames -> %s", len(enhanced_frames), output_path)
+        return enhanced_frames, str(output_path)
     else:  # gif
         logger.info("Enhanced GIF: %d frames", len(enhanced_frames))
         return enhanced_frames
@@ -576,7 +588,7 @@ def enhance_frames_multi_gpu(
     denoise_strength: float = 0.5,
     use_fp32: bool = False,
     pre_pad: int = 0
-) -> Optional[Union[Tuple[List, ImageSequenceClip], List[Image.Image]]]:
+) -> Optional[Union[Tuple[List, str], List[Image.Image]]]:
     """
     Enhance frames using multiple GPUs for parallel processing.
 
@@ -596,7 +608,7 @@ def enhance_frames_multi_gpu(
         pre_pad: Pre-padding size to reduce edge artifacts
 
     Returns:
-        For video: (frames, enhanced_clip)
+        For video: (frames, output_path) where output_path is the written video file
         For GIF: list of PIL Images
         None if failed
     """
@@ -705,9 +717,22 @@ def enhance_frames_multi_gpu(
 
     # Return appropriate format
     if media_type == "video":
-        enhanced_clip = ImageSequenceClip(enhanced_frames, fps=fps)
-        if audio:
-            enhanced_clip = enhanced_clip.set_audio(audio)
-        return enhanced_frames, enhanced_clip
+        from utils import video_io
+        from PIL import Image as PILImage
+        output_path = output_dir / f"enhanced_video_{Path(frame_paths[0]).name}.mp4"
+        pil_frames = [PILImage.fromarray(f) for f in enhanced_frames]
+        success = video_io.write_video_from_pil_frames(
+            pil_frames,
+            str(output_path),
+            fps=fps or 30.0,
+            codec="libx264",
+            preset="medium",
+            crf=18,
+        )
+        if not success:
+            logger.error("Failed to write enhanced video to %s", output_path)
+            return None
+        logger.info("Enhanced video saved (%d frames) -> %s", len(enhanced_frames), output_path)
+        return enhanced_frames, str(output_path)
     else:  # gif
         return enhanced_frames

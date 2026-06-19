@@ -286,6 +286,66 @@ class TestSwinIR:
 
 
 # =============================================================================
+# HAT Tests
+# =============================================================================
+
+class TestHAT:
+    """Tests for HAT (Hybrid Attention Transformer) enhancement module."""
+
+    @pytest.mark.unit
+    def test_hat_models_defined(self):
+        """Test that HAT_MODELS dictionary is properly defined."""
+        from processing.hat_enhancement import HAT_MODELS
+
+        assert "HAT_Base_4x_ImageNet" in HAT_MODELS
+        assert "HAT_Base_4x_GAN_sharper" in HAT_MODELS
+
+    @pytest.mark.unit
+    def test_hat_model_structure(self):
+        """Test that each HAT model has required keys."""
+        from processing.hat_enhancement import HAT_MODELS
+
+        for model_name, model_info in HAT_MODELS.items():
+            assert "url" in model_info, f"Missing url for {model_name}"
+            assert "scale" in model_info, f"Missing scale for {model_name}"
+            assert model_info["scale"] in [2, 4], f"Invalid scale for {model_name}"
+            assert "description" in model_info, f"Missing description for {model_name}"
+
+    @pytest.mark.unit
+    def test_hat_default_model(self):
+        """Test the default HAT model."""
+        from processing.hat_enhancement import DEFAULT_HAT_MODEL
+
+        assert DEFAULT_HAT_MODEL == "HAT_Base_4x_ImageNet"
+
+    @pytest.mark.unit
+    def test_hat_scale_retrieval(self):
+        """Test get_hat_scale function."""
+        from processing.hat_enhancement import get_hat_scale
+
+        assert get_hat_scale("HAT_Base_4x_ImageNet") == 4
+        assert get_hat_scale("HAT_Base_4x_GAN_sharper") == 4
+        assert get_hat_scale("InvalidModel") == 4  # Default
+
+    @pytest.mark.unit
+    def test_hat_cache_clear(self, mock_gpu):
+        """Test that HAT cache can be cleared."""
+        from processing.hat_enhancement import clear_hat_cache, _hat_cache
+
+        clear_hat_cache()
+        assert len(_hat_cache) == 0
+
+    @pytest.mark.unit
+    def test_get_available_hat_models(self):
+        """Test that available HAT models can be retrieved."""
+        from processing.hat_enhancement import get_available_hat_models, HAT_MODELS
+
+        available = get_available_hat_models()
+        assert available == HAT_MODELS
+        assert available is not HAT_MODELS
+
+
+# =============================================================================
 # GFPGAN Tests
 # =============================================================================
 

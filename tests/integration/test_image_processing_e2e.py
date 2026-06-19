@@ -31,15 +31,18 @@ def mock_media_processor():
     # Mock face swapping - return input image unchanged
     def mock_swap(image, target_face, source_face):
         return image.copy()
+
     processor.swap_face.side_effect = mock_swap
 
     # Mock image read/write
     def mock_read(path):
         return np.zeros((200, 200, 3), dtype=np.uint8)
+
     processor.read_image.side_effect = mock_read
 
     def mock_write(path, image):
         return str(path)
+
     processor.write_image.side_effect = mock_write
 
     return processor
@@ -48,7 +51,7 @@ def mock_media_processor():
 @pytest.fixture
 def realistic_face_image(tmp_path):
     """Create a test image with realistic dimensions."""
-    img = Image.new('RGB', (512, 512), color=(200, 180, 160))
+    img = Image.new("RGB", (512, 512), color=(200, 180, 160))
     path = tmp_path / "face_image.png"
     img.save(path)
     return path
@@ -57,7 +60,7 @@ def realistic_face_image(tmp_path):
 @pytest.fixture
 def source_face_image(tmp_path):
     """Create a source face image."""
-    img = Image.new('RGB', (256, 256), color=(180, 160, 140))
+    img = Image.new("RGB", (256, 256), color=(180, 160, 140))
     path = tmp_path / "source_face.png"
     img.save(path)
     return path
@@ -67,41 +70,40 @@ class TestImageProcessingE2E:
     """End-to-end tests for image processing."""
 
     @pytest.mark.integration
-    @pytest.mark.skip(reason="ImageProcessor class not implemented - uses process_image function instead")
     def test_full_image_pipeline_with_single_face(
         self, tmp_path, realistic_face_image, source_face_image, mock_media_processor
     ):
         """Test complete image processing with one face detected."""
         from processing.image_processing import ImageProcessor
 
-        with patch('processing.image_processing.MediaProcessor', return_value=mock_media_processor):
-            with patch('processing.image_processing.MemoryManager'):
-                processor = ImageProcessor.__new__(ImageProcessor)
-                processor.processor = mock_media_processor
-                processor.logger = MagicMock()
+        with patch(
+            "processing.image_processing.MediaProcessor",
+            return_value=mock_media_processor,
+        ):
+            processor = ImageProcessor.__new__(ImageProcessor)
+            processor.processor = mock_media_processor
+            processor.logger = MagicMock()
 
-                # Simulate the process flow
-                source_img = mock_media_processor.read_image(str(source_face_image))
-                target_img = mock_media_processor.read_image(str(realistic_face_image))
+        # Simulate the process flow
+        source_img = mock_media_processor.read_image(str(source_face_image))
+        target_img = mock_media_processor.read_image(str(realistic_face_image))
 
-                source_faces = mock_media_processor.get_faces(source_img)
-                target_faces = mock_media_processor.get_faces(target_img)
+        source_faces = mock_media_processor.get_faces(source_img)
+        target_faces = mock_media_processor.get_faces(target_img)
 
-                assert len(source_faces) == 1, "Should detect one source face"
-                assert len(target_faces) == 1, "Should detect one target face"
+        assert len(source_faces) == 1, "Should detect one source face"
+        assert len(target_faces) == 1, "Should detect one target face"
 
-                # Perform swap
-                result = mock_media_processor.swap_face(
-                    target_img, target_faces[0], source_faces[0]
-                )
+        # Perform swap
+        result = mock_media_processor.swap_face(
+            target_img, target_faces[0], source_faces[0]
+        )
 
-                assert result is not None, "Should return swapped image"
-                assert result.shape == target_img.shape, "Output shape should match input"
+        assert result is not None, "Should return swapped image"
+        assert result.shape == target_img.shape, "Output shape should match input"
 
     @pytest.mark.integration
-    def test_image_pipeline_no_face_detected(
-        self, tmp_path, mock_media_processor
-    ):
+    def test_image_pipeline_no_face_detected(self, tmp_path, mock_media_processor):
         """Test handling when no face is detected in target."""
         # Configure mock to return no faces
         mock_media_processor.get_faces.return_value = []
@@ -116,16 +118,14 @@ class TestImageProcessingE2E:
         # Processing should handle this gracefully
 
     @pytest.mark.integration
-    def test_image_pipeline_multiple_faces(
-        self, tmp_path, mock_media_processor
-    ):
+    def test_image_pipeline_multiple_faces(self, tmp_path, mock_media_processor):
         """Test processing image with multiple faces."""
         # Configure mock to return multiple faces
         mock_faces = []
         for i in range(3):
             face = MagicMock()
-            face.bbox = np.array([50 + i*100, 50, 150 + i*100, 150])
-            face.det_score = 0.9 - i*0.1
+            face.bbox = np.array([50 + i * 100, 50, 150 + i * 100, 150])
+            face.det_score = 0.9 - i * 0.1
             face.embedding = np.random.rand(512).astype(np.float32)
             mock_faces.append(face)
 
@@ -142,7 +142,7 @@ class TestImageProcessingE2E:
         from utils.validation import validate_image_file
 
         # Create valid image
-        img = Image.new('RGB', (512, 512), color='blue')
+        img = Image.new("RGB", (512, 512), color="blue")
         path = tmp_path / "valid.png"
         img.save(path)
 
@@ -156,7 +156,7 @@ class TestImageProcessingE2E:
         from utils.validation import validate_image_file
 
         # Create oversized image
-        img = Image.new('RGB', (5000, 5000), color='red')
+        img = Image.new("RGB", (5000, 5000), color="red")
         path = tmp_path / "oversized.png"
         img.save(path)
 
@@ -172,7 +172,7 @@ class TestImageWithEnhancement:
     def test_enhancement_toggle_respected(self, mock_media_processor):
         """Test that enhancement is only applied when enabled."""
         # Mock enhancement function
-        with patch('processing.enhancement.enhance_image') as mock_enhance:
+        with patch("processing.enhancement.enhance_image") as mock_enhance:
             mock_enhance.return_value = np.zeros((400, 400, 3), dtype=np.uint8)
 
             # Simulate processing with enhancement disabled
@@ -194,7 +194,7 @@ class TestImageWithEnhancement:
     @pytest.mark.integration
     def test_enhancement_fp16_mode(self, mock_media_processor):
         """Test enhancement respects FP16/FP32 mode setting."""
-        with patch('processing.enhancement.enhance_image') as mock_enhance:
+        with patch("processing.enhancement.enhance_image") as mock_enhance:
             mock_enhance.return_value = np.zeros((400, 400, 3), dtype=np.uint8)
 
             # Call with FP16 (use_fp32=False)
@@ -204,11 +204,11 @@ class TestImageWithEnhancement:
             # This tests the interface, not actual enhancement
             result = mock_enhance(
                 np.zeros((200, 200, 3), dtype=np.uint8),
-                use_fp32=False  # FP16 mode
+                use_fp32=False,  # FP16 mode
             )
 
             call_kwargs = mock_enhance.call_args[1]
-            assert call_kwargs.get('use_fp32') == False
+            assert call_kwargs.get("use_fp32") == False
 
 
 class TestImageOutputFormats:
@@ -223,9 +223,7 @@ class TestImageOutputFormats:
         # Mock swap returns same shape
         mock_media_processor.swap_face.return_value = input_img.copy()
 
-        result = mock_media_processor.swap_face(
-            input_img, MagicMock(), MagicMock()
-        )
+        result = mock_media_processor.swap_face(input_img, MagicMock(), MagicMock())
 
         assert result.shape == input_shape
 
@@ -235,9 +233,7 @@ class TestImageOutputFormats:
         input_img = np.zeros((200, 200, 3), dtype=np.uint8)
         mock_media_processor.swap_face.return_value = input_img.copy()
 
-        result = mock_media_processor.swap_face(
-            input_img, MagicMock(), MagicMock()
-        )
+        result = mock_media_processor.swap_face(input_img, MagicMock(), MagicMock())
 
         assert isinstance(result, np.ndarray)
         assert result.dtype == np.uint8

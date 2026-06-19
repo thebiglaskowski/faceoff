@@ -62,24 +62,16 @@ class FaceRestorer:
             
             # Initialize GFPGANer
             # Suppress torchvision deprecation warnings during model initialization.
-            # Also patch torch.load to use weights_only=False for PyTorch 2.6+ compatibility:
-            # facexlib calls torch.load without weights_only, which now defaults to True and
-            # breaks loading of legacy model checkpoints.
-            _original_torch_load = torch.load
-            torch.load = lambda *args, **kwargs: _original_torch_load(*args, **{**kwargs, 'weights_only': False})
-            try:
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", category=UserWarning, module="torchvision")
-                    self._restorer = GFPGANer(
-                        model_path=str(model_path),
-                        upscale=1,  # We don't want upscaling, just restoration
-                        arch='clean',
-                        channel_multiplier=2,
-                        bg_upsampler=None,  # No background upsampling
-                        device=f'cuda:{self.device_id}' if torch.cuda.is_available() else 'cpu'
-                    )
-            finally:
-                torch.load = _original_torch_load
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning, module="torchvision")
+                self._restorer = GFPGANer(
+                    model_path=str(model_path),
+                    upscale=1,  # We don't want upscaling, just restoration
+                    arch='clean',
+                    channel_multiplier=2,
+                    bg_upsampler=None,  # No background upsampling
+                    device=f'cuda:{self.device_id}' if torch.cuda.is_available() else 'cpu'
+                )
             
             self._initialized = True
             logger.info("GFPGAN v%s initialized on device %d", self.model_version, self.device_id)

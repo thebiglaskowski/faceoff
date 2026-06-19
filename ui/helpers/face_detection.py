@@ -289,8 +289,9 @@ def detect_faces_with_thumbnails(source_img, target_file, face_confidence):
     # Clear GPU memory to prevent OOM from fragmentation
     _clear_gpu_memory()
 
-    from moviepy.editor import VideoFileClip
+    from utils import video_io
     import numpy as np
+    import subprocess
 
     temp_manager = get_temp_manager()
     processor = FaceProcessor(device_id=0, confidence=face_confidence)
@@ -321,9 +322,15 @@ def detect_faces_with_thumbnails(source_img, target_file, face_confidence):
             first_frame_rgb = np.array(first_frame)
             gif.close()
         else:
-            clip = VideoFileClip(target_path)
-            first_frame_rgb = clip.get_frame(0)
-            clip.close()
+            meta = video_io.probe_video(target_path)
+            fps = float(meta.get('fps') or 30.0)
+            first_frame_path = temp_manager.get_temp_dir("ui") / "first_frame.png"
+            subprocess.run(
+                ["ffmpeg", "-y", "-ss", "0", "-i", target_path,
+                 "-frames:v", "1", "-q:v", "1", str(first_frame_path)],
+                capture_output=True,
+            )
+            first_frame_rgb = np.array(Image.open(first_frame_path))
         
         tgt_faces_raw = processor._processor.get_faces(first_frame_rgb)
         tgt_faces_raw = filter_faces_by_confidence(tgt_faces_raw, face_confidence)

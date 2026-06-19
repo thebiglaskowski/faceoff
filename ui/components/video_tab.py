@@ -7,8 +7,10 @@ from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
 from utils.constants import (
     MODEL_OPTIONS,
     SWINIR_MODEL_OPTIONS,
+    HAT_MODEL_OPTIONS,
     DEFAULT_MODEL,
     DEFAULT_SWINIR_MODEL,
+    DEFAULT_HAT_MODEL,
     DEFAULT_TILE_SIZE,
     DEFAULT_OUTSCALE,
     DEFAULT_USE_FP32,
@@ -83,10 +85,10 @@ def create_video_tab():
 
         with gr.Row():
             enhancement_model_selector_vid = gr.Dropdown(
-                choices=["RealESRGAN", "SwinIR"],
+                choices=["RealESRGAN", "SwinIR", "HAT"],
                 value="RealESRGAN",
                 label="Enhancement Framework",
-                info="RealESRGAN (faster) or SwinIR (transformer-based)",
+                info="RealESRGAN (fast) or SwinIR/HAT (transformer-based SR)",
                 visible=False
             )
             restoration_model_selector_vid = gr.Dropdown(

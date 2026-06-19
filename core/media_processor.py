@@ -368,14 +368,23 @@ class MediaProcessor:
         src_emb /= np.linalg.norm(src_emb)
         src_stack = np.repeat(src_emb, len(target_faces), axis=0)  # [N, 512]
 
-        # Single batched ONNX inference
-        pred = self.swapper.session.run(
-            self.swapper.output_names,
-            {
-                self.swapper.input_names[0]: blobs_stack.astype(np.float32),
-                self.swapper.input_names[1]: src_stack.astype(np.float32),
-            },
-        )[0]  # [N, 3, 128, 128]
+        # Single batched ONNX inference — some optimized models lock batch dim to 1.
+        # If batched inference fails, fall back to sequential single-face calls.
+        try:
+            pred = self.swapper.session.run(
+                self.swapper.output_names,
+                {
+                    self.swapper.input_names[0]: blobs_stack.astype(np.float32),
+                    self.swapper.input_names[1]: src_stack.astype(np.float32),
+                },
+            )[0]  # [N, 3, 128, 128]
+        except Exception:
+            logger.debug(
+                "swap_face_batch: batched ONNX inference failed (%d faces) — "
+                "falling back to sequential calls",
+                len(target_faces),
+            )
+            return self._swap_face_sequential(image, target_faces, source_face, maps)
 
         # Paste each result back sequentially (CPU-bound warpAffine).
         # We modify `image` in-place to preserve previous swaps in the frame (e.g. multi-face).
@@ -441,6 +450,118 @@ class MediaProcessor:
                 borderValue=0.0,
             )
             # Blend difference to fill seams at edges
+            k2 = max(mask_size // 20, 5)
+            diff_mask_mat = cv2.warpAffine(
+                np.clip(
+                    (bgr_fake - swapped.astype(np.float32)).astype(np.uint8)
+                    + img_white[..., np.newaxis],
+                    0,
+                    255,
+                ),
+                IM,
+                (swapped.shape[1], swapped.shape[0]),
+                borderValue=0.0,
+            )
+            blur_size = tuple(2 * i + 1 for i in (k2, k2))
+            img_mask = cv2.GaussianBlur(img_mask, blur_size, 0)
+            img_mask /= 255
+            img_mask = np.reshape(img_mask, [img_mask.shape[0], img_mask.shape[1], 1])
+            fake_merged = img_mask * bgr_fake + (1 - img_mask) * swapped.astype(
+                np.float32
+            )
+            swapped = fake_merged.astype(np.uint8)
+
+        return swapped
+
+    def _swap_face_sequential(
+        self, image: np.ndarray, target_faces: List, source_face, maps: List
+    ) -> np.ndarray:
+        """
+        Sequential ONNX inference fallback for swap_face_batch.
+
+        Runs one ONNX call per target face (batches locked to 1), then
+        pastes each result back with identical paste-back logic.
+        """
+        crop_size = self.swapper.input_size[0]
+
+        swapped = image.copy()
+        if swapped.ndim == 2:
+            swapped = np.stack([swapped] * 3, axis=-1)
+        elif swapped.ndim == 3 and swapped.shape[2] == 1:
+            swapped = np.squeeze(swapped, axis=-1)
+            swapped = np.stack([swapped] * 3, axis=-1)
+        assert swapped.ndim == 3 and swapped.shape[2] == 3, (
+            f"_swap_face_sequential requires 3D (H,W,3) image, got {swapped.shape}"
+        )
+
+        src_emb = source_face.normed_embedding.reshape((1, -1))
+        src_emb = np.dot(src_emb, self.swapper.emap)
+        src_emb /= np.linalg.norm(src_emb)
+
+        for i, (M, aimg) in enumerate(maps):
+            blob = cv2.dnn.blobFromImage(
+                aimg,
+                1.0 / self.swapper.input_std,
+                self.swapper.input_size,
+                (self.swapper.input_mean,) * 3,
+                swapRB=True,
+            )  # [1, 3, 128, 128]
+
+            pred = self.swapper.session.run(
+                self.swapper.output_names,
+                {
+                    self.swapper.input_names[0]: blob.astype(np.float32),
+                    self.swapper.input_names[1]: src_emb.astype(np.float32),
+                },
+            )[0]  # [1, 3, 128, 128]
+
+            img_fake = pred[0].transpose((1, 2, 0))
+            bgr_fake = np.clip(255 * img_fake, 0, 255).astype(np.uint8)[:, :, ::-1]
+
+            IM = cv2.invertAffineTransform(M)
+            fake_diff = bgr_fake.astype(np.float32) - aimg.astype(np.float32)
+            fake_diff = np.abs(fake_diff).mean(axis=2)
+            fake_diff[:2, :] = 0
+            fake_diff[-2:, :] = 0
+            fake_diff[:, :2] = 0
+            fake_diff[:, -2:] = 0
+            img_white = np.full((aimg.shape[0], aimg.shape[1]), 255, dtype=np.float32)
+            bgr_fake = cv2.warpAffine(
+                bgr_fake, IM, (swapped.shape[1], swapped.shape[0]), borderValue=0.0
+            )
+            img_white = cv2.warpAffine(
+                img_white, IM, (swapped.shape[1], swapped.shape[0]), borderValue=0.0
+            )
+            fake_diff = cv2.warpAffine(
+                fake_diff, IM, (swapped.shape[1], swapped.shape[0]), borderValue=0.0
+            )
+            img_white[img_white > 20] = 255
+            fthresh = 10
+            fake_diff[fake_diff < fthresh] = 0
+            fake_diff[fake_diff >= fthresh] = 255
+            img_mask = img_white
+            mask_h_inds, mask_w_inds = np.where(img_mask == 255)
+            if len(mask_h_inds) > 0 and len(mask_w_inds) > 0:
+                mask_h = np.max(mask_h_inds) - np.min(mask_h_inds)
+                mask_w = np.max(mask_w_inds) - np.min(mask_w_inds)
+                mask_size = int(np.sqrt(mask_h * mask_w))
+            else:
+                mask_size = 10
+            k = max(mask_size // 10, 10)
+            kernel = np.ones((k, k), np.uint8)
+            img_mask = cv2.erode(img_mask, kernel, iterations=1)
+
+            fake_diff = cv2.warpAffine(
+                np.clip(
+                    (bgr_fake - swapped.astype(np.float32)).astype(np.uint8)
+                    + img_white[..., np.newaxis],
+                    0,
+                    255,
+                ),
+                IM,
+                (swapped.shape[1], swapped.shape[0]),
+                borderValue=0.0,
+            )
             k2 = max(mask_size // 20, 5)
             diff_mask_mat = cv2.warpAffine(
                 np.clip(

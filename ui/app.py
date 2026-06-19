@@ -13,7 +13,7 @@ import logging
 from pathlib import Path
 
 from utils.logging_setup import setup_logging
-from utils.constants import MODEL_OPTIONS, SWINIR_MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_SWINIR_MODEL
+from utils.constants import MODEL_OPTIONS, SWINIR_MODEL_OPTIONS, HAT_MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_SWINIR_MODEL, DEFAULT_HAT_MODEL
 
 # UI Components and Helpers
 from ui.components.image_tab import create_image_tab
@@ -125,7 +125,7 @@ def update_model_choices(enhancement_framework: str):
     Update the model selector choices based on the selected enhancement framework.
 
     Args:
-        enhancement_framework: "RealESRGAN" or "SwinIR"
+        enhancement_framework: "RealESRGAN", "SwinIR", or "HAT"
 
     Returns:
         gr.update with new choices and value for the model selector
@@ -134,6 +134,10 @@ def update_model_choices(enhancement_framework: str):
         choices = list(SWINIR_MODEL_OPTIONS.keys())
         default = DEFAULT_SWINIR_MODEL
         info = "Select Swin2SR model for enhancement"
+    elif enhancement_framework == "HAT":
+        choices = list(HAT_MODEL_OPTIONS.keys())
+        default = DEFAULT_HAT_MODEL
+        info = "Select HAT (Hybrid Attention Transformer) model for enhancement"
     else:
         choices = list(MODEL_OPTIONS.keys())
         default = DEFAULT_MODEL
@@ -253,6 +257,14 @@ def toggle_denoise_slider(model_choice):
     """Show/hide denoise slider based on model selection."""
     supports_denoise = MODEL_OPTIONS.get(model_choice, {}).get("supports_denoise", False)
     return gr.update(visible=supports_denoise)
+
+
+def _is_hat_model(model_name: str) -> bool:
+    """Check if a display name corresponds to a HAT model."""
+    for key in HAT_MODEL_OPTIONS:
+        if key.startswith(model_name) or model_name.startswith(key.split(" ")[0]):
+            return True
+    return False
 
 
 def create_app():
