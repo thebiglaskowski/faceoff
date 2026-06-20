@@ -53,7 +53,8 @@ preload_nvidia_libraries()
 from utils.tensorrt_utils import is_tensorrt_available
 from utils.model_cache import get_cache_info
 from processing.model_preloader import preload_models
-from ui.app import CUSTOM_CSS, GRADIO_THEME, create_app
+from ui.app import create_app
+from ui.faceoff_theme import CUSTOM_CSS, GRADIO_THEME
 
 logger = logging.getLogger("FaceOff")
 

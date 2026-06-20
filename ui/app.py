@@ -49,66 +49,7 @@ from ui.handlers.processing_handlers import (
     clear_face_mappings_video,
 )
 from ui.helpers.preview import validate_target_video_upload
-
-# Custom CSS styling
-GRADIO_THEME = gr.themes.Soft()
-
-CUSTOM_CSS = """
-:root {
-    --primary-color: #7C3AED;
-    --secondary-color: #EC4899;
-    --success-color: #10B981;
-}
-
-.gradio-container {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-.header-text {
-    color: #7C3AED !important;
-    font-weight: 800;
-    font-size: 2.5em;
-    text-align: center;
-    margin-bottom: 0.5rem;
-}
-
-.header-subtitle {
-    text-align: center;
-    font-size: 1.1em;
-    color: #6B7280;
-    margin-bottom: 2rem;
-}
-
-@media (prefers-color-scheme: dark) {
-    .header-text {
-        color: #A78BFA !important;
-    }
-    .header-subtitle {
-        color: #9CA3AF !important;
-    }
-}
-
-.primary-btn {
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
-    border: none !important;
-    color: white !important;
-    font-weight: 600 !important;
-    transition: transform 0.2s !important;
-}
-
-.primary-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(124, 58, 237, 0.3) !important;
-}
-
-.face-swap-box {
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(236, 72, 153, 0.1));
-    border-left: 4px solid var(--primary-color);
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin: 1rem 0;
-}
-"""
+from ui.faceoff_theme import CUSTOM_CSS, FACEOFF_HEADER_HTML, GRADIO_THEME
 
 # Set up logging
 setup_logging()
@@ -313,8 +254,11 @@ def create_app():
     """
 
     with gr.Blocks(title="FaceOff - Face Swapper") as demo:
-        gr.HTML('<h1 class="header-text">👤 FaceOff</h1>')
-        gr.Markdown('<div class="header-subtitle">AI Face Swapper - Advanced face swapping with enhancement options</div>')
+        gr.HTML(FACEOFF_HEADER_HTML)
+        gr.Markdown(
+            "AI Face Swapper — advanced face swapping with enhancement options",
+            elem_classes=["header-subtitle"],
+        )
         
         with gr.Tabs():
             # Create Image Tab
