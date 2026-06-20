@@ -49,6 +49,43 @@ class TestStreamingVideoIO:
         assert "hwdownload" in vf
         assert "fps=30.0" in vf
 
+    def test_gif_zero_copy_cuda_decode_fails(self, tmp_path):
+        """GIF paletted decode cannot use CUDA hwaccel_output_format (regression guard)."""
+        import subprocess
+        from PIL import Image
+
+        gif_path = tmp_path / "probe.gif"
+        frames = [
+            Image.fromarray(np.full((16, 16, 3), fill, dtype=np.uint8))
+            for fill in (40, 80, 120)
+        ]
+        frames[0].save(
+            gif_path, save_all=True, append_images=frames[1:], duration=100, loop=0
+        )
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-hwaccel",
+            "cuda",
+            "-hwaccel_output_format",
+            "cuda",
+            "-i",
+            str(gif_path),
+            "-vf",
+            video_io._decode_video_filter(10.0, zero_copy=True),
+            "-pix_fmt",
+            "rgb24",
+            "-frames:v",
+            "1",
+            "-f",
+            "null",
+            "-",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode != 0
+
     def test_streaming_roundtrip_small_video(self, tmp_path):
         """Write then read back a few frames via raw pipe."""
         out = tmp_path / "out.mp4"

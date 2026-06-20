@@ -112,6 +112,8 @@ class TestWorkloadProfile:
 
         assert profile is not None
         assert profile.use_nvcodec_decode is False
+        assert profile.zero_copy is False
+        assert profile.pinned_encode is False
 
     def test_auto_tune_disabled_returns_none(self, temp_config, reset_config):
         from utils.config_manager import config

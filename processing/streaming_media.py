@@ -340,8 +340,10 @@ def process_streaming(
     defer_download = use_gpu_chain and profile_flag(
         profile, "defer_download", config.gpu_enhancement_chain_enabled
     )
+    # FFmpeg CUDA zero-copy (hwaccel_output_format=cuda) breaks GIF filter graphs.
     use_zero_copy = (
-        profile_flag(profile, "zero_copy", config.streaming_zero_copy_enabled)
+        ctx.media_type == "video"
+        and profile_flag(profile, "zero_copy", config.streaming_zero_copy_enabled)
         and config.streaming_hwaccel_decode
     )
     use_nvcodec = (
