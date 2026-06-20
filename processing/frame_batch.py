@@ -188,6 +188,7 @@ def process_frames_batch(
     frame_indices: Optional[List[int]] = None,
     defer_download: bool = False,
     profile: Optional[WorkloadProfile] = None,
+    gpu_paste_override: Optional[bool] = None,
 ) -> List[np.ndarray]:
     """Process a batch of frames on a single GPU with batched multi-face swap."""
     if frame_buffer is not None and profile_flag(
@@ -199,7 +200,10 @@ def process_frames_batch(
             logger.debug("Chunk GPU upload skipped: %s", exc)
 
     swap_gpu = _resolve_swap_gpu(processor, gpu_instance)
-    gpu_paste = _gpu_paste_enabled(frame_buffer, face_mappings, swap_gpu, profile)
+    if gpu_paste_override is not None:
+        gpu_paste = gpu_paste_override
+    else:
+        gpu_paste = _gpu_paste_enabled(frame_buffer, face_mappings, swap_gpu, profile)
     if frame_indices is None and frame_buffer is not None:
         frame_indices = list(range(len(frames)))
 
@@ -285,7 +289,11 @@ def process_chunk_multi_gpu(
         )
 
     swap_gpu = gpu_instances[0] if gpu_instances else None
-    gpu_paste = _gpu_paste_enabled(frame_buffer, face_mappings, swap_gpu, profile)
+    # GPU paste writes into a single shared ChunkFrameBuffer on the primary GPU.
+    # Secondary GPUs cannot update that buffer, so multi-GPU jobs must use CPU paste.
+    gpu_paste = _gpu_paste_enabled(frame_buffer, face_mappings, swap_gpu, profile) and len(
+        device_ids
+    ) == 1
     if gpu_paste and frame_buffer is not None:
         try:
             frame_buffer.upload()
@@ -323,6 +331,7 @@ def process_chunk_multi_gpu(
                 frame_indices=batch_indices,
                 defer_download=defer_download,
                 profile=profile,
+                gpu_paste_override=gpu_paste,
             )
             if not gpu_paste:
                 with lock:

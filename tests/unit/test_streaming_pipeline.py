@@ -136,3 +136,64 @@ class TestFrameBatch:
 
         assert len(result) == 1
         processor.swap_face_batch.assert_called_once()
+
+    def test_multi_gpu_collects_swapped_frames_without_gpu_paste(self, mock_gpu):
+        """Multi-GPU must not use GPU paste (shared buffer); every frame is returned."""
+        from processing.frame_batch import process_chunk_multi_gpu
+        from processing.workload_profile import WorkloadProfile
+
+        frames = [
+            np.full((4, 4, 3), fill, dtype=np.uint8) for fill in (10, 20, 30, 40)
+        ]
+        face = MagicMock()
+        profile = WorkloadProfile(
+            name="stream_swap_only",
+            frame_retention=True,
+            paste_on_gpu=True,
+            detection_on_gpu=False,
+            enhancement_chain=False,
+            zero_copy=False,
+            pinned_encode=False,
+            defer_download=False,
+        )
+
+        def _make_gpu(dev_id):
+            inst = MagicMock()
+            inst.device_id = dev_id
+            inst.get_faces.return_value = [face]
+            inst.swap_face_batch.side_effect = (
+                lambda img, dst, src, **kw: np.full(img.shape, dev_id * 100 + 7, np.uint8)
+            )
+            return inst
+
+        gpu_instances = [_make_gpu(0), _make_gpu(1)]
+
+        with patch("processing.frame_batch.assign_frames_to_gpus") as mock_assign, patch(
+            "processing.frame_batch.filter_faces_by_confidence",
+            side_effect=lambda f, _: f,
+        ), patch("processing.frame_batch.config") as cfg:
+            mock_assign.return_value = {0: [0, 1], 1: [2, 3]}
+            cfg.workers_per_gpu = 1
+            cfg.iou_threshold = 0.5
+            cfg.gpu_frame_retention_enabled = True
+            cfg.gpu_paste_on_gpu = True
+            cfg.gpu_detection_on_gpu = False
+
+            result = process_chunk_multi_gpu(
+                frames,
+                src_faces=[MagicMock()],
+                device_ids=[0, 1],
+                gpu_instances=gpu_instances,
+                face_confidence=0.5,
+                batch_size=8,
+                profile=profile,
+            )
+
+        assert len(result) == 4
+        assert result[0][0, 0, 0] == 7
+        assert result[1][0, 0, 0] == 7
+        assert result[2][0, 0, 0] == 107
+        assert result[3][0, 0, 0] == 107
+        for inst in gpu_instances:
+            for call in inst.swap_face_batch.call_args_list:
+                assert call.kwargs.get("paste_on_gpu") is False
