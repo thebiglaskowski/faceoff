@@ -59,45 +59,45 @@ gradio-app, .gradio-container { background: var(--fo-bg) !important; }
 
 .gradio-container {
     position: relative;
-    max-width: 1180px !important;
-    margin: 0 auto !important;
-    padding: 46px 30px 90px !important;
+    width: 100% !important;
+    max-width: none !important;
     font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif !important;
     color: var(--fo-text);
-    overflow-x: hidden;
 }
 .gradio-container > * { position: relative; z-index: 1; }
 
-/* Animated aurora + dot grid (matches FaceOff.dc.html) */
-.fo-aurora {
-    position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
-}
-.fo-aurora-blob {
-    position: absolute; border-radius: 50%; filter: blur(40px);
-}
-.fo-aurora-blob-1 {
-    top: -180px; left: 8%; width: 560px; height: 560px;
-    background: radial-gradient(circle, rgba(139,92,246,0.42), transparent 62%);
+/* Full-viewport aurora (CSS only — do not inject layout HTML into Blocks) */
+gradio-app::before {
+    content: "";
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+        radial-gradient(560px 560px at 14% -8%,  rgba(139,92,246,0.40), transparent 62%),
+        radial-gradient(520px 520px at 92% -4%,  rgba(34,211,238,0.32),  transparent 62%),
+        radial-gradient(680px 680px at 50% 118%, rgba(240,57,139,0.28),  transparent 64%);
+    filter: blur(8px);
     animation: fo-float 14s ease-in-out infinite;
 }
-.fo-aurora-blob-2 {
-    top: -120px; right: 4%; width: 520px; height: 520px;
-    background: radial-gradient(circle, rgba(34,211,238,0.34), transparent 62%);
-    filter: blur(44px);
-    animation: fo-float2 16s ease-in-out infinite;
-}
-.fo-aurora-blob-3 {
-    bottom: -220px; left: 38%; width: 680px; height: 680px;
-    background: radial-gradient(circle, rgba(240,57,139,0.30), transparent 64%);
-    filter: blur(52px);
-    animation: fo-float 18s ease-in-out infinite;
-}
-.fo-aurora-grid {
-    position: absolute; inset: 0; opacity: 0.5;
+gradio-app::after {
+    content: "";
+    position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.45;
     background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
     background-size: 46px 46px;
     mask-image: radial-gradient(circle at 50% 30%, black, transparent 78%);
     -webkit-mask-image: radial-gradient(circle at 50% 30%, black, transparent 78%);
+}
+
+/* Preserve Gradio row/column layout (3-across image tab, etc.) */
+.gradio-container .row {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    gap: var(--layout-gap, 8px);
+}
+.gradio-container .column {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    width: auto !important;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -121,18 +121,16 @@ gradio-app, .gradio-container { background: var(--fo-bg) !important; }
 }
 
 /* ----------------------------------------------------------------------- */
-/*  GLASS PANELS — every block / form / group                              */
+/*  GLASS PANELS — tab content & groups only (not row/column layout shells) */
 /* ----------------------------------------------------------------------- */
-.block, .form, .gr-group, .gr-box, .panel, .gr-panel,
-.tabitem, fieldset {
+.tabitem, .form, .gr-group, .gr-panel, fieldset,
+.accordion, .face-swap-box {
     background: var(--fo-glass) !important;
     border: 1px solid var(--fo-border) !important;
     border-radius: 18px !important;
     backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
     box-shadow: 0 20px 50px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.06) !important;
 }
-/* Don't double-glass nested wrappers */
-.block .block { box-shadow: none !important; background: transparent !important; border: none !important; }
 
 /* Labels -> neon chips */
 span[data-testid="block-info"], .block > label > span,
@@ -156,7 +154,9 @@ label > span:first-child {
     background: var(--fo-glass) !important;
     border: 1px solid var(--fo-border) !important;
     border-radius: 16px !important; padding: 6px !important;
-    width: max-content; backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    width: 100%;
+    flex-wrap: wrap;
 }
 .tab-nav button {
     border: 1px solid transparent !important; border-radius: 11px !important;
@@ -281,20 +281,11 @@ input[type="range"]::-webkit-slider-thumb { background: var(--fo-cyan) !importan
     }
     :root:not(.dark) gradio-app,
     :root:not(.dark) .gradio-container { background: #eef0f8 !important; }
-    :root:not(.dark) .gradio-container::before { filter: blur(8px); opacity: 0.6; }
+    :root:not(.dark) gradio-app::before { filter: blur(8px); opacity: 0.6; }
     :root:not(.dark) input, :root:not(.dark) textarea, :root:not(.dark) select {
         background: rgba(255,255,255,0.85) !important; color: #1a1a2e !important;
     }
 }
-"""
-
-FACEOFF_AURORA_HTML = """
-<div class="fo-aurora" aria-hidden="true">
-  <div class="fo-aurora-blob fo-aurora-blob-1"></div>
-  <div class="fo-aurora-blob fo-aurora-blob-2"></div>
-  <div class="fo-aurora-blob fo-aurora-blob-3"></div>
-  <div class="fo-aurora-grid"></div>
-</div>
 """
 
 FACEOFF_HEADER_HTML = """
