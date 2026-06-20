@@ -199,6 +199,88 @@ class TestFrameBatch:
                 assert call.kwargs.get("paste_on_gpu") is False
 
 
+class TestMultiGpuWorkloadTrim:
+    def test_streaming_trims_profile_for_multi_gpu(self, mock_gpu):
+        from processing.streaming_media import process_streaming
+        from processing.workload_profile import WorkloadProfile
+        from unittest.mock import MagicMock, patch
+
+        profile = WorkloadProfile(
+            name="stream_swap_only",
+            frame_retention=True,
+            paste_on_gpu=True,
+            detection_on_gpu=True,
+            enhancement_chain=False,
+            zero_copy=True,
+            pinned_encode=True,
+            defer_download=False,
+            chunk_size=32,
+        )
+
+        with patch("processing.streaming_media.resolve_workload_profile", return_value=profile), patch(
+            "processing.streaming_media._detect_source_faces",
+            return_value=[MagicMock()],
+        ), patch(
+            "processing.streaming_media.video_io.open_streaming_reader"
+        ) as mock_reader, patch(
+            "processing.streaming_media.log_workload_profile"
+        ) as mock_log, patch(
+            "processing.streaming_media.get_progress_tracker"
+        ) as mock_progress, patch(
+            "processing.streaming_media.get_model_pool"
+        ) as mock_pool, patch(
+            "processing.streaming_media._process_chunk_with_oom_fallback",
+            return_value=([], None),
+        ), patch(
+            "processing.streaming_media._postprocess_chunk",
+            return_value=[],
+        ), patch(
+            "processing.streaming_media._write_chunk_frames"
+        ), patch(
+            "processing.streaming_media._effective_chunk_size",
+            return_value=32,
+        ), patch(
+            "processing.streaming_media.MemoryManager"
+        ):
+            reader = MagicMock()
+            reader.__enter__.return_value = reader
+            reader.read_chunk.side_effect = [[np.zeros((4, 4, 3), dtype=np.uint8)], []]
+            reader.width = 1920
+            reader.height = 1080
+            mock_reader.return_value = reader
+            mock_progress.return_value = MagicMock()
+            mock_pool.return_value.get_instances.return_value = [MagicMock(), MagicMock()]
+
+            ctx = MagicMock()
+            ctx.media_type = "video"
+            ctx.dest_path = "test.mp4"
+            ctx.output_dir = MagicMock()
+            ctx.output_dir.resolve.return_value = MagicMock()
+            ctx.fps = 30.0
+            ctx.width = 1920
+            ctx.height = 1080
+            ctx.audio_path = None
+
+            writer = MagicMock()
+            writer.__enter__.return_value = writer
+            writer.finalize.return_value = True
+            writer.frames_written = 1
+
+            with patch("processing.streaming_media.video_io.StreamingVideoWriter", return_value=writer):
+                process_streaming(
+                    MagicMock(),
+                    np.zeros((8, 8, 3), dtype=np.uint8),
+                    ctx,
+                    device_ids=[0, 1],
+                    workload_profile=profile,
+                )
+
+        logged = mock_log.call_args[0][0]
+        assert logged.name == "stream_swap_only_multi_gpu"
+        assert logged.frame_retention is False
+        assert logged.detection_on_gpu is False
+
+
 class TestPinnedEncode:
     def test_stack_rgb_frames_rejects_scalars(self):
         from processing.streaming_media import _stack_rgb_frames

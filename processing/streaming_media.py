@@ -3,7 +3,7 @@ Chunked streaming pipeline for video and GIF face-swap processing.
 """
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -30,7 +30,12 @@ from processing.workload_profile import (
 )
 from utils import video_io
 from utils.config_manager import config
-from utils.memory_manager import MemoryManager, prepare_for_enhancement
+from utils.memory_manager import (
+    MemoryManager,
+    clear_cuda_caches,
+    is_memory_error,
+    prepare_for_enhancement,
+)
 from utils.progress import get_progress_tracker
 from utils.temp_manager import get_temp_manager
 
@@ -212,15 +217,25 @@ def _process_chunk_with_oom_fallback(
 ) -> Tuple[List[np.ndarray], Optional[ChunkFrameBuffer]]:
     try:
         return _process_chunk(chunk, **kwargs)
-    except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
-        if "out of memory" not in str(exc).lower():
+    except Exception as exc:
+        if not is_memory_error(exc):
             raise
-        logger.warning("OOM on chunk — clearing cache and falling back to per-frame")
-        memory_manager.clear_cache(force=True)
+        device_ids = kwargs.get("device_ids") or [memory_manager.device_id]
+        batch_size = kwargs.get("batch_size", config.batch_size)
+        new_batch, should_retry = memory_manager.handle_oom_error(batch_size)
+        logger.warning(
+            "VRAM/OOM on chunk (%s) — clearing caches and falling back to per-frame "
+            "(batch %d→%d)",
+            type(exc).__name__,
+            batch_size,
+            new_batch,
+        )
+        clear_cuda_caches(device_ids, force=True)
         results = []
         tracker: Optional[FaceTracker] = kwargs.get("face_tracker")
         fallback_kwargs = {k: v for k, v in kwargs.items() if k != "face_tracker"}
         fallback_kwargs["defer_download"] = False
+        fallback_kwargs["batch_size"] = new_batch if should_retry else batch_size
         for frame in chunk:
             single_tracker = FaceTracker(iou_threshold=config.iou_threshold) if tracker else None
             batch, _ = _process_chunk(
@@ -297,6 +312,18 @@ def process_streaming(
         outscale=outscale,
         face_enhance_in_esrgan=config.streaming_video_face_enhance,
     )
+    if len(device_ids) > 1 and profile is not None:
+        # Concurrent ONNX on every GPU: skip GPU frame retention to avoid BFC OOM.
+        profile = replace(
+            profile,
+            name=f"{profile.name}_multi_gpu",
+            frame_retention=False,
+            detection_on_gpu=False,
+        )
+        logger.info(
+            "Multi-GPU workload trim: frame_retention=off, detection_on_gpu=off"
+        )
+
     log_workload_profile(profile)
 
     if adaptive_detection is None:
@@ -360,6 +387,9 @@ def process_streaming(
     chunk_size = _effective_chunk_size(
         device_ids, config.streaming_chunk_size, enhance, outscale, profile
     )
+    if len(device_ids) > 1 and not enhance:
+        chunk_size = max(config.min_batch_size, chunk_size // 2)
+        logger.info("Multi-GPU chunk size capped at %d frames", chunk_size)
     if enhance:
         logger.info(
             "Enhancement enabled: chunk_size=%d, outscale=%dx, face_in_esrgan=%s, model=%s",

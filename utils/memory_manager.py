@@ -15,6 +15,36 @@ from utils.config_manager import config
 
 logger = logging.getLogger("FaceOff")
 
+_MEMORY_ERROR_MARKERS = (
+    "out of memory",
+    "oom",
+    "failed to allocate memory",
+    "bfc_arena",
+    "cuda error: out of memory",
+    "allocator failed",
+    "cudamalloc",
+)
+
+
+def is_memory_error(error: BaseException) -> bool:
+    """True for PyTorch, ONNX Runtime BFC arena, and other VRAM allocation failures."""
+    if isinstance(error, (torch.cuda.OutOfMemoryError, MemoryError)):
+        return True
+    message = str(error).lower()
+    if any(marker in message for marker in _MEMORY_ERROR_MARKERS):
+        return True
+    type_name = type(error).__name__.lower()
+    return type_name == "fail" and "allocate" in message
+
+
+def clear_cuda_caches(device_ids: Optional[List[int]] = None, *, force: bool = True) -> None:
+    """Clear CUDA allocator caches on one or more GPUs."""
+    if not torch.cuda.is_available():
+        return
+    targets = device_ids if device_ids else list(range(torch.cuda.device_count()))
+    for device_id in targets:
+        MemoryManager(device_id).clear_cache(force=force)
+
 
 @dataclass
 class CachedMemoryStats:

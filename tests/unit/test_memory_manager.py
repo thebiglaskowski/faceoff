@@ -190,6 +190,24 @@ class TestOptimalBatchSize:
         assert result >= 2
 
 
+class TestIsMemoryError:
+    def test_detects_onnx_bfc_arena_failure(self):
+        from utils.memory_manager import is_memory_error
+
+        err = RuntimeError(
+            "Fail: [ONNXRuntimeError] : 1 : FAIL : Non-zero status code returned "
+            "while running Conv node. Failed to allocate memory for requested "
+            "buffer of size 26216448 bfc_arena.cc"
+        )
+        assert is_memory_error(err)
+
+    def test_detects_torch_cuda_oom(self):
+        import torch
+        from utils.memory_manager import is_memory_error
+
+        assert is_memory_error(torch.cuda.OutOfMemoryError("CUDA OOM"))
+
+
 class TestOOMHandling:
     """Tests for OOM error handling."""
 

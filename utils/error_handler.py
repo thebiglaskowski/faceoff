@@ -23,6 +23,8 @@ import torch
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 from pathlib import Path
 
+from utils.memory_manager import is_memory_error
+
 logger = logging.getLogger("FaceOff")
 
 # Type variable for decorator
@@ -177,7 +179,7 @@ class ErrorHandler:
         error_type = type(error).__name__
         
         # Out of Memory errors
-        if "out of memory" in error_str or isinstance(error, (torch.cuda.OutOfMemoryError, MemoryError)):
+        if is_memory_error(error):
             return ErrorHandler._handle_oom_error(context)
         
         # No faces detected
@@ -538,8 +540,8 @@ def convert_to_faceoff_error(error: Exception, context: Optional[Dict[str, Any]]
     if isinstance(error, FaceOffError):
         return error
 
-    # Out of Memory
-    if "out of memory" in error_str or isinstance(error, (torch.cuda.OutOfMemoryError, MemoryError)):
+    # Out of Memory (PyTorch, ONNX BFC arena, etc.)
+    if is_memory_error(error):
         return OutOfMemoryError(
             str(error),
             device_id=context.get('device_id', 0),
