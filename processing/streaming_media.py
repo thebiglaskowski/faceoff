@@ -37,6 +37,53 @@ from utils.temp_manager import get_temp_manager
 logger = logging.getLogger("FaceOff")
 
 
+def _stack_rgb_frames(frames: List[np.ndarray]) -> np.ndarray:
+    """Stack HxWx3 uint8 frames into contiguous NHWC batch for pinned encode."""
+    arrays: List[np.ndarray] = []
+    for i, frame in enumerate(frames):
+        arr = np.asarray(frame, dtype=np.uint8)
+        if arr.ndim != 3 or arr.shape[2] != 3:
+            raise ValueError(
+                f"frame {i}: expected HxWx3 uint8, got shape {arr.shape}"
+            )
+        arrays.append(arr)
+    return np.ascontiguousarray(np.stack(arrays, axis=0))
+
+
+def _write_chunk_frames(
+    writer: video_io.StreamingVideoWriter,
+    processed: List[np.ndarray],
+    *,
+    use_pinned_encode: bool,
+    frame_buffer: Optional[ChunkFrameBuffer],
+    gpu_paste_active: bool,
+) -> None:
+    """Encode a processed chunk, using pinned batch write only when safe."""
+    if not processed:
+        return
+
+    if (
+        use_pinned_encode
+        and gpu_paste_active
+        and frame_buffer is not None
+        and frame_buffer.has_gpu_batch()
+        and len(processed) == len(frame_buffer.frames)
+    ):
+        contiguous = frame_buffer.download_contiguous()
+        writer.write_frames_pinned(contiguous, len(processed))
+        return
+
+    if use_pinned_encode and len(processed) > 1:
+        try:
+            contiguous = _stack_rgb_frames(processed)
+            writer.write_frames_pinned(contiguous, contiguous.shape[0])
+            return
+        except ValueError as exc:
+            logger.warning("Pinned encode unavailable (%s) — per-frame fallback", exc)
+
+    writer.write_frames(processed)
+
+
 @dataclass
 class StreamingContext:
     media_type: str
@@ -155,7 +202,7 @@ def _process_chunk(
 
     if defer_download and frame_buffer is not None and frame_buffer.has_gpu_batch():
         return [], frame_buffer
-    return processed, None
+    return processed, frame_buffer
 
 
 def _process_chunk_with_oom_fallback(
@@ -351,7 +398,18 @@ def process_streaming(
         and config.streaming_hwaccel_decode
         and ctx.media_type == "video"
     )
-    use_pinned_encode = profile.pinned_encode if profile else use_gpu_chain
+    # Pinned NVENC expects one contiguous host batch. Multi-GPU uses CPU paste and
+    # per-GPU frame lists — keep pinned encode on single-GPU jobs only.
+    use_pinned_encode = bool(
+        (profile.pinned_encode if profile else use_gpu_chain)
+        and len(device_ids) == 1
+    )
+    gpu_paste_active = bool(
+        len(device_ids) == 1
+        and profile_flag(profile, "frame_retention", config.gpu_frame_retention_enabled)
+        and profile_flag(profile, "paste_on_gpu", config.gpu_paste_on_gpu)
+        and not face_mappings
+    )
 
     chunk_kwargs = dict(
         device_ids=device_ids,
@@ -404,16 +462,13 @@ def process_streaming(
                                 original_size=(reader.width, reader.height) if enhance else None,
                                 frame_buffer=frame_buffer,
                             )
-                            if use_pinned_encode and len(processed) > 1:
-                                contiguous = np.stack(processed, axis=0)
-                                if contiguous.flags["C_CONTIGUOUS"]:
-                                    writer.write_frames_pinned(
-                                        contiguous, len(processed)
-                                    )
-                                else:
-                                    writer.write_frames(processed)
-                            else:
-                                writer.write_frames(processed)
+                            _write_chunk_frames(
+                                writer,
+                                processed,
+                                use_pinned_encode=use_pinned_encode,
+                                frame_buffer=frame_buffer,
+                                gpu_paste_active=gpu_paste_active,
+                            )
                             total_frames += len(processed)
                             pbar.total = total_frames
                             pbar.n = total_frames

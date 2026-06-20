@@ -197,3 +197,48 @@ class TestFrameBatch:
         for inst in gpu_instances:
             for call in inst.swap_face_batch.call_args_list:
                 assert call.kwargs.get("paste_on_gpu") is False
+
+
+class TestPinnedEncode:
+    def test_stack_rgb_frames_rejects_scalars(self):
+        from processing.streaming_media import _stack_rgb_frames
+
+        with pytest.raises(ValueError, match="expected HxWx3"):
+            _stack_rgb_frames([np.uint8(7)] * 16)
+
+    def test_stack_rgb_frames_contiguous_batch(self):
+        from processing.streaming_media import _stack_rgb_frames
+
+        frames = [np.full((4, 6, 3), i, dtype=np.uint8) for i in range(3)]
+        batch = _stack_rgb_frames(frames)
+        assert batch.shape == (3, 4, 6, 3)
+        assert batch.flags["C_CONTIGUOUS"]
+
+    def test_write_chunk_frames_skips_pinned_when_disabled(self, mock_gpu):
+        from processing.streaming_media import _write_chunk_frames
+
+        writer = MagicMock()
+        frames = [np.full((8, 8, 3), i, dtype=np.uint8) for i in range(4)]
+        _write_chunk_frames(
+            writer,
+            frames,
+            use_pinned_encode=False,
+            frame_buffer=None,
+            gpu_paste_active=False,
+        )
+        writer.write_frames_pinned.assert_not_called()
+        writer.write_frames.assert_called_once_with(frames)
+
+    def test_write_chunk_frames_pinned_rejects_scalar_batch(self, mock_gpu):
+        from processing.streaming_media import _write_chunk_frames
+
+        writer = MagicMock()
+        _write_chunk_frames(
+            writer,
+            [np.uint8(i) for i in range(16)],
+            use_pinned_encode=True,
+            frame_buffer=None,
+            gpu_paste_active=False,
+        )
+        writer.write_frames_pinned.assert_not_called()
+        writer.write_frames.assert_called_once()
