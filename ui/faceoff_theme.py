@@ -14,14 +14,21 @@ GRADIO_THEME = gr.themes.Soft(
 CUSTOM_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Unbounded:wght@600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
-@keyframes fo-eq    { 0%,100% { transform: scaleY(.4); } 50% { transform: scaleY(1); } }
-@keyframes fo-pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes fo-eq      { 0%,100% { transform: scaleY(.4); } 50% { transform: scaleY(1); } }
+@keyframes fo-pulse   { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes fo-float   { 0%,100% { transform: translate(0,0); } 50% { transform: translate(20px,-24px); } }
+@keyframes fo-float2  { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-26px,18px); } }
+@keyframes fo-shimmer { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+@keyframes fo-orbit   { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* ----------------------------------------------------------------------- */
 /*  TOKENS                                                                  */
 /* ----------------------------------------------------------------------- */
+::selection { background: rgba(34,211,238,0.3); }
+
 :root,
-.dark {
+.dark,
+gradio-app {
     --fo-cyan:    #22D3EE;
     --fo-violet:  #8B5CF6;
     --fo-magenta: #F0398B;
@@ -52,20 +59,46 @@ gradio-app, .gradio-container { background: var(--fo-bg) !important; }
 
 .gradio-container {
     position: relative;
+    max-width: 1180px !important;
+    margin: 0 auto !important;
+    padding: 46px 30px 90px !important;
     font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif !important;
     color: var(--fo-text);
     overflow-x: hidden;
 }
-.gradio-container::before {
-    content: "";
-    position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background:
-        radial-gradient(560px 560px at 14% -8%,  rgba(139,92,246,0.40), transparent 62%),
-        radial-gradient(520px 520px at 92% -4%,  rgba(34,211,238,0.32),  transparent 62%),
-        radial-gradient(680px 680px at 50% 118%, rgba(240,57,139,0.28),  transparent 64%);
-    filter: blur(8px);
-}
 .gradio-container > * { position: relative; z-index: 1; }
+
+/* Animated aurora + dot grid (matches FaceOff.dc.html) */
+.fo-aurora {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+}
+.fo-aurora-blob {
+    position: absolute; border-radius: 50%; filter: blur(40px);
+}
+.fo-aurora-blob-1 {
+    top: -180px; left: 8%; width: 560px; height: 560px;
+    background: radial-gradient(circle, rgba(139,92,246,0.42), transparent 62%);
+    animation: fo-float 14s ease-in-out infinite;
+}
+.fo-aurora-blob-2 {
+    top: -120px; right: 4%; width: 520px; height: 520px;
+    background: radial-gradient(circle, rgba(34,211,238,0.34), transparent 62%);
+    filter: blur(44px);
+    animation: fo-float2 16s ease-in-out infinite;
+}
+.fo-aurora-blob-3 {
+    bottom: -220px; left: 38%; width: 680px; height: 680px;
+    background: radial-gradient(circle, rgba(240,57,139,0.30), transparent 64%);
+    filter: blur(52px);
+    animation: fo-float 18s ease-in-out infinite;
+}
+.fo-aurora-grid {
+    position: absolute; inset: 0; opacity: 0.5;
+    background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(circle at 50% 30%, black, transparent 78%);
+    -webkit-mask-image: radial-gradient(circle at 50% 30%, black, transparent 78%);
+}
 
 /* ----------------------------------------------------------------------- */
 /*  HEADER (keep your elem_classes: header-text / header-subtitle)          */
@@ -255,14 +288,29 @@ input[type="range"]::-webkit-slider-thumb { background: var(--fo-cyan) !importan
 }
 """
 
+FACEOFF_AURORA_HTML = """
+<div class="fo-aurora" aria-hidden="true">
+  <div class="fo-aurora-blob fo-aurora-blob-1"></div>
+  <div class="fo-aurora-blob fo-aurora-blob-2"></div>
+  <div class="fo-aurora-blob fo-aurora-blob-3"></div>
+  <div class="fo-aurora-grid"></div>
+</div>
+"""
+
 FACEOFF_HEADER_HTML = """
-<div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:4px;">
-  <div style="position:relative;width:58px;height:58px;border-radius:17px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(14px);box-shadow:0 8px 30px rgba(139,92,246,.35),inset 0 1px 0 rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;gap:5px;">
-    <div style="width:6px;height:27px;border-radius:3px;background:linear-gradient(#22d3ee,#8b5cf6);box-shadow:0 0 12px rgba(34,211,238,.5);animation:fo-eq 1.1s ease-in-out infinite;"></div>
-    <div style="width:6px;height:27px;border-radius:3px;background:linear-gradient(#8b5cf6,#f0398b);box-shadow:0 0 12px rgba(139,92,246,.5);animation:fo-eq 1.1s ease-in-out infinite .22s;"></div>
-    <div style="width:6px;height:27px;border-radius:3px;background:linear-gradient(#f0398b,#22d3ee);box-shadow:0 0 12px rgba(240,57,139,.5);animation:fo-eq 1.1s ease-in-out infinite .44s;"></div>
-    <div style="position:absolute;inset:-6px;border-radius:21px;border:1px solid rgba(34,211,238,.18);animation:fo-pulse 3.2s ease-in-out infinite;"></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:16px;margin-bottom:34px;">
+  <div style="display:flex;align-items:center;gap:18px;">
+    <div style="position:relative;width:58px;height:58px;border-radius:17px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(14px);box-shadow:0 8px 30px rgba(139,92,246,.35),inset 0 1px 0 rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;gap:5px;">
+      <div style="width:6px;height:27px;border-radius:3px;background:linear-gradient(#22d3ee,#8b5cf6);box-shadow:0 0 12px rgba(34,211,238,.5);animation:fo-eq 1.1s ease-in-out infinite;"></div>
+      <div style="width:6px;height:27px;border-radius:3px;background:linear-gradient(#8b5cf6,#f0398b);box-shadow:0 0 12px rgba(139,92,246,.5);animation:fo-eq 1.1s ease-in-out infinite .22s;"></div>
+      <div style="width:6px;height:27px;border-radius:3px;background:linear-gradient(#f0398b,#22d3ee);box-shadow:0 0 12px rgba(240,57,139,.5);animation:fo-eq 1.1s ease-in-out infinite .44s;"></div>
+      <div style="position:absolute;inset:-6px;border-radius:21px;border:1px solid rgba(34,211,238,.18);animation:fo-pulse 3.2s ease-in-out infinite;"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;line-height:1;">
+      <div style="font-family:'Unbounded',sans-serif;font-size:32px;font-weight:700;letter-spacing:-.02em;background-image:linear-gradient(100deg,#5eead4,#22d3ee 28%,#8b5cf6 62%,#f0398b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;background-size:200% auto;animation:fo-shimmer 8s linear infinite;">Faceoff</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.42em;color:#6b6f88;text-transform:uppercase;margin-top:7px;">Neural&nbsp;Face&nbsp;Engine</div>
+    </div>
   </div>
-  <div style="font-family:'Unbounded',sans-serif;font-weight:700;font-size:2.1em;letter-spacing:-.02em;background-image:linear-gradient(100deg,#5eead4,#22d3ee 28%,#8b5cf6 62%,#f0398b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">Faceoff</div>
+  <div class="header-subtitle" style="font-size:15px;color:#9396b0;letter-spacing:.01em;margin-bottom:0 !important;">AI Face Swapper — advanced face swapping with enhancement options</div>
 </div>
 """

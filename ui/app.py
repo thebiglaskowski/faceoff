@@ -49,7 +49,12 @@ from ui.handlers.processing_handlers import (
     clear_face_mappings_video,
 )
 from ui.helpers.preview import validate_target_video_upload
-from ui.faceoff_theme import CUSTOM_CSS, FACEOFF_HEADER_HTML, GRADIO_THEME
+from ui.faceoff_theme import (
+    CUSTOM_CSS,
+    FACEOFF_AURORA_HTML,
+    FACEOFF_HEADER_HTML,
+    GRADIO_THEME,
+)
 
 # Set up logging
 setup_logging()
@@ -254,11 +259,7 @@ def create_app():
     """
 
     with gr.Blocks(title="FaceOff - Face Swapper") as demo:
-        gr.HTML(FACEOFF_HEADER_HTML)
-        gr.Markdown(
-            "AI Face Swapper — advanced face swapping with enhancement options",
-            elem_classes=["header-subtitle"],
-        )
+        gr.HTML(FACEOFF_AURORA_HTML + FACEOFF_HEADER_HTML)
         
         with gr.Tabs():
             # Create Image Tab
