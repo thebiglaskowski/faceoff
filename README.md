@@ -25,7 +25,7 @@ Read more at [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://t
 - **Streaming pipeline**: Chunked decode → swap → enhance → encode (`processing/streaming_media.py`); bounded RAM via `streaming.chunk_size`
 - **Multi-GPU face swap**: VRAM-aware scheduling across CUDA devices (`processing/gpu_scheduler.py`)
 - **Wave 3 GPU pipeline** (phases 1–3): Chunk GPU retention, GPU paste-back, GPU downscale detection, pinned NVDEC decode, GPU HAT enhancement chain — see `config.yaml` `gpu.*` and `streaming.zero_copy_enabled`
-- **Wave 5 NVDEC**: Native PyNvVideoCodec decode when installed (`uv sync --extra nvcodec`, `streaming.nvcodec_decode`) — falls back to FFmpeg CUDA hwaccel
+- **Wave 5 NVDEC**: Native PyNvVideoCodec decode (`streaming.nvcodec_decode`) — falls back to FFmpeg CUDA hwaccel if unavailable
 - **TensorRT**: Optional ORT TensorRT EP with persistent engine cache (CUDA fallback when unavailable)
 - **Memory management**: Auto cache clearing, OOM batch reduction, LRU model caches
 
@@ -226,7 +226,7 @@ faceoff/
 
 ### v2.12.0 (Current) — Wave 5 NVDEC
 
-- **PyNvVideoCodec decode** (`streaming.nvcodec_decode`): `SimpleDecoder` NVDEC path for video when `pynvvideocodec` is installed (`uv sync --extra nvcodec`)
+- **PyNvVideoCodec decode** (`streaming.nvcodec_decode`): `SimpleDecoder` NVDEC path for video via `pynvvideocodec`
 - Auto workload profiles enable NVCodec for video jobs; FFmpeg CUDA hwaccel remains fallback
 - Pinned decode buffers work with both backends via `open_streaming_reader()`
 

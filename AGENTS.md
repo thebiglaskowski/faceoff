@@ -106,7 +106,7 @@ UI must never import `core/` directly; it goes through `processing/orchestrator.
 - Wave 3 phase 2: GPU paste-back + single D2H per chunk (`gpu.paste_on_gpu`, `core/face_paste_gpu.py`)
 - Wave 3 phase 3: GPU detection (`gpu.detection_on_gpu`), NVDEC+pinned decode (`streaming.zero_copy_enabled`), GPU HAT chain (`gpu.enhancement_chain_enabled`)
 - Wave 4: auto workload profiles (`gpu.auto_workload_tune`, `processing/workload_profile.py`), RealESRGAN GPU chain (`core/gpu_realesrgan.py`)
-- Wave 5: PyNvVideoCodec NVDEC decode (`streaming.nvcodec_decode`, `utils/gpu_decode.py`, optional `uv sync --extra nvcodec`)
+- Wave 5: PyNvVideoCodec NVDEC decode (`streaming.nvcodec_decode`, `utils/gpu_decode.py`, `pynvvideocodec` in main deps)
 - FFmpeg stderr drain fix (`utils/video_io.py`) — prevents streaming encode/decode hangs
 
 ---
