@@ -25,6 +25,7 @@ Read more at [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://t
 - **Streaming pipeline**: Chunked decode → swap → enhance → encode (`processing/streaming_media.py`); bounded RAM via `streaming.chunk_size`
 - **Multi-GPU face swap**: VRAM-aware scheduling across CUDA devices (`processing/gpu_scheduler.py`)
 - **Wave 3 GPU pipeline** (phases 1–3): Chunk GPU retention, GPU paste-back, GPU downscale detection, pinned NVDEC decode, GPU HAT enhancement chain — see `config.yaml` `gpu.*` and `streaming.zero_copy_enabled`
+- **Wave 5 NVDEC**: Native PyNvVideoCodec decode when installed (`uv sync --extra nvcodec`, `streaming.nvcodec_decode`) — falls back to FFmpeg CUDA hwaccel
 - **TensorRT**: Optional ORT TensorRT EP with persistent engine cache (CUDA fallback when unavailable)
 - **Memory management**: Auto cache clearing, OOM batch reduction, LRU model caches
 
@@ -223,7 +224,13 @@ faceoff/
 
 ## Version History
 
-### v2.11.0 (Current) — Wave 4 Auto Workloads
+### v2.12.0 (Current) — Wave 5 NVDEC
+
+- **PyNvVideoCodec decode** (`streaming.nvcodec_decode`): `SimpleDecoder` NVDEC path for video when `pynvvideocodec` is installed (`uv sync --extra nvcodec`)
+- Auto workload profiles enable NVCodec for video jobs; FFmpeg CUDA hwaccel remains fallback
+- Pinned decode buffers work with both backends via `open_streaming_reader()`
+
+### v2.11.0 — Wave 4 Auto Workloads
 
 - **Automatic workload profiles** (`gpu.auto_workload_tune`): swap-only, HAT/RealESRGAN/SwinIR chains, restore-faces, face-mapping paths pick chunk size and GPU flags per job
 - **RealESRGAN GPU enhancement chain** — frames stay on GPU through swap → enhance → single D2H

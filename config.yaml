@@ -178,6 +178,7 @@ streaming:
   gif_decode_fps: 10 # GIF frame extraction rate for processing
   hwaccel_decode: true # FFmpeg CUDA hwaccel when available (falls back to software)
   zero_copy_enabled: true # NVDEC cuda output + pinned decode buffers (phase 3)
+  nvcodec_decode: true # PyNvVideoCodec SimpleDecoder when installed (Wave 5)
   nvenc_encode: true # h264_nvenc for video output when available
   video_codec: "libx264" # Fallback / forced software encoder
   video_preset: "medium"

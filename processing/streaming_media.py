@@ -272,7 +272,7 @@ def process_streaming(
     if face_mappings:
         from utils.validation import validate_face_mappings_or_raise
 
-        with video_io.StreamingFrameReader(
+        with video_io.open_streaming_reader(
             ctx.dest_path,
             fps=ctx.fps if ctx.media_type == "gif" else None,
             hwaccel=config.streaming_hwaccel_decode,
@@ -344,6 +344,11 @@ def process_streaming(
         profile_flag(profile, "zero_copy", config.streaming_zero_copy_enabled)
         and config.streaming_hwaccel_decode
     )
+    use_nvcodec = (
+        profile_flag(profile, "use_nvcodec_decode", config.streaming_nvcodec_decode)
+        and config.streaming_hwaccel_decode
+        and ctx.media_type == "video"
+    )
     use_pinned_encode = profile.pinned_encode if profile else use_gpu_chain
 
     chunk_kwargs = dict(
@@ -361,12 +366,13 @@ def process_streaming(
     )
 
     try:
-        with video_io.StreamingFrameReader(
+        with video_io.open_streaming_reader(
             ctx.dest_path,
             fps=decode_fps,
             hwaccel=config.streaming_hwaccel_decode,
             zero_copy=use_zero_copy,
             pinned_pool_size=chunk_size if use_zero_copy else 0,
+            use_nvcodec=use_nvcodec,
         ) as reader:
             if ctx.media_type == "video":
                 with video_io.StreamingVideoWriter(

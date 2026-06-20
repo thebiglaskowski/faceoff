@@ -277,6 +277,10 @@ class Config:
         return self.get('streaming', 'zero_copy_enabled', default=False)
 
     @property
+    def streaming_nvcodec_decode(self) -> bool:
+        return self.get('streaming', 'nvcodec_decode', default=True)
+
+    @property
     def streaming_nvenc_encode(self) -> bool:
         return self.get('streaming', 'nvenc_encode', default=True)
 

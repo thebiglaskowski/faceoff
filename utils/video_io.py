@@ -351,6 +351,49 @@ class StreamingFrameReader:
         return False
 
 
+def open_streaming_reader(
+    media_path: str,
+    fps: Optional[float] = None,
+    hwaccel: bool = False,
+    zero_copy: bool = False,
+    pinned_pool_size: int = 0,
+    use_nvcodec: bool = False,
+):
+    """
+    Open a streaming frame reader, preferring PyNvVideoCodec NVDEC when requested.
+
+    Falls back to FFmpeg on missing package, init failure, or non-video sources.
+    """
+    if use_nvcodec:
+        from utils.gpu_decode import NvCodecFrameReader, nvcodec_decode_available
+
+        if nvcodec_decode_available():
+            try:
+                return NvCodecFrameReader(
+                    media_path,
+                    fps=fps,
+                    pinned_pool_size=pinned_pool_size,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "NVCodec decode unavailable for %s, falling back to FFmpeg: %s",
+                    Path(media_path).name,
+                    exc,
+                )
+        else:
+            logger.debug(
+                "NVCodec decode requested but PyNvVideoCodec is not installed"
+            )
+
+    return StreamingFrameReader(
+        media_path,
+        fps=fps,
+        hwaccel=hwaccel,
+        zero_copy=zero_copy,
+        pinned_pool_size=pinned_pool_size,
+    )
+
+
 class StreamingVideoWriter:
     """Encode raw RGB frames to MP4 via FFmpeg stdin pipe."""
 
