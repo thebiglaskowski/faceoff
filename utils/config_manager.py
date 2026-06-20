@@ -143,6 +143,14 @@ class Config:
     @property
     def gpu_paste_on_gpu(self) -> bool:
         return self.get('gpu', 'paste_on_gpu', default=False)
+
+    @property
+    def gpu_detection_on_gpu(self) -> bool:
+        return self.get('gpu', 'detection_on_gpu', default=False)
+
+    @property
+    def gpu_enhancement_chain_enabled(self) -> bool:
+        return self.get('gpu', 'enhancement_chain_enabled', default=False)
     
     @property
     def tensorrt_fp16(self) -> bool:
@@ -259,6 +267,10 @@ class Config:
     @property
     def streaming_hwaccel_decode(self) -> bool:
         return self.get('streaming', 'hwaccel_decode', default=True)
+
+    @property
+    def streaming_zero_copy_enabled(self) -> bool:
+        return self.get('streaming', 'zero_copy_enabled', default=False)
 
     @property
     def streaming_nvenc_encode(self) -> bool:

@@ -40,6 +40,15 @@ class TestStreamingVideoIO:
         video_io._NVENC_AVAILABLE = None
         assert isinstance(video_io.nvenc_available(), bool)
 
+    def test_cuda_hwaccel_available_does_not_crash(self):
+        video_io._CUDA_HWACCEL_AVAILABLE = None
+        assert isinstance(video_io.cuda_hwaccel_available(), bool)
+
+    def test_zero_copy_decode_filter_includes_hwdownload(self):
+        vf = video_io._decode_video_filter(30.0, zero_copy=True)
+        assert "hwdownload" in vf
+        assert "fps=30.0" in vf
+
     def test_streaming_roundtrip_small_video(self, tmp_path):
         """Write then read back a few frames via raw pipe."""
         out = tmp_path / "out.mp4"

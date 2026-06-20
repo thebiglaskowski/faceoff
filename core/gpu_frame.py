@@ -57,6 +57,13 @@ class ChunkFrameBuffer:
         host = self._gpu_batch.detach().cpu().numpy()
         return [host[i] for i in range(host.shape[0])]
 
+    def download_contiguous(self) -> np.ndarray:
+        """Single D2H copy as contiguous NHWC uint8 (for pinned NVENC pipe)."""
+        if self._gpu_batch is None:
+            return np.stack([f.copy() for f in self.frames], axis=0)
+        torch.cuda.synchronize(self.device_id)
+        return np.ascontiguousarray(self._gpu_batch.detach().cpu().numpy())
+
     def replace_from_numpy(self, frames: List[np.ndarray]) -> None:
         """Update host frames and drop stale GPU batch."""
         self.frames = frames

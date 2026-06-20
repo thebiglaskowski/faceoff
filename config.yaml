@@ -39,6 +39,10 @@ gpu:
   frame_retention_enabled: true
   # Wave 3 phase 2: paste swap results on GPU; single D2H per chunk before encode
   paste_on_gpu: true
+  # Wave 3 phase 3: GPU downscale detection + minimal D2H for InsightFace
+  detection_on_gpu: true
+  # Wave 3 phase 3: keep swapped frames on GPU through HAT enhancement (single D2H after)
+  enhancement_chain_enabled: true
 
 # =============================================================================
 # Face Detection Settings
@@ -171,6 +175,7 @@ streaming:
   video_face_enhance: false # GFPGAN inside RealESRGAN per frame (~2x slower); use restore_faces instead
   gif_decode_fps: 10 # GIF frame extraction rate for processing
   hwaccel_decode: true # FFmpeg CUDA hwaccel when available (falls back to software)
+  zero_copy_enabled: true # NVDEC cuda output + pinned decode buffers (phase 3)
   nvenc_encode: true # h264_nvenc for video output when available
   video_codec: "libx264" # Fallback / forced software encoder
   video_preset: "medium"

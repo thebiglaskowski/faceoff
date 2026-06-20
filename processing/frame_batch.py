@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 from core.face_processor import FaceTracker, filter_faces_by_confidence
+from core.gpu_detection import detect_faces_from_gpu
 from core.gpu_frame import ChunkFrameBuffer
 from core.media_processor import MediaProcessor
 from core.model_pool import GPUModelInstance
@@ -60,18 +61,59 @@ def _build_detect_fn(
     return lambda f: processor.get_faces(f)
 
 
+def _gpu_detection_enabled(
+    frame_buffer: Optional[ChunkFrameBuffer],
+    swap_gpu: Optional[GPUModelInstance],
+) -> bool:
+    return bool(
+        frame_buffer is not None
+        and config.gpu_frame_retention_enabled
+        and config.gpu_detection_on_gpu
+        and swap_gpu is not None
+        and torch.cuda.is_available()
+    )
+
+
 def _detect_faces_for_batch(
     frames: List[np.ndarray],
     detect_fn,
     face_confidence: float,
     face_tracker: Optional[FaceTracker],
+    *,
+    frame_buffer: Optional[ChunkFrameBuffer] = None,
+    frame_indices: Optional[List[int]] = None,
+    swap_gpu: Optional[GPUModelInstance] = None,
+    adaptive_processor: Optional[ResolutionAdaptiveProcessor] = None,
 ) -> list:
-    workers = max(1, config.workers_per_gpu) if len(frames) > 1 else 1
-    if workers > 1:
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            all_dst_faces = list(executor.map(detect_fn, frames))
+    use_gpu_det = _gpu_detection_enabled(frame_buffer, swap_gpu)
+    if frame_indices is None:
+        frame_indices = list(range(len(frames)))
+
+    if use_gpu_det and frame_buffer is not None:
+        all_dst_faces = []
+        for local_idx, frame in enumerate(frames):
+            buf_idx = (
+                frame_indices[local_idx]
+                if local_idx < len(frame_indices)
+                else local_idx
+            )
+            try:
+                faces = detect_faces_from_gpu(
+                    swap_gpu,
+                    frame_buffer.frame_gpu(buf_idx),
+                    adaptive_processor,
+                )
+            except Exception as exc:
+                logger.debug("GPU detection fallback for frame %d: %s", buf_idx, exc)
+                faces = detect_fn(frame)
+            all_dst_faces.append(faces)
     else:
-        all_dst_faces = [detect_fn(frame) for frame in frames]
+        workers = max(1, config.workers_per_gpu) if len(frames) > 1 else 1
+        if workers > 1:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                all_dst_faces = list(executor.map(detect_fn, frames))
+        else:
+            all_dst_faces = [detect_fn(frame) for frame in frames]
     all_dst_faces = [
         filter_faces_by_confidence(faces, face_confidence) for faces in all_dst_faces
     ]
@@ -140,6 +182,7 @@ def process_frames_batch(
     gpu_instance: Optional[GPUModelInstance] = None,
     frame_buffer: Optional[ChunkFrameBuffer] = None,
     frame_indices: Optional[List[int]] = None,
+    defer_download: bool = False,
 ) -> List[np.ndarray]:
     """Process a batch of frames on a single GPU with batched multi-face swap."""
     if frame_buffer is not None and config.gpu_frame_retention_enabled:
@@ -155,7 +198,14 @@ def process_frames_batch(
 
     detect_fn = _build_detect_fn(adaptive_processor, processor, gpu_instance)
     all_dst_faces = _detect_faces_for_batch(
-        frames, detect_fn, face_confidence, face_tracker
+        frames,
+        detect_fn,
+        face_confidence,
+        face_tracker,
+        frame_buffer=frame_buffer,
+        frame_indices=frame_indices,
+        swap_gpu=swap_gpu,
+        adaptive_processor=adaptive_processor,
     )
 
     results = []
@@ -186,6 +236,7 @@ def process_frames_batch(
 
     if (
         gpu_paste
+        and not defer_download
         and frame_buffer is not None
         and frame_buffer.has_gpu_batch()
         and len(frames) == len(frame_buffer.frames)
@@ -206,6 +257,7 @@ def process_chunk_multi_gpu(
     adaptive_processor: Optional[ResolutionAdaptiveProcessor] = None,
     batch_size: int = 8,
     frame_buffer: Optional[ChunkFrameBuffer] = None,
+    defer_download: bool = False,
 ) -> List[np.ndarray]:
     """Process a chunk across multiple GPUs with VRAM-weighted frame assignment."""
     if len(device_ids) <= 1:
@@ -219,6 +271,7 @@ def process_chunk_multi_gpu(
             adaptive_processor=adaptive_processor,
             gpu_instance=gpu_instances[0],
             frame_buffer=frame_buffer,
+            defer_download=defer_download,
         )
 
     swap_gpu = gpu_instances[0] if gpu_instances else None
@@ -258,6 +311,7 @@ def process_chunk_multi_gpu(
                 gpu_instance=gpu_inst,
                 frame_buffer=chunk_buf,
                 frame_indices=batch_indices,
+                defer_download=defer_download,
             )
             if not gpu_paste:
                 with lock:
@@ -272,7 +326,12 @@ def process_chunk_multi_gpu(
         for fut in futures:
             fut.result()
 
-    if gpu_paste and frame_buffer is not None and frame_buffer.has_gpu_batch():
+    if (
+        gpu_paste
+        and not defer_download
+        and frame_buffer is not None
+        and frame_buffer.has_gpu_batch()
+    ):
         return frame_buffer.download_all()
 
     return [r if r is not None else frames[i] for i, r in enumerate(results)]

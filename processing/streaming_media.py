@@ -77,6 +77,16 @@ def _effective_chunk_size(
     return size
 
 
+def _gpu_chain_active(enhance: bool, restoration_session) -> bool:
+    return bool(
+        enhance
+        and config.gpu_enhancement_chain_enabled
+        and config.gpu_frame_retention_enabled
+        and config.gpu_paste_on_gpu
+        and restoration_session is None
+    )
+
+
 def _process_chunk(
     chunk: List[np.ndarray],
     *,
@@ -89,13 +99,14 @@ def _process_chunk(
     adaptive_processor,
     batch_size: int,
     face_tracker: FaceTracker,
-) -> List[np.ndarray]:
+    defer_download: bool = False,
+) -> Tuple[List[np.ndarray], Optional[ChunkFrameBuffer]]:
     frame_buffer = None
     if config.gpu_frame_retention_enabled and device_ids:
         frame_buffer = ChunkFrameBuffer(chunk, device_ids[0])
 
     if len(device_ids) > 1 and gpu_instances:
-        return process_chunk_multi_gpu(
+        processed = process_chunk_multi_gpu(
             chunk,
             src_faces,
             device_ids,
@@ -106,25 +117,32 @@ def _process_chunk(
             adaptive_processor=adaptive_processor,
             batch_size=batch_size,
             frame_buffer=frame_buffer,
+            defer_download=defer_download,
         )
-    return process_frames_batch(
-        chunk,
-        src_faces,
-        face_confidence,
-        face_mappings,
-        face_tracker,
-        adaptive_processor,
-        processor=processor,
-        gpu_instance=gpu_instances[0] if gpu_instances else None,
-        frame_buffer=frame_buffer,
-    )
+    else:
+        processed = process_frames_batch(
+            chunk,
+            src_faces,
+            face_confidence,
+            face_mappings,
+            face_tracker,
+            adaptive_processor,
+            processor=processor,
+            gpu_instance=gpu_instances[0] if gpu_instances else None,
+            frame_buffer=frame_buffer,
+            defer_download=defer_download,
+        )
+
+    if defer_download and frame_buffer is not None and frame_buffer.has_gpu_batch():
+        return [], frame_buffer
+    return processed, None
 
 
 def _process_chunk_with_oom_fallback(
     chunk: List[np.ndarray],
     memory_manager: MemoryManager,
     **kwargs,
-) -> List[np.ndarray]:
+) -> Tuple[List[np.ndarray], Optional[ChunkFrameBuffer]]:
     try:
         return _process_chunk(chunk, **kwargs)
     except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
@@ -134,15 +152,17 @@ def _process_chunk_with_oom_fallback(
         memory_manager.clear_cache(force=True)
         results = []
         tracker: Optional[FaceTracker] = kwargs.get("face_tracker")
+        fallback_kwargs = {k: v for k, v in kwargs.items() if k != "face_tracker"}
+        fallback_kwargs["defer_download"] = False
         for frame in chunk:
             single_tracker = FaceTracker(iou_threshold=config.iou_threshold) if tracker else None
-            batch = _process_chunk(
+            batch, _ = _process_chunk(
                 [frame],
                 face_tracker=single_tracker or tracker,
-                **{k: v for k, v in kwargs.items() if k != "face_tracker"},
+                **fallback_kwargs,
             )
             results.extend(batch)
-        return results
+        return results, None
 
 
 def _postprocess_chunk(
@@ -152,7 +172,16 @@ def _postprocess_chunk(
     enhancer: Optional[InMemoryEnhancer],
     maintain_dimensions: bool,
     original_size: Optional[Tuple[int, int]],
+    frame_buffer: Optional[ChunkFrameBuffer] = None,
 ) -> List[np.ndarray]:
+    if frame_buffer is not None and frame_buffer.has_gpu_batch() and enhancer:
+        enhancer.enhance_chunk_buffer(
+            frame_buffer,
+            maintain_dimensions=maintain_dimensions,
+            original_size=original_size,
+        )
+        return frame_buffer.download_all()
+
     if restoration_session:
         processed = restoration_session.restore_rgb_frames(processed)
     if enhancer:
@@ -271,6 +300,9 @@ def process_streaming(
     total_frames = 0
     decode_fps = ctx.fps if ctx.media_type == "gif" else None
 
+    use_gpu_chain = _gpu_chain_active(enhance, restoration_session)
+    use_zero_copy = config.streaming_zero_copy_enabled and config.streaming_hwaccel_decode
+
     chunk_kwargs = dict(
         device_ids=device_ids,
         gpu_instances=gpu_instances,
@@ -281,6 +313,7 @@ def process_streaming(
         adaptive_processor=adaptive_processor,
         batch_size=batch_size,
         face_tracker=face_tracker,
+        defer_download=use_gpu_chain,
     )
 
     try:
@@ -288,6 +321,8 @@ def process_streaming(
             ctx.dest_path,
             fps=decode_fps,
             hwaccel=config.streaming_hwaccel_decode,
+            zero_copy=use_zero_copy,
+            pinned_pool_size=chunk_size if use_zero_copy else 0,
         ) as reader:
             if ctx.media_type == "video":
                 with video_io.StreamingVideoWriter(
@@ -306,7 +341,7 @@ def process_streaming(
                             chunk = reader.read_chunk(chunk_size)
                             if not chunk:
                                 break
-                            processed = _process_chunk_with_oom_fallback(
+                            processed, frame_buffer = _process_chunk_with_oom_fallback(
                                 chunk, memory_manager, **chunk_kwargs
                             )
                             processed = _postprocess_chunk(
@@ -315,8 +350,18 @@ def process_streaming(
                                 enhancer=enhancer,
                                 maintain_dimensions=enhance,
                                 original_size=(reader.width, reader.height) if enhance else None,
+                                frame_buffer=frame_buffer,
                             )
-                            writer.write_frames(processed)
+                            if use_gpu_chain and len(processed) > 1:
+                                contiguous = np.stack(processed, axis=0)
+                                if contiguous.flags["C_CONTIGUOUS"]:
+                                    writer.write_frames_pinned(
+                                        contiguous, len(processed)
+                                    )
+                                else:
+                                    writer.write_frames(processed)
+                            else:
+                                writer.write_frames(processed)
                             total_frames += len(processed)
                             pbar.total = total_frames
                             pbar.n = total_frames
@@ -334,7 +379,7 @@ def process_streaming(
                             chunk = reader.read_chunk(chunk_size)
                             if not chunk:
                                 break
-                            processed = _process_chunk_with_oom_fallback(
+                            processed, frame_buffer = _process_chunk_with_oom_fallback(
                                 chunk, memory_manager, **chunk_kwargs
                             )
                             processed = _postprocess_chunk(
@@ -343,6 +388,7 @@ def process_streaming(
                                 enhancer=enhancer,
                                 maintain_dimensions=True,
                                 original_size=(reader.width, reader.height),
+                                frame_buffer=frame_buffer,
                             )
                             gif_writer.write_frames(processed)
                             total_frames += len(processed)

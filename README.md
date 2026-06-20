@@ -24,7 +24,7 @@ Read more at [https://thebiglaskowski.com/posts/face-swapping-with-ai](https://t
 
 - **Streaming pipeline**: Chunked decode → swap → enhance → encode (`processing/streaming_media.py`); bounded RAM via `streaming.chunk_size`
 - **Multi-GPU face swap**: VRAM-aware scheduling across CUDA devices (`processing/gpu_scheduler.py`)
-- **Wave 3 GPU frame retention** (phase 1): One GPU upload per decode chunk + swapper ONNX IoBinding via DLPack — `gpu.frame_retention_enabled: true` (default)
+- **Wave 3 GPU pipeline** (phases 1–3): Chunk GPU retention, GPU paste-back, GPU downscale detection, pinned NVDEC decode, GPU HAT enhancement chain — see `config.yaml` `gpu.*` and `streaming.zero_copy_enabled`
 - **TensorRT**: Optional ORT TensorRT EP with persistent engine cache (CUDA fallback when unavailable)
 - **Memory management**: Auto cache clearing, OOM batch reduction, LRU model caches
 
@@ -223,7 +223,11 @@ faceoff/
 
 ## Version History
 
-### v2.9.0 (Current) — Streaming & Wave 3
+### v2.10.0 (Current) — Wave 3 Complete
+
+- **Wave 3 phase 3**: GPU detection (`gpu.detection_on_gpu`), NVDEC+pinned decode (`streaming.zero_copy_enabled`), GPU HAT enhancement chain (`gpu.enhancement_chain_enabled`)
+
+### v2.9.0 — Streaming & Wave 3 (phases 1–2)
 
 - **Streaming pipeline** replaces legacy `async_pipeline.py` for video/GIF
 - **Wave 3 phase 1**: `ChunkFrameBuffer` + swapper ORT IoBinding (`gpu.frame_retention_enabled`)

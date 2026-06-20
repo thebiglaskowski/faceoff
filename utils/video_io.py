@@ -208,9 +208,14 @@ def nvenc_available() -> bool:
     return _NVENC_AVAILABLE
 
 
-def _hwaccel_decode_args(enabled: bool) -> List[str]:
-    if not enabled:
-        return []
+_CUDA_HWACCEL_AVAILABLE: Optional[bool] = None
+
+
+def cuda_hwaccel_available() -> bool:
+    """Return True when FFmpeg reports CUDA hwaccel support."""
+    global _CUDA_HWACCEL_AVAILABLE
+    if _CUDA_HWACCEL_AVAILABLE is not None:
+        return _CUDA_HWACCEL_AVAILABLE
     try:
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-hwaccels"],
@@ -218,11 +223,27 @@ def _hwaccel_decode_args(enabled: bool) -> List[str]:
             text=True,
             timeout=10,
         )
-        if result.returncode == 0 and "cuda" in result.stdout:
-            return ["-hwaccel", "cuda"]
+        _CUDA_HWACCEL_AVAILABLE = (
+            result.returncode == 0 and "cuda" in result.stdout.lower()
+        )
     except Exception:
-        pass
-    return []
+        _CUDA_HWACCEL_AVAILABLE = False
+    return _CUDA_HWACCEL_AVAILABLE
+
+
+def _hwaccel_decode_args(enabled: bool, zero_copy: bool = False) -> List[str]:
+    if not enabled or not cuda_hwaccel_available():
+        return []
+    if zero_copy:
+        return ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
+    return ["-hwaccel", "cuda"]
+
+
+def _decode_video_filter(fps: float, zero_copy: bool) -> str:
+    vf = f"fps={fps}"
+    if zero_copy:
+        vf = f"hwdownload,format=rgb24,{vf}"
+    return vf
 
 
 class StreamingFrameReader:
@@ -233,6 +254,8 @@ class StreamingFrameReader:
         media_path: str,
         fps: Optional[float] = None,
         hwaccel: bool = False,
+        zero_copy: bool = False,
+        pinned_pool_size: int = 0,
     ):
         self.media_path = str(media_path)
         meta = probe_video(self.media_path)
@@ -245,9 +268,30 @@ class StreamingFrameReader:
             raise ValueError(f"Invalid media dimensions for {self.media_path}")
 
         self._frame_bytes = self.width * self.height * 3
+        self._pinned_pool = None
+        if pinned_pool_size > 0:
+            from utils.pinned_pool import PinnedFramePool
+
+            self._pinned_pool = PinnedFramePool(
+                self.height, self.width, pinned_pool_size
+            )
+
+        use_zero_copy = bool(zero_copy and hwaccel)
         cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
-        cmd.extend(_hwaccel_decode_args(hwaccel))
-        cmd.extend(["-i", self.media_path, "-vf", f"fps={self.fps}", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"])
+        cmd.extend(_hwaccel_decode_args(hwaccel, zero_copy=use_zero_copy))
+        cmd.extend(
+            [
+                "-i",
+                self.media_path,
+                "-vf",
+                _decode_video_filter(self.fps, use_zero_copy),
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "-",
+            ]
+        )
         self._proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -256,24 +300,32 @@ class StreamingFrameReader:
         self._stderr_drain = _FfmpegStderrDrain(self._proc, label="decode")
         self.frames_read = 0
         logger.info(
-            "Streaming decode started: %s (%dx%d @ %.2f fps)",
+            "Streaming decode started: %s (%dx%d @ %.2f fps, cuda=%s, pinned=%s)",
             Path(self.media_path).name,
             self.width,
             self.height,
             self.fps,
+            use_zero_copy,
+            self._pinned_pool is not None,
         )
 
     def read_chunk(self, count: int) -> List[np.ndarray]:
         frames: List[np.ndarray] = []
         if self._proc.stdout is None:
             return frames
-        for _ in range(count):
+        for i in range(count):
             data = self._proc.stdout.read(self._frame_bytes)
             if len(data) < self._frame_bytes:
                 break
-            frame = np.frombuffer(data, dtype=np.uint8).reshape(
-                self.height, self.width, 3
-            ).copy()
+            if self._pinned_pool is not None:
+                frame = self._pinned_pool.borrow(i)
+                np.copyto(frame, np.frombuffer(data, dtype=np.uint8).reshape(
+                    self.height, self.width, 3
+                ))
+            else:
+                frame = np.frombuffer(data, dtype=np.uint8).reshape(
+                    self.height, self.width, 3
+                ).copy()
             frames.append(frame)
             self.frames_read += 1
         return frames
@@ -354,6 +406,25 @@ class StreamingVideoWriter:
             fps,
             video_codec,
         )
+
+    def write_frames_pinned(self, contiguous: np.ndarray, frame_count: int) -> None:
+        """Write a contiguous pinned HWC batch (N,H,W,3) with one syscall per chunk."""
+        if self._proc.stdin is None:
+            return
+        expected = frame_count * self.height * self.width * 3
+        view = memoryview(contiguous)
+        if len(view) < expected:
+            raise ValueError(
+                f"Pinned batch too small: {len(view)} bytes, need {expected}"
+            )
+        offset = 0
+        while offset < expected:
+            written = self._proc.stdin.write(view[offset:expected])
+            if written == 0:
+                raise BrokenPipeError("FFmpeg encode stdin closed unexpectedly")
+            offset += written
+        self.frames_written += frame_count
+        self._proc.stdin.flush()
 
     def write_frames(self, frames: List[np.ndarray]) -> None:
         if self._proc.stdin is None:

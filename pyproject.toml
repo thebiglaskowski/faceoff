@@ -1,6 +1,6 @@
 [project]
 name = "faceoff"
-version = "2.9.0"
+version = "2.10.0"
 description = "Local GPU-accelerated face swapping application"
 requires-python = ">=3.10,<3.13"
 dependencies = [
