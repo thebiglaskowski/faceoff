@@ -59,6 +59,10 @@ face_detection:
   # Detection parameters
   confidence_threshold: 0.5 # Minimum confidence (0.0-1.0)
   iou_threshold: 0.3 # IoU threshold for face tracking (0.1-0.5)
+  # Re-identify faces across scene cuts via buffalo_l embeddings (already computed per frame)
+  embedding_tracking_enabled: true
+  embedding_similarity_threshold: 0.35 # Cosine similarity minimum for same-person match (0.2-0.6)
+  embedding_ema_alpha: 0.25 # Blend weight when updating per-slot identity anchor (0.1-0.5)
   ui_padding: 20 # Padding around face thumbnails in UI
 
   # Resolution-adaptive detection (faster processing)

@@ -283,6 +283,69 @@ class TestFaceTracker:
 
         tracker.reset()
         assert tracker.previous_faces == []
+        assert tracker._slot_embeddings == []
+
+    def test_scene_cut_reidentifies_by_embedding(self, reset_config):
+        """Should keep slot 0 across a jump cut when IoU fails but embeddings match."""
+        from core.face_processor import FaceTracker
+
+        tracker = FaceTracker(iou_threshold=0.3, embedding_threshold=0.5)
+
+        identity = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+
+        face_wide = MagicMock()
+        face_wide.bbox = np.array([50, 50, 150, 150])
+        face_wide.normed_embedding = identity
+
+        face_close = MagicMock()
+        face_close.bbox = np.array([400, 400, 500, 500])
+        face_close.normed_embedding = identity
+
+        tracker.track_faces([face_wide])
+        result = tracker.track_faces([face_close])
+
+        assert len(result) == 1
+        assert result[0] is face_close
+
+    def test_embedding_does_not_cross_match_different_people(self, reset_config):
+        """Should not assign a new person to an existing slot when embeddings differ."""
+        from core.face_processor import FaceTracker
+
+        tracker = FaceTracker(iou_threshold=0.3, embedding_threshold=0.8)
+
+        face_a = MagicMock()
+        face_a.bbox = np.array([50, 50, 150, 150])
+        face_a.normed_embedding = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+
+        face_b = MagicMock()
+        face_b.bbox = np.array([400, 400, 500, 500])
+        face_b.normed_embedding = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+
+        tracker.track_faces([face_a])
+        result = tracker.track_faces([face_b])
+
+        assert len(result) == 2
+        assert result[0] is None
+        assert result[1] is face_b
+
+
+class TestNormalizedFaceEmbedding:
+    """Tests for embedding helpers."""
+
+    def test_normalized_face_embedding_from_normed(self, reset_config):
+        from core.face_processor import normalized_face_embedding
+
+        face = MagicMock()
+        face.normed_embedding = np.array([3.0, 4.0], dtype=np.float32)
+        emb = normalized_face_embedding(face)
+        assert emb is not None
+        assert np.isclose(np.linalg.norm(emb), 1.0)
+
+    def test_cosine_similarity_identical(self, reset_config):
+        from core.face_processor import cosine_similarity
+
+        vec = np.array([1.0, 0.0], dtype=np.float32)
+        assert cosine_similarity(vec, vec) == pytest.approx(1.0)
 
 
 class TestFaceMappingManager:

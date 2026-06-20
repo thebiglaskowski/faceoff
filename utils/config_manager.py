@@ -190,6 +190,18 @@ class Config:
         return self.get('face_detection', 'iou_threshold', default=0.3)
 
     @property
+    def embedding_tracking_enabled(self) -> bool:
+        return self.get('face_detection', 'embedding_tracking_enabled', default=True)
+
+    @property
+    def embedding_similarity_threshold(self) -> float:
+        return self.get('face_detection', 'embedding_similarity_threshold', default=0.35)
+
+    @property
+    def embedding_ema_alpha(self) -> float:
+        return self.get('face_detection', 'embedding_ema_alpha', default=0.25)
+
+    @property
     def ui_padding(self) -> int:
         return self.get('face_detection', 'ui_padding', default=20)
 

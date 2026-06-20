@@ -89,61 +89,97 @@ def calculate_iou(bbox1, bbox2):
     return float(inter_area / union_area) if union_area > 0 else 0.0
 
 
+def normalized_face_embedding(face) -> Optional[np.ndarray]:
+    """Return L2-normalized recognition embedding for a detected face, if present."""
+    emb = getattr(face, "normed_embedding", None)
+    if emb is None:
+        emb = getattr(face, "embedding", None)
+    if emb is None:
+        return None
+    vec = np.asarray(emb, dtype=np.float32).reshape(-1)
+    norm = float(np.linalg.norm(vec))
+    if norm <= 0.0:
+        return None
+    return vec / norm
+
+
+def cosine_similarity(embedding_a: np.ndarray, embedding_b: np.ndarray) -> float:
+    """Cosine similarity for unit-normalized embeddings."""
+    return float(np.dot(embedding_a, embedding_b))
+
+
 class FaceTracker:
     """
-    Tracks faces across frames using bounding box overlap (IoU).
-    Assigns stable IDs to faces even when detection order changes.
+    Tracks faces across frames using IoU within a shot and recognition
+    embeddings (buffalo_l) when bbox overlap fails at scene cuts.
     """
-    
-    def __init__(self, iou_threshold: float = 0.3):
-        """
-        Initialize face tracker.
-        
-        Args:
-            iou_threshold: Minimum IoU to consider faces as matching (default 0.3)
-        """
-        self.previous_faces = []
-        self.iou_threshold = iou_threshold
-        logger.debug("FaceTracker initialized with IoU threshold %.2f", iou_threshold)
-    
+
+    def __init__(
+        self,
+        iou_threshold: Optional[float] = None,
+        embedding_threshold: Optional[float] = None,
+        embedding_enabled: Optional[bool] = None,
+        embedding_ema: Optional[float] = None,
+    ):
+        self.iou_threshold = (
+            iou_threshold if iou_threshold is not None else config.iou_threshold
+        )
+        self.embedding_threshold = (
+            embedding_threshold
+            if embedding_threshold is not None
+            else config.embedding_similarity_threshold
+        )
+        self.embedding_enabled = (
+            embedding_enabled
+            if embedding_enabled is not None
+            else config.embedding_tracking_enabled
+        )
+        self.embedding_ema = (
+            embedding_ema if embedding_ema is not None else config.embedding_ema_alpha
+        )
+        self.previous_faces: List = []
+        self._slot_embeddings: List[Optional[np.ndarray]] = []
+        logger.debug(
+            "FaceTracker initialized (IoU=%.2f, embedding=%s, sim=%.2f)",
+            self.iou_threshold,
+            self.embedding_enabled,
+            self.embedding_threshold,
+        )
+
     def reset(self):
         """Reset tracker state (call between videos/GIFs)."""
         self.previous_faces = []
-    
-    def track_faces(self, current_faces):
-        """
-        Match current faces to previous frame using IoU overlap.
-        Returns faces reordered to maintain stable indices.
-        
-        Args:
-            current_faces: List of detected faces in current frame
-            
-        Returns:
-            Reordered list of faces with stable IDs
-        """
-        if not current_faces:
-            self.previous_faces = []
-            return []
-        
-        # First frame: use positional sorting as baseline
-        if not self.previous_faces:
-            sorted_faces = sort_faces_by_position(current_faces)
-            self.previous_faces = sorted_faces
-            return sorted_faces
-        
-        # Match current faces to previous faces using IoU
-        matched_faces = [None] * len(self.previous_faces)
-        matched_indices = set()  # Track which current faces have been matched
-        
-        # For each previous face, find best match in current frame
+        self._slot_embeddings = []
+
+    def _ensure_slot_count(self, count: int) -> None:
+        while len(self._slot_embeddings) < count:
+            self._slot_embeddings.append(None)
+
+    def _update_slot_embedding(self, slot_idx: int, face) -> None:
+        emb = normalized_face_embedding(face)
+        if emb is None:
+            return
+        self._ensure_slot_count(slot_idx + 1)
+        prev = self._slot_embeddings[slot_idx]
+        if prev is None:
+            self._slot_embeddings[slot_idx] = emb
+            return
+        alpha = self.embedding_ema
+        merged = (1.0 - alpha) * prev + alpha * emb
+        norm = float(np.linalg.norm(merged))
+        self._slot_embeddings[slot_idx] = merged / norm if norm > 0 else merged
+
+    def _match_by_iou(
+        self,
+        current_faces: List,
+        matched_faces: List,
+        matched_indices: set,
+    ) -> None:
         for prev_idx, prev_face in enumerate(self.previous_faces):
-            # Skip if previous face was None (disappeared in previous frame)
             if prev_face is None:
                 continue
-                
             best_iou = 0.0
             best_match_idx = -1
-            
             for curr_idx, curr_face in enumerate(current_faces):
                 if curr_idx in matched_indices:
                     continue
@@ -151,23 +187,80 @@ class FaceTracker:
                 if iou > best_iou and iou >= self.iou_threshold:
                     best_iou = iou
                     best_match_idx = curr_idx
-            
             if best_match_idx >= 0:
                 matched_faces[prev_idx] = current_faces[best_match_idx]
                 matched_indices.add(best_match_idx)
-        
-        # Keep None as placeholders to maintain stable indices!
+
+    def _match_by_embedding(
+        self,
+        current_faces: List,
+        matched_faces: List,
+        matched_indices: set,
+    ) -> None:
+        for prev_idx in range(len(self.previous_faces)):
+            if matched_faces[prev_idx] is not None:
+                continue
+            if prev_idx >= len(self._slot_embeddings):
+                continue
+            anchor = self._slot_embeddings[prev_idx]
+            if anchor is None:
+                continue
+            best_sim = 0.0
+            best_match_idx = -1
+            for curr_idx, curr_face in enumerate(current_faces):
+                if curr_idx in matched_indices:
+                    continue
+                curr_emb = normalized_face_embedding(curr_face)
+                if curr_emb is None:
+                    continue
+                sim = cosine_similarity(anchor, curr_emb)
+                if sim > best_sim and sim >= self.embedding_threshold:
+                    best_sim = sim
+                    best_match_idx = curr_idx
+            if best_match_idx >= 0:
+                matched_faces[prev_idx] = current_faces[best_match_idx]
+                matched_indices.add(best_match_idx)
+
+    def track_faces(self, current_faces):
+        """
+        Match current faces to previous frame slots.
+        IoU handles motion within a shot; embeddings re-identify after cuts.
+        """
+        if not current_faces:
+            self.previous_faces = []
+            return []
+
+        if not self.previous_faces:
+            sorted_faces = sort_faces_by_position(current_faces)
+            self.previous_faces = sorted_faces
+            self._slot_embeddings = [
+                normalized_face_embedding(face) for face in sorted_faces
+            ]
+            return sorted_faces
+
+        matched_faces: List = [None] * len(self.previous_faces)
+        matched_indices: set = set()
+
+        self._match_by_iou(current_faces, matched_faces, matched_indices)
+        if self.embedding_enabled:
+            self._match_by_embedding(current_faces, matched_faces, matched_indices)
+
         stable_faces = matched_faces
-        
-        # Append any new faces (didn't match previous frame) sorted by position
-        unmatched_current = [f for idx, f in enumerate(current_faces) if idx not in matched_indices]
+
+        unmatched_current = [
+            face for idx, face in enumerate(current_faces) if idx not in matched_indices
+        ]
         if unmatched_current:
             new_faces = sort_faces_by_position(unmatched_current)
             stable_faces.extend(new_faces)
-        
-        # Update previous faces for next frame
+            for face in new_faces:
+                self._slot_embeddings.append(normalized_face_embedding(face))
+
+        for slot_idx, face in enumerate(matched_faces):
+            if face is not None:
+                self._update_slot_embedding(slot_idx, face)
+
         self.previous_faces = stable_faces
-        
         return stable_faces
 
 
