@@ -277,21 +277,43 @@ ul.options .item.active {
     background: rgba(139,92,246,0.25) !important;
 }
 
-/* Gallery preview — Gradio sets all gallery buttons to 100% w/h; reset controls */
+/* Gallery preview — fullscreen dim/blur; caption above thumbnail strip       */
+gradio-app:has(#gallery .preview) {
+    overflow: hidden !important;
+}
+
+#gallery .gallery-container .preview,
 .gallery-container .preview {
-    z-index: 50 !important;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 200 !important;
+    border-radius: 0 !important;
+    padding-bottom: 5.25rem !important;
+    box-sizing: border-box !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
     pointer-events: auto !important;
 }
+
+#gallery .gallery-container .preview::before,
+.gallery-container .preview::before {
+    background: rgba(6, 6, 13, 0.84) !important;
+    opacity: 1 !important;
+}
+
 .gallery-container .preview .icon-button-wrapper {
     position: absolute !important;
     top: var(--spacing-sm, 8px) !important;
-    right: 0 !important;
+    right: var(--spacing-sm, 8px) !important;
     left: auto !important;
     width: auto !important;
     height: auto !important;
-    z-index: 60 !important;
+    z-index: 210 !important;
     pointer-events: auto !important;
 }
+
 .gallery-container .preview .icon-button,
 .gallery-container .preview .icon-button-wrapper button,
 .gallery-container .preview button.icon-button {
@@ -314,6 +336,7 @@ ul.options .item.active {
     pointer-events: auto !important;
     cursor: pointer !important;
 }
+
 .gallery-container .preview .icon-button svg,
 .gallery-container .preview .icon-button-wrapper svg {
     color: #fff !important;
@@ -321,9 +344,54 @@ ul.options .item.active {
     height: 1.1rem !important;
     opacity: 1 !important;
 }
+
+/* Don't let Gradio's 100%-height button rule swallow the preview image area */
 .gallery-container .preview .media-button {
     width: 100% !important;
-    height: calc(100% - 60px) !important;
+    height: auto !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    max-height: calc(100vh - 13rem) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.gallery-container .preview .caption {
+    position: relative !important;
+    z-index: 6 !important;
+    flex-shrink: 0 !important;
+    margin: 0.35rem auto 0 !important;
+    padding: 0.45rem 1.25rem !important;
+    max-width: min(92vw, 1100px) !important;
+    color: var(--fo-text) !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    line-height: 1.45 !important;
+    text-align: center !important;
+    white-space: normal !important;
+    text-overflow: unset !important;
+    overflow: visible !important;
+    background: rgba(0, 0, 0, 0.45) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 10px !important;
+}
+
+.gallery-container .preview .thumbnails {
+    bottom: 0.85rem !important;
+    z-index: 5 !important;
+    height: auto !important;
+    min-height: var(--size-14, 3.5rem) !important;
+    padding: 0.35rem 0.75rem 0.15rem !important;
+    justify-content: center !important;
+    background: rgba(0, 0, 0, 0.38) !important;
+    border-radius: 14px !important;
+    max-width: calc(100vw - 2rem) !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: max-content !important;
 }
 
 /* Your info/callout box (keep .face-swap-box) */
