@@ -91,7 +91,7 @@ UI must never import `core/` directly; it goes through `processing/orchestrator.
 
 ## Pending Work
 
-- **Scene-aware face mapping** — keyframe timeline for multi-scene GIF/video (`.planning/designs/scene-aware-face-mapping.md`)
+- **Scene-aware face mapping** — keyframe timeline for multi-scene GIF/video (design doc local in `.planning/`)
 - **Wave 5 encode:** PyNvVideoCodec NVENC writer (optional; FFmpeg NVENC remains default)
 - **ReSwapper** (deferred): Diffusion-based quality mode; needs dual-engine Fast/Quality toggle
 - **Deferred UI:** Runtime config editor, model management UI (see `BLUEPRINT.md`)
@@ -108,6 +108,12 @@ UI must never import `core/` directly; it goes through `processing/orchestrator.
 - Wave 4: auto workload profiles (`gpu.auto_workload_tune`, `processing/workload_profile.py`), RealESRGAN GPU chain (`core/gpu_realesrgan.py`)
 - Wave 5: PyNvVideoCodec NVDEC decode (`streaming.nvcodec_decode`, `utils/gpu_decode.py`, `pynvvideocodec` in main deps)
 - FFmpeg stderr drain fix (`utils/video_io.py`) — prevents streaming encode/decode hangs
+- UI theme/gallery fixes (`ui/faceoff_theme.py`) — dropdown menus, fullscreen preview, layout
+- GIF streaming: disable CUDA zero-copy decode for paletted GIFs (`processing/workload_profile.py`)
+- GPU paste: `.copy()` BGR view before `torch.from_numpy` (`core/model_pool.py`)
+- Multi-GPU stability: disable GPU paste and pinned NVENC batch encode (`processing/frame_batch.py`, `processing/streaming_media.py`)
+- ONNX BFC arena OOM detection + multi-GPU VRAM trim (`utils/memory_manager.py`, `processing/streaming_media.py`)
+- Enhance + multi-GPU: single-GPU swap, release swap models before each enhance chunk (`processing/streaming_media.py`)
 
 ---
 

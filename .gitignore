@@ -45,6 +45,14 @@ coverage.xml
 # --- Claude Code local files ---
 .claude/
 
+# --- Agent / IDE local state (not for remote) ---
+.opencode/
+.planning/
+.grok/
+
+# --- Generated dc-runtime bundle (rebuild locally; not wired into app) ---
+ui/support.js
+
 # --- Model weights (large files) ---
 # (Commit ONLY if under 100MB or tracked via git-lfs)
 models/**/*.pth
