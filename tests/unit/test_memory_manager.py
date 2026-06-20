@@ -207,6 +207,15 @@ class TestIsMemoryError:
 
         assert is_memory_error(torch.cuda.OutOfMemoryError("CUDA OOM"))
 
+    def test_detects_cublas_allocation_failure(self):
+        from utils.memory_manager import is_memory_error
+
+        err = RuntimeError(
+            "CUBLAS failure 3: the resource allocation failed ; GPU=1 ; "
+            "expr=cublasCreate(&cublas_handle_);"
+        )
+        assert is_memory_error(err)
+
 
 class TestOOMHandling:
     """Tests for OOM error handling."""

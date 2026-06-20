@@ -199,6 +199,37 @@ class TestFrameBatch:
                 assert call.kwargs.get("paste_on_gpu") is False
 
 
+class TestEnhanceSwapVram:
+    def test_postprocess_releases_swap_before_enhance(self, mock_gpu):
+        from processing.streaming_media import _postprocess_chunk
+        from unittest.mock import MagicMock, patch
+
+        enhancer = MagicMock()
+        enhancer.device_ids = [0, 1]
+        frames = [np.zeros((4, 4, 3), dtype=np.uint8)]
+
+        with patch(
+            "processing.streaming_media.prepare_for_enhancement"
+        ) as mock_prepare, patch(
+            "processing.streaming_media.refresh_gpu_memory"
+        ) as mock_refresh, patch(
+            "processing.streaming_media.config"
+        ) as cfg:
+            cfg.release_swap_models_before_enhance = True
+            enhancer.enhance_rgb_frames.return_value = frames
+            result = _postprocess_chunk(
+                frames,
+                restoration_session=None,
+                enhancer=enhancer,
+                maintain_dimensions=True,
+                original_size=(4, 4),
+            )
+
+        mock_prepare.assert_called_once()
+        mock_refresh.assert_called_once_with(device_ids=[0, 1], force=True)
+        assert result == frames
+
+
 class TestMultiGpuWorkloadTrim:
     def test_streaming_trims_profile_for_multi_gpu(self, mock_gpu):
         from processing.streaming_media import process_streaming

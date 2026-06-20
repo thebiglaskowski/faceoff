@@ -35,6 +35,7 @@ from utils.memory_manager import (
     clear_cuda_caches,
     is_memory_error,
     prepare_for_enhancement,
+    refresh_gpu_memory,
 )
 from utils.progress import get_progress_tracker
 from utils.temp_manager import get_temp_manager
@@ -247,6 +248,16 @@ def _process_chunk_with_oom_fallback(
         return results, None
 
 
+def _release_swap_vram_before_enhance(enhancer: InMemoryEnhancer) -> None:
+    """Unload ONNX face-swap sessions so PyTorch enhancement can use the same VRAM."""
+    if not config.release_swap_models_before_enhance:
+        return
+    prepare_for_enhancement(
+        enhancer.device_ids[0],
+        device_ids=list(enhancer.device_ids),
+    )
+
+
 def _postprocess_chunk(
     processed: List[np.ndarray],
     *,
@@ -257,21 +268,25 @@ def _postprocess_chunk(
     frame_buffer: Optional[ChunkFrameBuffer] = None,
 ) -> List[np.ndarray]:
     if frame_buffer is not None and frame_buffer.has_gpu_batch() and enhancer:
+        _release_swap_vram_before_enhance(enhancer)
         enhancer.enhance_chunk_buffer(
             frame_buffer,
             maintain_dimensions=maintain_dimensions,
             original_size=original_size,
         )
+        refresh_gpu_memory(device_ids=list(enhancer.device_ids), force=True)
         return frame_buffer.download_all()
 
     if restoration_session:
         processed = restoration_session.restore_rgb_frames(processed)
     if enhancer:
+        _release_swap_vram_before_enhance(enhancer)
         processed = enhancer.enhance_rgb_frames(
             processed,
             maintain_dimensions=maintain_dimensions,
             original_size=original_size,
         )
+        refresh_gpu_memory(device_ids=list(enhancer.device_ids), force=True)
     return processed
 
 
@@ -381,8 +396,19 @@ def process_streaming(
             restoration_model, device_ids[0], restoration_weight
         )
 
-    pool = get_model_pool() if len(device_ids) > 1 else None
-    gpu_instances = pool.get_instances(device_ids) if pool else None
+    # Enhancement keeps PyTorch models resident; multi-GPU ONNX swap on the same
+    # cards causes CUBLAS/BFC OOM. Swap on primary GPU only when enhancing.
+    swap_device_ids = list(device_ids)
+    if enhance and len(device_ids) > 1:
+        swap_device_ids = [device_ids[0]]
+        logger.info(
+            "Enhancement enabled: face swap on GPU %d only (%d GPU(s) available for enhance)",
+            swap_device_ids[0],
+            len(device_ids),
+        )
+
+    pool = get_model_pool() if len(swap_device_ids) > 1 else None
+    gpu_instances = pool.get_instances(swap_device_ids) if pool else None
 
     chunk_size = _effective_chunk_size(
         device_ids, config.streaming_chunk_size, enhance, outscale, profile
@@ -390,6 +416,11 @@ def process_streaming(
     if len(device_ids) > 1 and not enhance:
         chunk_size = max(config.min_batch_size, chunk_size // 2)
         logger.info("Multi-GPU chunk size capped at %d frames", chunk_size)
+    elif enhance and len(device_ids) > 1:
+        chunk_size = max(config.min_batch_size, chunk_size // 2)
+        logger.info(
+            "Enhancement multi-GPU chunk size capped at %d frames", chunk_size
+        )
     if enhance:
         logger.info(
             "Enhancement enabled: chunk_size=%d, outscale=%dx, face_in_esrgan=%s, model=%s",
@@ -442,7 +473,7 @@ def process_streaming(
     )
 
     chunk_kwargs = dict(
-        device_ids=device_ids,
+        device_ids=swap_device_ids,
         gpu_instances=gpu_instances,
         processor=processor,
         src_faces=src_faces,

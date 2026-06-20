@@ -19,10 +19,13 @@ _MEMORY_ERROR_MARKERS = (
     "out of memory",
     "oom",
     "failed to allocate memory",
+    "resource allocation failed",
     "bfc_arena",
     "cuda error: out of memory",
     "allocator failed",
     "cudamalloc",
+    "cublas",
+    "cublascreate",
 )
 
 
