@@ -92,7 +92,7 @@ UI must never import `core/` directly; it goes through `processing/orchestrator.
 ## Pending Work
 
 - **Scene-aware face mapping** — keyframe timeline for multi-scene GIF/video (`.planning/designs/scene-aware-face-mapping.md`)
-- **Wave 4+:** True CUDA frame decode/encode interop (PyNvVideoCodec), GPU RealESRGAN chain
+- **Wave 5+:** PyNvCodec zero-copy decode when package installed
 - **ReSwapper** (deferred): Diffusion-based quality mode; needs dual-engine Fast/Quality toggle
 - **Deferred UI:** Runtime config editor, model management UI (see `BLUEPRINT.md`)
 
@@ -105,6 +105,7 @@ UI must never import `core/` directly; it goes through `processing/orchestrator.
 - Wave 3 phase 1: chunk GPU upload + swap IoBinding (`gpu.frame_retention_enabled`)
 - Wave 3 phase 2: GPU paste-back + single D2H per chunk (`gpu.paste_on_gpu`, `core/face_paste_gpu.py`)
 - Wave 3 phase 3: GPU detection (`gpu.detection_on_gpu`), NVDEC+pinned decode (`streaming.zero_copy_enabled`), GPU HAT chain (`gpu.enhancement_chain_enabled`)
+- Wave 4: auto workload profiles (`gpu.auto_workload_tune`, `processing/workload_profile.py`), RealESRGAN GPU chain (`core/gpu_realesrgan.py`)
 - FFmpeg stderr drain fix (`utils/video_io.py`) — prevents streaming encode/decode hangs
 
 ---

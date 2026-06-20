@@ -151,6 +151,10 @@ class Config:
     @property
     def gpu_enhancement_chain_enabled(self) -> bool:
         return self.get('gpu', 'enhancement_chain_enabled', default=False)
+
+    @property
+    def gpu_auto_workload_tune(self) -> bool:
+        return self.get('gpu', 'auto_workload_tune', default=True)
     
     @property
     def tensorrt_fp16(self) -> bool:

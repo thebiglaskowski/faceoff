@@ -16,6 +16,7 @@ from core.media_processor import MediaProcessor
 from core.model_pool import GPUModelInstance
 from processing.gpu_scheduler import assign_frames_to_gpus, frame_pixel_weights
 from processing.resolution_adaptive import ResolutionAdaptiveProcessor
+from processing.workload_profile import WorkloadProfile, flag as profile_flag
 from utils.config_manager import config
 
 logger = logging.getLogger("FaceOff")
@@ -25,11 +26,12 @@ def _gpu_paste_enabled(
     frame_buffer: Optional[ChunkFrameBuffer],
     face_mappings: Optional[List[Tuple[int, int]]],
     swap_gpu: Optional[GPUModelInstance],
+    profile: Optional[WorkloadProfile] = None,
 ) -> bool:
     return bool(
         frame_buffer is not None
-        and config.gpu_frame_retention_enabled
-        and config.gpu_paste_on_gpu
+        and profile_flag(profile, "frame_retention", config.gpu_frame_retention_enabled)
+        and profile_flag(profile, "paste_on_gpu", config.gpu_paste_on_gpu)
         and not face_mappings
         and swap_gpu is not None
     )
@@ -64,11 +66,12 @@ def _build_detect_fn(
 def _gpu_detection_enabled(
     frame_buffer: Optional[ChunkFrameBuffer],
     swap_gpu: Optional[GPUModelInstance],
+    profile: Optional[WorkloadProfile] = None,
 ) -> bool:
     return bool(
         frame_buffer is not None
-        and config.gpu_frame_retention_enabled
-        and config.gpu_detection_on_gpu
+        and profile_flag(profile, "frame_retention", config.gpu_frame_retention_enabled)
+        and profile_flag(profile, "detection_on_gpu", config.gpu_detection_on_gpu)
         and swap_gpu is not None
         and torch.cuda.is_available()
     )
@@ -84,8 +87,9 @@ def _detect_faces_for_batch(
     frame_indices: Optional[List[int]] = None,
     swap_gpu: Optional[GPUModelInstance] = None,
     adaptive_processor: Optional[ResolutionAdaptiveProcessor] = None,
+    profile: Optional[WorkloadProfile] = None,
 ) -> list:
-    use_gpu_det = _gpu_detection_enabled(frame_buffer, swap_gpu)
+    use_gpu_det = _gpu_detection_enabled(frame_buffer, swap_gpu, profile)
     if frame_indices is None:
         frame_indices = list(range(len(frames)))
 
@@ -183,16 +187,19 @@ def process_frames_batch(
     frame_buffer: Optional[ChunkFrameBuffer] = None,
     frame_indices: Optional[List[int]] = None,
     defer_download: bool = False,
+    profile: Optional[WorkloadProfile] = None,
 ) -> List[np.ndarray]:
     """Process a batch of frames on a single GPU with batched multi-face swap."""
-    if frame_buffer is not None and config.gpu_frame_retention_enabled:
+    if frame_buffer is not None and profile_flag(
+        profile, "frame_retention", config.gpu_frame_retention_enabled
+    ):
         try:
             frame_buffer.upload()
         except Exception as exc:
             logger.debug("Chunk GPU upload skipped: %s", exc)
 
     swap_gpu = _resolve_swap_gpu(processor, gpu_instance)
-    gpu_paste = _gpu_paste_enabled(frame_buffer, face_mappings, swap_gpu)
+    gpu_paste = _gpu_paste_enabled(frame_buffer, face_mappings, swap_gpu, profile)
     if frame_indices is None and frame_buffer is not None:
         frame_indices = list(range(len(frames)))
 
@@ -206,6 +213,7 @@ def process_frames_batch(
         frame_indices=frame_indices,
         swap_gpu=swap_gpu,
         adaptive_processor=adaptive_processor,
+        profile=profile,
     )
 
     results = []
@@ -258,6 +266,7 @@ def process_chunk_multi_gpu(
     batch_size: int = 8,
     frame_buffer: Optional[ChunkFrameBuffer] = None,
     defer_download: bool = False,
+    profile: Optional[WorkloadProfile] = None,
 ) -> List[np.ndarray]:
     """Process a chunk across multiple GPUs with VRAM-weighted frame assignment."""
     if len(device_ids) <= 1:
@@ -272,10 +281,11 @@ def process_chunk_multi_gpu(
             gpu_instance=gpu_instances[0],
             frame_buffer=frame_buffer,
             defer_download=defer_download,
+            profile=profile,
         )
 
     swap_gpu = gpu_instances[0] if gpu_instances else None
-    gpu_paste = _gpu_paste_enabled(frame_buffer, face_mappings, swap_gpu)
+    gpu_paste = _gpu_paste_enabled(frame_buffer, face_mappings, swap_gpu, profile)
     if gpu_paste and frame_buffer is not None:
         try:
             frame_buffer.upload()
@@ -312,6 +322,7 @@ def process_chunk_multi_gpu(
                 frame_buffer=chunk_buf,
                 frame_indices=batch_indices,
                 defer_download=defer_download,
+                profile=profile,
             )
             if not gpu_paste:
                 with lock:

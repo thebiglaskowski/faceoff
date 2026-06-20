@@ -223,7 +223,13 @@ faceoff/
 
 ## Version History
 
-### v2.10.0 (Current) — Wave 3 Complete
+### v2.11.0 (Current) — Wave 4 Auto Workloads
+
+- **Automatic workload profiles** (`gpu.auto_workload_tune`): swap-only, HAT/RealESRGAN/SwinIR chains, restore-faces, face-mapping paths pick chunk size and GPU flags per job
+- **RealESRGAN GPU enhancement chain** — frames stay on GPU through swap → enhance → single D2H
+- Logs show profile name at job start (e.g. `stream_swap_only`, `stream_hat_chain`)
+
+### v2.10.0 — Wave 3 Complete
 
 - **Wave 3 phase 3**: GPU detection (`gpu.detection_on_gpu`), NVDEC+pinned decode (`streaming.zero_copy_enabled`), GPU HAT enhancement chain (`gpu.enhancement_chain_enabled`)
 

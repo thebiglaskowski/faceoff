@@ -43,6 +43,8 @@ gpu:
   detection_on_gpu: true
   # Wave 3 phase 3: keep swapped frames on GPU through HAT enhancement (single D2H after)
   enhancement_chain_enabled: true
+  # Wave 4: auto-pick pipeline flags per job (swap-only vs HAT/RealESRGAN video, etc.)
+  auto_workload_tune: true
 
 # =============================================================================
 # Face Detection Settings

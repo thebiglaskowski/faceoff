@@ -210,6 +210,16 @@ class InMemoryEnhancer:
             self._enhance_hat_gpu_buffer(buffer, maintain_dimensions, original_size)
             return buffer
 
+        if self.enhancement_model == "RealESRGAN":
+            self._enhance_realesrgan_gpu_buffer(
+                buffer, maintain_dimensions, original_size
+            )
+            return buffer
+
+        if self.enhancement_model == "SwinIR":
+            self._enhance_swinir_gpu_buffer(buffer, maintain_dimensions, original_size)
+            return buffer
+
         frames = buffer.download_all()
         enhanced = self.enhance_rgb_frames(
             frames, maintain_dimensions=maintain_dimensions, original_size=original_size
@@ -296,6 +306,57 @@ class InMemoryEnhancer:
                     buffer.update_frame_gpu(i, out)
                 except Exception as exc:
                     logger.warning("HAT GPU-chain failed for frame %d: %s", i, exc)
+
+    def _enhance_realesrgan_gpu_buffer(
+        self,
+        buffer: "ChunkFrameBuffer",
+        maintain_dimensions: bool,
+        original_size: Optional[Tuple[int, int]],
+    ) -> None:
+        from core.gpu_realesrgan import enhance_rgb_frame_gpu
+        from processing.enhancement import _get_upsampler
+
+        gpu_id = self.device_ids[0]
+        batch = buffer.upload()
+        upsampler = _get_upsampler(
+            model_name=self.model_name,
+            gpu_id=gpu_id,
+            tile_size=self.tile_size,
+            pre_pad=self.pre_pad,
+            use_fp32=self.use_fp32,
+            denoise_strength=self.denoise_strength,
+        )
+        target = original_size if maintain_dimensions else None
+
+        for i in range(batch.shape[0]):
+            try:
+                out = enhance_rgb_frame_gpu(
+                    batch[i],
+                    upsampler,
+                    outscale=self.outscale,
+                    maintain_dimensions=maintain_dimensions,
+                    target_size=target,
+                )
+                buffer.update_frame_gpu(i, out)
+            except Exception as exc:
+                logger.warning("RealESRGAN GPU-chain failed for frame %d: %s", i, exc)
+
+    def _enhance_swinir_gpu_buffer(
+        self,
+        buffer: "ChunkFrameBuffer",
+        maintain_dimensions: bool,
+        original_size: Optional[Tuple[int, int]],
+    ) -> None:
+        """Single-chunk D2H for SwinIR (HF processor); re-upload after enhance."""
+        frames = buffer.download_all()
+        enhanced = self.enhance_rgb_frames(
+            frames, maintain_dimensions=maintain_dimensions, original_size=original_size
+        )
+        buffer.replace_from_numpy(enhanced)
+        try:
+            buffer.upload()
+        except Exception as exc:
+            logger.debug("SwinIR chunk re-upload failed: %s", exc)
 
     @staticmethod
     def _bgr_list_to_rgb(

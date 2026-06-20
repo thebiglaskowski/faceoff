@@ -22,6 +22,12 @@ from processing.frame_batch import process_chunk_multi_gpu, process_frames_batch
 from processing.in_memory_enhancement import InMemoryEnhancer
 from processing.resolution_adaptive import ResolutionAdaptiveProcessor
 from processing.restoration_session import RestorationSession
+from processing.workload_profile import (
+    WorkloadProfile,
+    flag as profile_flag,
+    log_workload_profile,
+    resolve_workload_profile,
+)
 from utils import video_io
 from utils.config_manager import config
 from utils.memory_manager import MemoryManager, prepare_for_enhancement
@@ -64,7 +70,10 @@ def _effective_chunk_size(
     requested: int,
     enhance: bool,
     outscale: int,
+    profile: Optional[WorkloadProfile] = None,
 ) -> int:
+    if profile is not None and profile.chunk_size is not None:
+        requested = profile.chunk_size
     if not torch.cuda.is_available():
         size = requested
     else:
@@ -77,12 +86,20 @@ def _effective_chunk_size(
     return size
 
 
-def _gpu_chain_active(enhance: bool, restoration_session) -> bool:
+def _gpu_chain_active(
+    enhance: bool,
+    restoration_session,
+    profile: Optional[WorkloadProfile],
+) -> bool:
     return bool(
         enhance
-        and config.gpu_enhancement_chain_enabled
-        and config.gpu_frame_retention_enabled
-        and config.gpu_paste_on_gpu
+        and profile_flag(
+            profile, "enhancement_chain", config.gpu_enhancement_chain_enabled
+        )
+        and profile_flag(
+            profile, "frame_retention", config.gpu_frame_retention_enabled
+        )
+        and profile_flag(profile, "paste_on_gpu", config.gpu_paste_on_gpu)
         and restoration_session is None
     )
 
@@ -100,9 +117,10 @@ def _process_chunk(
     batch_size: int,
     face_tracker: FaceTracker,
     defer_download: bool = False,
+    profile: Optional[WorkloadProfile] = None,
 ) -> Tuple[List[np.ndarray], Optional[ChunkFrameBuffer]]:
     frame_buffer = None
-    if config.gpu_frame_retention_enabled and device_ids:
+    if profile_flag(profile, "frame_retention", config.gpu_frame_retention_enabled) and device_ids:
         frame_buffer = ChunkFrameBuffer(chunk, device_ids[0])
 
     if len(device_ids) > 1 and gpu_instances:
@@ -118,6 +136,7 @@ def _process_chunk(
             batch_size=batch_size,
             frame_buffer=frame_buffer,
             defer_download=defer_download,
+            profile=profile,
         )
     else:
         processed = process_frames_batch(
@@ -131,6 +150,7 @@ def _process_chunk(
             gpu_instance=gpu_instances[0] if gpu_instances else None,
             frame_buffer=frame_buffer,
             defer_download=defer_download,
+            profile=profile,
         )
 
     if defer_download and frame_buffer is not None and frame_buffer.has_gpu_batch():
@@ -214,9 +234,23 @@ def process_streaming(
     detection_scale: Optional[float] = None,
     enhancement_model: str = "RealESRGAN",
     restoration_model: str = "GFPGAN",
+    workload_profile: Optional[WorkloadProfile] = None,
 ) -> Tuple[None, Optional[str]]:
     if not device_ids:
         device_ids = [processor.device_id]
+
+    profile = workload_profile or resolve_workload_profile(
+        media_type=ctx.media_type,
+        enhance=enhance,
+        enhancement_model=enhancement_model,
+        restore_faces=restore_faces,
+        face_mappings=face_mappings,
+        width=ctx.width,
+        height=ctx.height,
+        outscale=outscale,
+        face_enhance_in_esrgan=config.streaming_video_face_enhance,
+    )
+    log_workload_profile(profile)
 
     if adaptive_detection is None:
         adaptive_detection = config.adaptive_detection_enabled
@@ -276,7 +310,9 @@ def process_streaming(
     pool = get_model_pool() if len(device_ids) > 1 else None
     gpu_instances = pool.get_instances(device_ids) if pool else None
 
-    chunk_size = _effective_chunk_size(device_ids, config.streaming_chunk_size, enhance, outscale)
+    chunk_size = _effective_chunk_size(
+        device_ids, config.streaming_chunk_size, enhance, outscale, profile
+    )
     if enhance:
         logger.info(
             "Enhancement enabled: chunk_size=%d, outscale=%dx, face_in_esrgan=%s, model=%s",
@@ -300,8 +336,15 @@ def process_streaming(
     total_frames = 0
     decode_fps = ctx.fps if ctx.media_type == "gif" else None
 
-    use_gpu_chain = _gpu_chain_active(enhance, restoration_session)
-    use_zero_copy = config.streaming_zero_copy_enabled and config.streaming_hwaccel_decode
+    use_gpu_chain = _gpu_chain_active(enhance, restoration_session, profile)
+    defer_download = use_gpu_chain and profile_flag(
+        profile, "defer_download", config.gpu_enhancement_chain_enabled
+    )
+    use_zero_copy = (
+        profile_flag(profile, "zero_copy", config.streaming_zero_copy_enabled)
+        and config.streaming_hwaccel_decode
+    )
+    use_pinned_encode = profile.pinned_encode if profile else use_gpu_chain
 
     chunk_kwargs = dict(
         device_ids=device_ids,
@@ -313,7 +356,8 @@ def process_streaming(
         adaptive_processor=adaptive_processor,
         batch_size=batch_size,
         face_tracker=face_tracker,
-        defer_download=use_gpu_chain,
+        defer_download=defer_download,
+        profile=profile,
     )
 
     try:
@@ -352,7 +396,7 @@ def process_streaming(
                                 original_size=(reader.width, reader.height) if enhance else None,
                                 frame_buffer=frame_buffer,
                             )
-                            if use_gpu_chain and len(processed) > 1:
+                            if use_pinned_encode and len(processed) > 1:
                                 contiguous = np.stack(processed, axis=0)
                                 if contiguous.flags["C_CONTIGUOUS"]:
                                     writer.write_frames_pinned(
