@@ -64,7 +64,7 @@ gradio-app, .gradio-container { background: var(--fo-bg) !important; }
     font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif !important;
     color: var(--fo-text);
 }
-.gradio-container > * { position: relative; z-index: 1; }
+/* Do not set z-index on all children — breaks dropdowns and gallery preview */
 
 /* Full-viewport aurora (CSS only — do not inject layout HTML into Blocks) */
 gradio-app::before {
@@ -125,16 +125,19 @@ gradio-app::after {
 /* ----------------------------------------------------------------------- */
 .tabitem, .form, .gr-group, .gr-panel, fieldset,
 .accordion, .face-swap-box {
-    background: var(--fo-glass) !important;
+    background: rgba(6, 6, 13, 0.72) !important;
     border: 1px solid var(--fo-border) !important;
     border-radius: 18px !important;
-    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
     box-shadow: 0 20px 50px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.06) !important;
+    overflow: visible !important;
 }
 
-/* Labels -> neon chips */
-span[data-testid="block-info"], .block > label > span,
-label > span:first-child {
+.block, .column, .gallery-container, .grid-wrap {
+    overflow: visible !important;
+}
+
+/* Labels -> neon chips (block labels only — not dropdown/list innards) */
+span[data-testid="block-info"], .block > label > span {
     font-family: 'Space Grotesk', sans-serif !important;
     font-weight: 600 !important; font-size: 12px !important;
     color: #bdfbff !important;
@@ -219,18 +222,108 @@ button.secondary, .gr-button-secondary {
 button.secondary:hover { border-color: rgba(139,92,246,0.5) !important; }
 
 /* ----------------------------------------------------------------------- */
-/*  INPUTS / DROPDOWNS / TEXTBOXES                                          */
+/*  INPUTS / TEXTBOXES (exclude .dropdown wrapper — breaks Gradio menus)   */
 /* ----------------------------------------------------------------------- */
-input, textarea, select, .wrap-inner, .gr-input, .dropdown {
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea,
+.block input[type="text"],
+.block .wrap-inner input {
     background: rgba(0,0,0,0.28) !important;
     border: 1px solid var(--fo-border) !important;
     border-radius: 11px !important;
     color: var(--fo-text) !important;
     font-family: 'JetBrains Mono', monospace !important;
 }
-input:focus, textarea:focus, select:focus, .wrap-inner:focus-within {
+input:focus, textarea:focus, .block .wrap-inner:focus-within {
     border-color: rgba(34,211,238,0.55) !important;
     box-shadow: 0 0 0 3px rgba(34,211,238,0.15) !important;
+}
+
+/* Dropdown — trigger must stay clickable; menu is position:fixed */
+.block.dropdown, .dropdown {
+    position: relative !important;
+    z-index: 2 !important;
+    overflow: visible !important;
+}
+.dropdown .wrap,
+.dropdown .wrap-inner,
+.dropdown input {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+ul.options {
+    z-index: 99999 !important;
+    pointer-events: auto !important;
+    position: fixed !important;
+    background: rgba(12, 12, 22, 0.98) !important;
+    border: 1px solid var(--fo-border) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.55) !important;
+    overflow: auto !important;
+}
+ul.options .item,
+ul.options li {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    color: var(--fo-text) !important;
+    font-family: 'Space Grotesk', sans-serif !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+ul.options .item:hover,
+ul.options li:hover,
+ul.options .item.active {
+    background: rgba(139,92,246,0.25) !important;
+}
+
+/* Gallery preview — Gradio sets all gallery buttons to 100% w/h; reset controls */
+.gallery-container .preview {
+    z-index: 50 !important;
+    pointer-events: auto !important;
+}
+.gallery-container .preview .icon-button-wrapper {
+    position: absolute !important;
+    top: var(--spacing-sm, 8px) !important;
+    right: 0 !important;
+    left: auto !important;
+    width: auto !important;
+    height: auto !important;
+    z-index: 60 !important;
+    pointer-events: auto !important;
+}
+.gallery-container .preview .icon-button,
+.gallery-container .preview .icon-button-wrapper button,
+.gallery-container .preview button.icon-button {
+    width: auto !important;
+    height: auto !important;
+    min-width: 2rem !important;
+    min-height: 2rem !important;
+    max-width: none !important;
+    max-height: none !important;
+    flex: 0 0 auto !important;
+    padding: 0.4rem !important;
+    background: rgba(0,0,0,0.55) !important;
+    border: 1px solid rgba(255,255,255,0.2) !important;
+    border-radius: 10px !important;
+    box-shadow: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    z-index: 20 !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+.gallery-container .preview .icon-button svg,
+.gallery-container .preview .icon-button-wrapper svg {
+    color: #fff !important;
+    width: 1.1rem !important;
+    height: 1.1rem !important;
+    opacity: 1 !important;
+}
+.gallery-container .preview .media-button {
+    width: 100% !important;
+    height: calc(100% - 60px) !important;
 }
 
 /* Your info/callout box (keep .face-swap-box) */
@@ -239,7 +332,6 @@ input:focus, textarea:focus, select:focus, .wrap-inner:focus-within {
     border: 1px solid rgba(139,92,246,0.22) !important;
     border-left: 3px solid var(--fo-violet) !important;
     padding: 1rem 1.2rem; border-radius: 12px; margin: 1rem 0;
-    backdrop-filter: blur(12px);
 }
 
 /* Accordion header (Face Mapping) */
