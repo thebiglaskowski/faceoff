@@ -323,7 +323,7 @@ class GPUModelInstance:
                 else:
                     img_fake = pred[i].transpose((1, 2, 0))
                     bgr_fake = torch.from_numpy(
-                        np.clip(255 * img_fake, 0, 255).astype(np.uint8)[:, :, ::-1]
+                        np.clip(255 * img_fake, 0, 255).astype(np.uint8)[:, :, ::-1].copy()
                     ).to(swapped_gpu.device).float()
                 aimg_tensor = aimg_t(aimg).to(swapped_gpu.device).float()
                 swapped_gpu = paste_swapped_face_gpu(swapped_gpu, bgr_fake, aimg_tensor, M)

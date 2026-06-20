@@ -8,6 +8,7 @@ Tests cover:
 - Resource cleanup
 """
 
+import numpy as np
 import pytest
 import threading
 import time
@@ -534,3 +535,82 @@ class TestGPUModelInstanceLocking:
             assert len(results) == 10
             # Each result should have 2 faces
             assert all(len(r) == 2 for r in results)
+
+
+class TestSwapFaceBatchGpuPaste:
+    """Regression tests for GPU paste-back in swap_face_batch."""
+
+    def test_numpy_pred_bgr_slice_copied_before_torch_from_numpy(self, mock_gpu):
+        """RGB->BGR view has negative strides; must copy before torch.from_numpy."""
+        import torch
+        from core.model_pool import GPUModelInstance
+
+        with patch("core.model_pool.torch") as mock_torch, patch(
+            "core.model_pool.ort"
+        ) as mock_ort, patch("core.model_pool.FaceAnalysis") as mock_face_analysis, patch(
+            "core.model_pool.is_tensorrt_runtime_available", return_value=False
+        ), patch(
+            "core.model_pool.build_face_analysis_providers",
+            return_value=[("CUDAExecutionProvider", {}), "CPUExecutionProvider"],
+        ), patch(
+            "core.model_pool.build_swapper_providers",
+            return_value=[("CUDAExecutionProvider", {}), "CPUExecutionProvider"],
+        ), patch("core.model_pool.config") as mock_config, patch(
+            "insightface.model_zoo.get_model"
+        ) as mock_get_model:
+            mock_torch.Tensor = torch.Tensor
+            mock_torch.from_numpy = torch.from_numpy
+            mock_torch.cuda.is_available.return_value = True
+            mock_torch.cuda.set_device = MagicMock()
+            mock_config.face_analysis_name = "buffalo_l"
+            mock_config.face_analysis_det_size = [640, 640]
+            mock_config.tensorrt_fp16 = False
+            mock_config.get = MagicMock(return_value=2048)
+            mock_ort.SessionOptions.return_value = MagicMock()
+            mock_ort.GraphOptimizationLevel.ORT_ENABLE_ALL = 99
+            mock_face_analysis.return_value = MagicMock()
+            mock_swapper = MagicMock()
+            mock_swapper.input_size = (128, 128)
+            mock_swapper.input_std = 255.0
+            mock_swapper.input_mean = 0.0
+            mock_swapper.emap = np.eye(512, dtype=np.float32)
+            mock_get_model.return_value = mock_swapper
+
+            instance = GPUModelInstance(
+                device_id=0,
+                model_path="test.onnx",
+                use_tensorrt=False,
+            )
+            instance.run_swapper_batch = MagicMock(
+                return_value=np.ones((1, 3, 128, 128), dtype=np.float32) * 0.5
+            )
+
+            target_face = MagicMock()
+            target_face.kps = np.zeros((5, 2), dtype=np.float32)
+            source_face = MagicMock()
+            source_face.normed_embedding = np.ones(512, dtype=np.float32)
+
+            image = np.zeros((64, 64, 3), dtype=np.uint8)
+            aimg = np.zeros((128, 128, 3), dtype=np.uint8)
+            M = np.eye(2, 3, dtype=np.float32)
+
+            with patch(
+                "insightface.utils.face_align.norm_crop2", return_value=(aimg, M)
+            ), patch("core.face_paste_gpu.paste_swapped_face_gpu") as mock_paste, patch(
+                "utils.config_manager.config"
+            ) as cfg:
+                cfg.gpu_paste_on_gpu = True
+                mock_paste.return_value = torch.zeros(64, 64, 3)
+
+                frame_gpu = torch.zeros(64, 64, 3, dtype=torch.uint8)
+                instance.swap_face_batch(
+                    image,
+                    [target_face],
+                    source_face,
+                    paste_on_gpu=True,
+                    frame_gpu=frame_gpu,
+                )
+
+            mock_paste.assert_called_once()
+            bgr_fake = mock_paste.call_args[0][1]
+            assert isinstance(bgr_fake, torch.Tensor)
