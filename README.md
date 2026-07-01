@@ -339,7 +339,7 @@ faceoff/
 - HAT and HAT-GAN super-resolution alongside Real-ESRGAN and SwinIR
 - LRU caches, tiled inference, integration tests
 
-Full history: [BLUEPRINT.md](BLUEPRINT.md), [IMPROVEMENTS.md](IMPROVEMENTS.md)
+Full history: [IMPROVEMENTS.md](IMPROVEMENTS.md)
 
 </details>
 

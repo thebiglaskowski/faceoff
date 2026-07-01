@@ -79,3 +79,14 @@ node_modules/
 dist/
 build/
 inswapper_128_optimized.onnx
+
+# --- Internal docs (kept local, not published to GitHub) ---
+AGENTS.md
+BLUEPRINT.md
+CLAUDE.md
+PROJECT_INTENT.md
+scripts/PROGRESS_TRACKING.md
+
+# --- Windows copy cruft & local setup artifacts ---
+*Zone.Identifier
+*.deb
