@@ -1,0 +1,67 @@
+FaceOff — Third-Party Components, Model Licenses, and Use Restrictions
+======================================================================
+
+The FaceOff application source code (the files authored in this repository)
+is licensed under the MIT License — see the LICENSE file.
+
+However, FaceOff depends on and/or downloads third-party libraries and
+pretrained models that carry their OWN licenses. Some of these are more
+restrictive than MIT. The MIT License on this repository applies ONLY to the
+first-party code here; it grants no rights over the third-party models or
+libraries below. Those are governed by their respective licenses.
+
+IMPORTANT: Because two core components are restricted to NON-COMMERCIAL
+research use (see below), the FaceOff project TAKEN AS A WHOLE is, in
+practice, usable for non-commercial research and personal purposes only.
+Using FaceOff for a commercial product or service would require replacing
+those components with commercially-licensed alternatives and independently
+verifying every dependency's terms.
+
+
+Key components and their licenses
+---------------------------------
+
+InsightFace (face detection + `inswapper_128` swapping model)
+  - Library code: MIT License
+  - Pretrained models (including the inswapper face-swap model):
+    NON-COMMERCIAL RESEARCH PURPOSES ONLY, per the InsightFace project.
+  - https://github.com/deepinsight/insightface
+
+CodeFormer (face restoration, via `codeformer-pip`)
+  - S-Lab License 1.0 — NON-COMMERCIAL use only.
+  - https://github.com/sczhou/CodeFormer
+
+GFPGAN (face restoration)
+  - Apache License 2.0 (with some non-commercial upstream weights).
+  - https://github.com/TencentARC/GFPGAN
+
+Real-ESRGAN / BasicSR (super-resolution)
+  - BSD-3-Clause / Apache License 2.0.
+  - https://github.com/xinntao/Real-ESRGAN
+  - https://github.com/XPixelGroup/BasicSR
+
+Other dependencies (PyTorch, ONNX Runtime, Gradio, OpenCV, NumPy, etc.)
+  are distributed under their own permissive licenses (BSD, Apache-2.0,
+  MIT). Refer to each project for details.
+
+This list is provided in good faith and is not exhaustive or legal advice.
+You are responsible for reviewing and complying with the license of every
+dependency and model you download or redistribute.
+
+
+Responsible-use disclaimer
+--------------------------
+
+FaceOff performs face swapping and can produce synthetic ("deepfake") media.
+By using this software you agree to use it lawfully and ethically. Do NOT use
+FaceOff to:
+
+  - Create sexual, defamatory, harassing, or deceptive content depicting real
+    people without their explicit, informed consent.
+  - Impersonate individuals, commit fraud, or spread disinformation.
+  - Violate the likeness, privacy, publicity, or other rights of any person.
+  - Violate any applicable law or platform policy in your jurisdiction.
+
+The authors provide this software for research, education, and legitimate
+creative use, and accept no liability for misuse. See the LICENSE file for the
+full warranty disclaimer.
