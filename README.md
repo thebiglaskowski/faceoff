@@ -47,7 +47,7 @@ High-performance face swapping with multi-GPU ONNX inference, chunked streaming,
 
 </details>
 
-Read the write-up at [thebiglaskowski.com/posts/face-swapping-with-ai](https://thebiglaskowski.com/posts/face-swapping-with-ai).
+Read the write-up at [thebiglaskowski.com/blog/face-swapping-with-ai](https://thebiglaskowski.com/blog/face-swapping-with-ai/).
 
 ---
 
@@ -82,17 +82,21 @@ Read the write-up at [thebiglaskowski.com/posts/face-swapping-with-ai](https://t
 
 ## Contents
 
-- [Requirements](#requirements)
-- [Quick Start](#quick-start)
-  - [Platform notes](#platform-notes)
-- [Usage](#usage)
-- [Performance](#performance)
-- [Configuration](#configuration)
-- [Troubleshooting](#troubleshooting)
-- [Project structure](#project-structure)
-- [Version history](#version-history)
-- [Credits](#credits)
-- [License](#license)
+- [FaceOff](#faceoff)
+  - [Showcase](#showcase)
+  - [Features](#features)
+  - [Contents](#contents)
+  - [Requirements](#requirements)
+  - [Quick Start](#quick-start)
+    - [Platform notes](#platform-notes)
+  - [Usage](#usage)
+  - [Performance](#performance)
+  - [Configuration](#configuration)
+  - [Troubleshooting](#troubleshooting)
+  - [Project structure](#project-structure)
+  - [Version history](#version-history)
+  - [Credits](#credits)
+  - [License](#license)
 
 ---
 
@@ -362,6 +366,6 @@ FaceOff's own source code is released under the **MIT License** — see [LICENSE
 
 Built with [InsightFace](https://github.com/deepinsight/insightface) · [ONNX Runtime](https://github.com/microsoft/onnxruntime) · [Gradio](https://github.com/gradio-app/gradio) · [uv](https://docs.astral.sh/uv/) &nbsp;|&nbsp; MIT License
 
-[GitHub Issues](https://github.com/thebiglaskowski/faceoff/issues) · [Blog post](https://thebiglaskowski.com/posts/face-swapping-with-ai)
+[GitHub Issues](https://github.com/thebiglaskowski/faceoff/issues) · [Blog post](https://thebiglaskowski.com/blog/face-swapping-with-ai/)
 
 </div>
