@@ -9,7 +9,6 @@ dependencies = [
     # Deep Learning & GPU
     "torch>=2.6.0",
     "torchvision>=0.21.0",
-    "torchaudio>=2.6.0",
     "onnxruntime-gpu>=1.23.0",
     "onnx>=1.19.0",
     "onnxoptimizer>=0.3.13",
@@ -38,7 +37,13 @@ dependencies = [
 
     # Performance / GPU acceleration
     # ORT 1.22+ TensorRT EP links against libnvinfer.so.10 — TRT 11 is incompatible
+    # (it ships libnvinfer.so.11, and the EP silently drops out of the provider
+    # list). The <11 cap is load-bearing; TRT 11 is released, so do not remove it.
     "tensorrt>=10.9,<11",
+    # ORT's own cuda/cudnn extras are not enabled, so the CUDA libs are pinned
+    # here directly. ORT resolves to a cu12 build on py3.10/3.11 and a cu13 build
+    # on py3.12 — these cu12 pins serve the former; torch supplies cu13 for the
+    # latter. They look redundant on 3.12 but are required across requires-python.
     "nvidia-cublas-cu12>=12.0.0",
     "nvidia-cudnn-cu12>=9.20.0,<9.21.0",
     "nvidia-cufft-cu12>=11.0.0",
