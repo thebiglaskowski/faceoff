@@ -1,0 +1,9 @@
+# Revisions to skip in `git blame` — bulk reformats with no behavior change.
+#
+# GitHub honors this file automatically. For local git, enable it once with:
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Add only commits that are provably formatting-only.
+
+# style: apply black 26.5.1 and isort across the codebase (106 files)
+eb480667a4babeda487e33092e1a774d0d5c5249
