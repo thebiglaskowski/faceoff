@@ -4,7 +4,10 @@ version = "2.12.0"
 description = "Local GPU-accelerated face swapping application"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.10,<3.13"
+# 3.12 floor: onnxruntime-gpu resolves to a cu13 build only on 3.12+, which lets
+# the whole CUDA stack come from torch's cu13 wheels (see the GPU block below).
+# 3.13 ceiling: numpy is pinned <2.0 and numpy 1.26.4 ships no cp313 wheels.
+requires-python = ">=3.12,<3.13"
 dependencies = [
     # Deep Learning & GPU
     "torch>=2.6.0",
@@ -40,16 +43,13 @@ dependencies = [
     # (it ships libnvinfer.so.11, and the EP silently drops out of the provider
     # list). The <11 cap is load-bearing; TRT 11 is released, so do not remove it.
     "tensorrt>=10.9,<11",
-    # ORT's own cuda/cudnn extras are not enabled, so the CUDA libs are pinned
-    # here directly. ORT resolves to a cu12 build on py3.10/3.11 and a cu13 build
-    # on py3.12 — these cu12 pins serve the former; torch supplies cu13 for the
-    # latter. They look redundant on 3.12 but are required across requires-python.
-    "nvidia-cublas-cu12>=12.0.0",
-    "nvidia-cudnn-cu12>=9.20.0,<9.21.0",
-    "nvidia-cufft-cu12>=11.0.0",
-    "nvidia-cusparse-cu12>=12.0.0",
-    "nvidia-cusolver-cu12>=11.0.0",
-    "nvidia-curand-cu12>=10.0.0",
+    # No nvidia-*-cu12 pins: on 3.12 ORT resolves to a cu13 build whose .so files
+    # NEED libcublas.so.13 / libcudart.so.13 / libcufft.so.12 / libnvrtc.so.13 —
+    # all supplied by torch's cu13 wheels under nvidia/cu13/lib. The cu12 wheels
+    # export different sonames (e.g. libcufft.so.11) and satisfied nothing here.
+    # cuDNN comes from nvidia-cudnn-cu13 at the nvidia/cudnn/lib path that
+    # utils/onnx_providers.py preloads. Restoring a 3.10/3.11 floor would pull a
+    # cu12 ORT build and require those pins back.
     "pynvvideocodec>=2.1.0",  # Wave 5 NVDEC; runtime falls back to FFmpeg if unavailable
 
     # UI / web server
