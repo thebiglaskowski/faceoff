@@ -4,13 +4,14 @@ Image and video enhancement using Real-ESRGAN and GFPGAN.
 This module provides direct Python API integration with Real-ESRGAN
 for image/video upscaling and GFPGAN for face restoration.
 """
+
 import gc
 import logging
+from typing import Optional
 
 import cv2
 import numpy as np
 import torch
-from typing import Optional
 
 from utils.lru_cache import LRUModelCache
 
@@ -39,22 +40,22 @@ def _cleanup_face_enhancer(enhancer):
 
 # Model name to URL mapping for auto-download
 MODEL_URLS = {
-    'RealESRGAN_x4plus': 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth',
-    'RealESRNet_x4plus': 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRNet_x4plus.pth',
-    'RealESRGAN_x4plus_anime_6B': 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth',
-    'RealESRGAN_x2plus': 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth',
-    'realesr-general-x4v3': 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth',
-    'realesr-animevideov3': 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth',
+    "RealESRGAN_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+    "RealESRNet_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRNet_x4plus.pth",
+    "RealESRGAN_x4plus_anime_6B": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+    "RealESRGAN_x2plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth",
+    "realesr-general-x4v3": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth",
+    "realesr-animevideov3": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth",
 }
 
 # Model scale factors
 MODEL_SCALES = {
-    'RealESRGAN_x4plus': 4,
-    'RealESRNet_x4plus': 4,
-    'RealESRGAN_x4plus_anime_6B': 4,
-    'RealESRGAN_x2plus': 2,
-    'realesr-general-x4v3': 4,
-    'realesr-animevideov3': 4,
+    "RealESRGAN_x4plus": 4,
+    "RealESRNet_x4plus": 4,
+    "RealESRGAN_x4plus_anime_6B": 4,
+    "RealESRGAN_x2plus": 2,
+    "realesr-general-x4v3": 4,
+    "realesr-animevideov3": 4,
 }
 
 # LRU caches for loaded models (bounded to prevent memory growth)
@@ -69,15 +70,15 @@ def _get_upsampler(
     tile_pad: int = 10,
     pre_pad: int = 0,
     use_fp32: bool = False,
-    denoise_strength: float = 0.5
+    denoise_strength: float = 0.5,
 ):
     """
     Get or create a RealESRGANer upsampler instance.
 
     Caches instances to avoid repeated model loading.
     """
-    from realesrgan import RealESRGANer
     from basicsr.archs.rrdbnet_arch import RRDBNet
+    from realesrgan import RealESRGANer
 
     # Create cache key
     cache_key = (model_name, gpu_id, tile_size, pre_pad, use_fp32)
@@ -87,39 +88,77 @@ def _get_upsampler(
         return cached
 
     # Determine model architecture based on model name
-    if model_name == 'RealESRGAN_x4plus':
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+    if model_name == "RealESRGAN_x4plus":
+        model = RRDBNet(
+            num_in_ch=3,
+            num_out_ch=3,
+            num_feat=64,
+            num_block=23,
+            num_grow_ch=32,
+            scale=4,
+        )
         netscale = 4
-    elif model_name == 'RealESRNet_x4plus':
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+    elif model_name == "RealESRNet_x4plus":
+        model = RRDBNet(
+            num_in_ch=3,
+            num_out_ch=3,
+            num_feat=64,
+            num_block=23,
+            num_grow_ch=32,
+            scale=4,
+        )
         netscale = 4
-    elif model_name == 'RealESRGAN_x4plus_anime_6B':
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
+    elif model_name == "RealESRGAN_x4plus_anime_6B":
+        model = RRDBNet(
+            num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4
+        )
         netscale = 4
-    elif model_name == 'RealESRGAN_x2plus':
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2)
+    elif model_name == "RealESRGAN_x2plus":
+        model = RRDBNet(
+            num_in_ch=3,
+            num_out_ch=3,
+            num_feat=64,
+            num_block=23,
+            num_grow_ch=32,
+            scale=2,
+        )
         netscale = 2
-    elif model_name in ['realesr-general-x4v3', 'realesr-animevideov3']:
+    elif model_name in ["realesr-general-x4v3", "realesr-animevideov3"]:
         # Use SRVGGNetCompact for these models
         from realesrgan.archs.srvgg_arch import SRVGGNetCompact
-        model = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=64, num_conv=32, upscale=4, act_type='prelu')
+
+        model = SRVGGNetCompact(
+            num_in_ch=3,
+            num_out_ch=3,
+            num_feat=64,
+            num_conv=32,
+            upscale=4,
+            act_type="prelu",
+        )
         netscale = 4
     else:
         # Default to x4plus
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+        model = RRDBNet(
+            num_in_ch=3,
+            num_out_ch=3,
+            num_feat=64,
+            num_block=23,
+            num_grow_ch=32,
+            scale=4,
+        )
         netscale = 4
-        model_name = 'RealESRGAN_x4plus'
+        model_name = "RealESRGAN_x4plus"
 
     # Get model URL
-    model_url = MODEL_URLS.get(model_name, MODEL_URLS['RealESRGAN_x4plus'])
+    model_url = MODEL_URLS.get(model_name, MODEL_URLS["RealESRGAN_x4plus"])
 
     # Set dni_weight for denoise models
     dni_weight = None
-    if model_name == 'realesr-general-x4v3' and denoise_strength is not None:
+    if model_name == "realesr-general-x4v3" and denoise_strength is not None:
         dni_weight = denoise_strength
         # For realesr-general-x4v3, we need to load both denoise and no-denoise models
         # The dni_weight interpolates between them
-        wdn_model_url = 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-wdn-x4v3.pth'
+        wdn_model_url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-wdn-x4v3.pth"
 
     # Create upsampler
     upsampler = RealESRGANer(
@@ -131,7 +170,7 @@ def _get_upsampler(
         tile_pad=tile_pad,
         pre_pad=pre_pad,
         half=not use_fp32,
-        gpu_id=gpu_id
+        gpu_id=gpu_id,
     )
 
     _upsampler_cache.put(cache_key, upsampler)
@@ -153,11 +192,11 @@ def _get_face_enhancer(gpu_id: int = 0, use_fp32: bool = False):
         return cached
 
     face_enhancer = GFPGANer(
-        model_path='https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.3.pth',
+        model_path="https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.3.pth",
         upscale=1,  # We handle upscaling separately
-        arch='clean',
+        arch="clean",
         channel_multiplier=2,
-        bg_upsampler=None  # We'll set this separately if needed
+        bg_upsampler=None,  # We'll set this separately if needed
     )
 
     _face_enhancer_cache.put(cache_key, face_enhancer)
@@ -217,7 +256,7 @@ def enhance_image(
             tile_size=tile_size,
             pre_pad=pre_pad,
             use_fp32=use_fp32,
-            denoise_strength=denoise_strength
+            denoise_strength=denoise_strength,
         )
 
         # Get face enhancer if needed
@@ -228,7 +267,9 @@ def enhance_image(
                 # Set the background upsampler for face enhancer
                 face_enhancer.bg_upsampler = upsampler
             except Exception as e:
-                logger.warning("Failed to load GFPGAN, continuing without face enhancement: %s", e)
+                logger.warning(
+                    "Failed to load GFPGAN, continuing without face enhancement: %s", e
+                )
                 face_enhancer = None
 
         # Enhance the image
@@ -239,7 +280,7 @@ def enhance_image(
                 has_aligned=False,
                 only_center_face=False,
                 paste_back=True,
-                weight=0.5
+                weight=0.5,
             )
         else:
             # Use Real-ESRGAN only

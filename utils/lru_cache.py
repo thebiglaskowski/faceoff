@@ -4,6 +4,7 @@ Thread-safe LRU cache for model management.
 Provides bounded caching with configurable size limits to prevent
 unbounded memory growth when loading multiple models.
 """
+
 import logging
 import threading
 from collections import OrderedDict
@@ -13,7 +14,7 @@ from utils.config_manager import config
 
 logger = logging.getLogger("FaceOff")
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class LRUModelCache:
@@ -31,7 +32,7 @@ class LRUModelCache:
         self,
         name: str,
         max_size: Optional[int] = None,
-        cleanup_fn: Optional[Callable[[Any], None]] = None
+        cleanup_fn: Optional[Callable[[Any], None]] = None,
     ):
         """
         Initialize LRU cache.
@@ -43,7 +44,7 @@ class LRUModelCache:
         """
         self.name = name
         self._max_size = max_size or config.get(
-            'model_cache_limits', 'max_models_per_cache', default=5
+            "model_cache_limits", "max_models_per_cache", default=5
         )
         self._cleanup_fn = cleanup_fn
         self._cache: OrderedDict = OrderedDict()
@@ -92,22 +93,27 @@ class LRUModelCache:
                 oldest_key, oldest_value = self._cache.popitem(last=False)
                 logger.info(
                     "[%s] Evicting model (LRU): %s (cache size: %d/%d)",
-                    self.name, oldest_key, len(self._cache), self._max_size
+                    self.name,
+                    oldest_key,
+                    len(self._cache),
+                    self._max_size,
                 )
                 if self._cleanup_fn:
                     try:
                         self._cleanup_fn(oldest_value)
                     except Exception as e:
                         logger.warning(
-                            "[%s] Cleanup failed for %s: %s",
-                            self.name, oldest_key, e
+                            "[%s] Cleanup failed for %s: %s", self.name, oldest_key, e
                         )
 
             # Add new item
             self._cache[key] = value
             logger.debug(
                 "[%s] Cached: %s (size: %d/%d)",
-                self.name, key, len(self._cache), self._max_size
+                self.name,
+                key,
+                len(self._cache),
+                self._max_size,
             )
 
     def remove(self, key: Any) -> bool:
@@ -146,8 +152,7 @@ class LRUModelCache:
                         self._cleanup_fn(value)
                     except Exception as e:
                         logger.warning(
-                            "[%s] Cleanup failed for %s: %s",
-                            self.name, key, e
+                            "[%s] Cleanup failed for %s: %s", self.name, key, e
                         )
             self._cache.clear()
             logger.info("[%s] Cache cleared (%d items)", self.name, count)

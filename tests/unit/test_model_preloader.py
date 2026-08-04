@@ -1,7 +1,8 @@
 """Unit tests for startup model preloading."""
 
-import numpy as np
 from unittest.mock import MagicMock, patch
+
+import numpy as np
 
 
 def _mock_config(**overrides):
@@ -14,8 +15,12 @@ def _mock_config(**overrides):
 
 
 def test_preload_skipped_when_disabled():
-    with patch("processing.model_preloader.config", _mock_config(preload_on_startup=False)), \
-         patch("processing.model_preloader.get_model_pool") as mock_pool:
+    with (
+        patch(
+            "processing.model_preloader.config", _mock_config(preload_on_startup=False)
+        ),
+        patch("processing.model_preloader.get_model_pool") as mock_pool,
+    ):
         from processing.model_preloader import preload_models
 
         preload_models()
@@ -25,13 +30,20 @@ def test_preload_skipped_when_disabled():
 def test_preload_warms_all_gpus_sequentially():
     instances = {0: MagicMock(), 1: MagicMock()}
     mock_pool = MagicMock()
-    mock_pool.get_instance.side_effect = lambda device_id, **kwargs: instances[device_id]
+    mock_pool.get_instance.side_effect = lambda device_id, **kwargs: instances[
+        device_id
+    ]
 
-    with patch("processing.model_preloader.config", _mock_config()), \
-         patch("processing.model_preloader.is_tensorrt_runtime_available", return_value=True), \
-         patch("processing.model_preloader.get_model_pool", return_value=mock_pool), \
-         patch("processing.model_preloader.GPUManager.is_available", return_value=True), \
-         patch("processing.model_preloader.GPUManager.get_device_count", return_value=2):
+    with (
+        patch("processing.model_preloader.config", _mock_config()),
+        patch(
+            "processing.model_preloader.is_tensorrt_runtime_available",
+            return_value=True,
+        ),
+        patch("processing.model_preloader.get_model_pool", return_value=mock_pool),
+        patch("processing.model_preloader.GPUManager.is_available", return_value=True),
+        patch("processing.model_preloader.GPUManager.get_device_count", return_value=2),
+    ):
         from processing.model_preloader import preload_models
 
         preload_models()
@@ -48,10 +60,13 @@ def test_preload_continues_after_single_gpu_failure():
     mock_pool = MagicMock()
     mock_pool.get_instance.side_effect = [RuntimeError("gpu0 oom"), good_instance]
 
-    with patch(
-        "processing.model_preloader.config",
-        _mock_config(tensorrt_enabled=False),
-    ), patch("processing.model_preloader.get_model_pool", return_value=mock_pool):
+    with (
+        patch(
+            "processing.model_preloader.config",
+            _mock_config(tensorrt_enabled=False),
+        ),
+        patch("processing.model_preloader.get_model_pool", return_value=mock_pool),
+    ):
         from processing.model_preloader import preload_models
 
         preload_models(device_ids=[0, 1])

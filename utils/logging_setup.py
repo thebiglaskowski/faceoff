@@ -66,6 +66,7 @@ def _install_exception_hooks(app_logger: logging.Logger) -> None:
     sys.excepthook = excepthook
 
     if hasattr(threading, "excepthook"):
+
         def thread_excepthook(args: threading.ExceptHookArgs) -> None:
             app_logger.critical(
                 "Uncaught exception in thread %s",
@@ -76,7 +77,9 @@ def _install_exception_hooks(app_logger: logging.Logger) -> None:
         threading.excepthook = thread_excepthook
 
 
-def setup_logging(log_file: Optional[str] = None, log_level: Optional[int] = None) -> None:
+def setup_logging(
+    log_file: Optional[str] = None, log_level: Optional[int] = None
+) -> None:
     """
     Configure console, rotating file, optional JSON, and in-app log handlers.
 
@@ -101,7 +104,9 @@ def setup_logging(log_file: Optional[str] = None, log_level: Optional[int] = Non
     backup_count = config.log_backup_count
     formatter = _build_formatter()
 
-    console_level = log_level or _level_from_name(config.log_console_level, logging.INFO)
+    console_level = log_level or _level_from_name(
+        config.log_console_level, logging.INFO
+    )
     file_level = _level_from_name(config.log_file_level, logging.DEBUG)
 
     file_handler = RotatingFileHandler(
@@ -167,8 +172,10 @@ def setup_logging(log_file: Optional[str] = None, log_level: Optional[int] = Non
         app_logger.info("JSON logging enabled: %s", config.log_json_file)
 
     if terminal_handler_available:
-        app_logger.info("In-app Logs tab enabled (auto-refresh every %ss)",
-                        config.log_terminal_auto_refresh_sec)
+        app_logger.info(
+            "In-app Logs tab enabled (auto-refresh every %ss)",
+            config.log_terminal_auto_refresh_sec,
+        )
     else:
         app_logger.debug("In-app terminal handler not available during setup")
 

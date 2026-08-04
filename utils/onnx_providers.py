@@ -255,7 +255,9 @@ def build_face_analysis_providers(
                 "TensorrtExecutionProvider",
                 {
                     "device_id": device_id,
-                    "trt_max_workspace_size": config.tensorrt_workspace_mb * 1024 * 1024,
+                    "trt_max_workspace_size": config.tensorrt_workspace_mb
+                    * 1024
+                    * 1024,
                     "trt_fp16_enable": tensorrt_fp16,
                     "trt_engine_cache_enable": True,
                     "trt_engine_cache_path": str(cache),

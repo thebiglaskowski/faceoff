@@ -8,13 +8,13 @@ concurrent multi-GPU processing.
 
 import logging
 import threading
-from typing import Dict, List, Optional, Tuple
-from pathlib import Path
 from contextlib import contextmanager
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import torch
 import onnxruntime as ort
+import torch
 from insightface.app import FaceAnalysis
 
 from utils.config_manager import config
@@ -151,7 +151,9 @@ class GPUModelInstance:
         from insightface.model_zoo import get_model
 
         sess_options = ort.SessionOptions()
-        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        sess_options.graph_optimization_level = (
+            ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        )
         sess_options.intra_op_num_threads = 4
         sess_options.inter_op_num_threads = 4
 
@@ -256,8 +258,9 @@ class GPUModelInstance:
         paste_on_gpu: bool = False,
     ):
         """Batched multi-face swap with optional GPU IoBinding inference and paste."""
-        from insightface.utils import face_align
         import cv2
+        from insightface.utils import face_align
+
         from core.face_paste import ensure_rgb_image, paste_swapped_face
         from utils.config_manager import config
 
@@ -322,11 +325,19 @@ class GPUModelInstance:
                     bgr_fake = (img_fake * 255.0).flip(-1)
                 else:
                     img_fake = pred[i].transpose((1, 2, 0))
-                    bgr_fake = torch.from_numpy(
-                        np.clip(255 * img_fake, 0, 255).astype(np.uint8)[:, :, ::-1].copy()
-                    ).to(swapped_gpu.device).float()
+                    bgr_fake = (
+                        torch.from_numpy(
+                            np.clip(255 * img_fake, 0, 255)
+                            .astype(np.uint8)[:, :, ::-1]
+                            .copy()
+                        )
+                        .to(swapped_gpu.device)
+                        .float()
+                    )
                 aimg_tensor = aimg_t(aimg).to(swapped_gpu.device).float()
-                swapped_gpu = paste_swapped_face_gpu(swapped_gpu, bgr_fake, aimg_tensor, M)
+                swapped_gpu = paste_swapped_face_gpu(
+                    swapped_gpu, bgr_fake, aimg_tensor, M
+                )
             return swapped_gpu
 
         swapped = ensure_rgb_image(image)

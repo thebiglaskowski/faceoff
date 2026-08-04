@@ -1,4 +1,5 @@
 """Test script to validate config system."""
+
 from utils.config_manager import config, get_model_options
 
 print("=" * 60)
@@ -41,7 +42,7 @@ print(f"  Default use FP32: {config.default_use_fp32}")
 print("\n[Model Options]")
 models = get_model_options()
 for name, details in models.items():
-    denoise = " (supports denoise)" if details['supports_denoise'] else ""
+    denoise = " (supports denoise)" if details["supports_denoise"] else ""
     print(f"  {name}{denoise}")
     print(f"    Model: {details['model_name']}")
     print(f"    Description: {details['description']}")

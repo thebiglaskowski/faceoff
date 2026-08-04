@@ -10,10 +10,11 @@ This module provides fixtures for:
 
 import os
 import sys
-import pytest
-import numpy as np
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pytest
 from PIL import Image
 
 # Add project root to path for imports
@@ -24,6 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # =============================================================================
 # Configuration Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def reset_config():
@@ -138,6 +140,7 @@ ui:
 
     # Patch config path
     from utils import config_manager
+
     original_path = config_manager.Config._config_path
     config_manager.Config._config_path = config_path
 
@@ -151,17 +154,18 @@ ui:
 # GPU Mocking Fixtures
 # =============================================================================
 
+
 @pytest.fixture
 def mock_cuda_available():
     """Mock torch.cuda.is_available() to return True."""
-    with patch('torch.cuda.is_available', return_value=True):
+    with patch("torch.cuda.is_available", return_value=True):
         yield
 
 
 @pytest.fixture
 def mock_cuda_unavailable():
     """Mock torch.cuda.is_available() to return False."""
-    with patch('torch.cuda.is_available', return_value=False):
+    with patch("torch.cuda.is_available", return_value=False):
         yield
 
 
@@ -188,11 +192,11 @@ def mock_gpu():
     MemoryManager.clear_all_caches()
 
     with patch.multiple(
-        'torch.cuda',
+        "torch.cuda",
         is_available=MagicMock(return_value=True),
         device_count=MagicMock(return_value=1),
         memory_allocated=MagicMock(return_value=1 * 1024 * 1024 * 1024),  # 1GB
-        memory_reserved=MagicMock(return_value=2 * 1024 * 1024 * 1024),   # 2GB
+        memory_reserved=MagicMock(return_value=2 * 1024 * 1024 * 1024),  # 2GB
         get_device_properties=MagicMock(return_value=mock_device_props),
         empty_cache=MagicMock(),
         synchronize=MagicMock(),
@@ -210,7 +214,7 @@ def mock_multi_gpu():
     mock_device_props.name = "Mock GPU"
 
     with patch.multiple(
-        'torch.cuda',
+        "torch.cuda",
         is_available=MagicMock(return_value=True),
         device_count=MagicMock(return_value=2),
         memory_allocated=MagicMock(return_value=1 * 1024 * 1024 * 1024),
@@ -225,6 +229,7 @@ def mock_multi_gpu():
 # =============================================================================
 # Sample Image/Media Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def sample_image(tmp_path):
@@ -249,8 +254,9 @@ def sample_image(tmp_path):
             if ((x - center_x) / 60) ** 2 + ((y - center_y) / 80) ** 2 <= 1:
                 img_array[y, x] = [220, 180, 160]
             # Eyes (dark circles)
-            if ((x - 75) ** 2 + (y - 80) ** 2 <= 100) or \
-               ((x - 125) ** 2 + (y - 80) ** 2 <= 100):
+            if ((x - 75) ** 2 + (y - 80) ** 2 <= 100) or (
+                (x - 125) ** 2 + (y - 80) ** 2 <= 100
+            ):
                 img_array[y, x] = [50, 50, 50]
             # Nose (small triangle area)
             if 95 <= x <= 105 and 85 <= y <= 115:
@@ -306,11 +312,7 @@ def sample_gif(tmp_path):
 
     gif_path = tmp_path / "test.gif"
     frames[0].save(
-        gif_path,
-        save_all=True,
-        append_images=frames[1:],
-        duration=100,
-        loop=0
+        gif_path, save_all=True, append_images=frames[1:], duration=100, loop=0
     )
 
     return gif_path
@@ -325,7 +327,7 @@ def large_image(tmp_path):
         Path to large test image
     """
     # 5000x5000 = 25 million pixels (exceeds typical 4K limit)
-    img = Image.new('RGB', (5000, 5000), color='red')
+    img = Image.new("RGB", (5000, 5000), color="red")
     img_path = tmp_path / "large_image.png"
     img.save(img_path)
 
@@ -335,6 +337,7 @@ def large_image(tmp_path):
 # =============================================================================
 # Mock Face Detection Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def mock_face():
@@ -353,8 +356,8 @@ def mock_faces():
     """Create multiple mock face objects for testing."""
     faces = []
     positions = [
-        (50, 50, 150, 150),    # Left face
-        (200, 50, 300, 150),   # Right face
+        (50, 50, 150, 150),  # Left face
+        (200, 50, 300, 150),  # Right face
         (125, 200, 225, 300),  # Bottom center face
     ]
 
@@ -373,6 +376,7 @@ def mock_faces():
 # =============================================================================
 # Temporary Directory Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def temp_output_dir(tmp_path):
@@ -394,6 +398,7 @@ def temp_cache_dir(tmp_path):
 # Helper Fixtures
 # =============================================================================
 
+
 @pytest.fixture
 def capture_logs(caplog):
     """
@@ -405,6 +410,7 @@ def capture_logs(caplog):
             assert "expected message" in capture_logs.text
     """
     import logging
+
     caplog.set_level(logging.DEBUG)
     return caplog
 
@@ -421,7 +427,7 @@ def isolate_tests(tmp_path, monkeypatch):
     original_cwd = os.getcwd()
 
     # Don't change cwd, but set env vars for temp paths
-    monkeypatch.setenv('FACEOFF_TEMP_DIR', str(tmp_path))
+    monkeypatch.setenv("FACEOFF_TEMP_DIR", str(tmp_path))
 
     yield
 
@@ -432,20 +438,15 @@ def isolate_tests(tmp_path, monkeypatch):
 # Skip Markers
 # =============================================================================
 
+
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line(
         "markers", "unit: mark test as a unit test (fast, isolated)"
     )
-    config.addinivalue_line(
-        "markers", "integration: mark test as integration test"
-    )
-    config.addinivalue_line(
-        "markers", "gpu: mark test as requiring GPU"
-    )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow running"
-    )
+    config.addinivalue_line("markers", "integration: mark test as integration test")
+    config.addinivalue_line("markers", "gpu: mark test as requiring GPU")
+    config.addinivalue_line("markers", "slow: mark test as slow running")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -454,6 +455,7 @@ def pytest_collection_modifyitems(config, items):
     """
     try:
         import torch
+
         cuda_available = torch.cuda.is_available()
     except ImportError:
         cuda_available = False

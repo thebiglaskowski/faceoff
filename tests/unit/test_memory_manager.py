@@ -8,8 +8,9 @@ Tests:
 - Memory statistics and cache clearing
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestMemoryManagerInit:
@@ -39,10 +40,10 @@ class TestMemoryManagerInit:
 
         # Verify manager has config-based attributes
         # (actual values come from default config.yaml)
-        assert hasattr(manager, 'auto_clear')
-        assert hasattr(manager, 'clear_threshold_mb')
-        assert hasattr(manager, 'reduce_batch_on_oom')
-        assert hasattr(manager, 'min_batch_size')
+        assert hasattr(manager, "auto_clear")
+        assert hasattr(manager, "clear_threshold_mb")
+        assert hasattr(manager, "reduce_batch_on_oom")
+        assert hasattr(manager, "min_batch_size")
 
         # Verify types are correct
         assert isinstance(manager.auto_clear, bool)
@@ -61,24 +62,26 @@ class TestMemoryStats:
         manager = MemoryManager()
         stats = manager.get_memory_stats()
 
-        assert 'allocated_mb' in stats
-        assert 'reserved_mb' in stats
-        assert 'free_mb' in stats
-        assert 'total_mb' in stats
-        assert 'utilization_pct' in stats
+        assert "allocated_mb" in stats
+        assert "reserved_mb" in stats
+        assert "free_mb" in stats
+        assert "total_mb" in stats
+        assert "utilization_pct" in stats
 
-    def test_get_memory_stats_without_gpu(self, mock_cuda_unavailable, temp_config, reset_config):
+    def test_get_memory_stats_without_gpu(
+        self, mock_cuda_unavailable, temp_config, reset_config
+    ):
         """Should return zeros when GPU unavailable."""
         from utils.memory_manager import MemoryManager
 
         manager = MemoryManager()
         stats = manager.get_memory_stats()
 
-        assert stats['allocated_mb'] == 0
-        assert stats['reserved_mb'] == 0
-        assert stats['free_mb'] == 0
-        assert stats['total_mb'] == 0
-        assert stats['utilization_pct'] == 0
+        assert stats["allocated_mb"] == 0
+        assert stats["reserved_mb"] == 0
+        assert stats["free_mb"] == 0
+        assert stats["total_mb"] == 0
+        assert stats["utilization_pct"] == 0
 
     def test_memory_stats_values(self, mock_gpu, temp_config, reset_config):
         """Should calculate correct memory values."""
@@ -88,10 +91,10 @@ class TestMemoryStats:
         stats = manager.get_memory_stats()
 
         # Based on mock_gpu fixture: 1GB allocated, 8GB total
-        assert stats['allocated_mb'] == pytest.approx(1024, rel=0.01)
-        assert stats['total_mb'] == pytest.approx(8192, rel=0.01)
-        assert stats['free_mb'] == pytest.approx(7168, rel=0.01)
-        assert stats['utilization_pct'] == pytest.approx(12.5, rel=0.1)
+        assert stats["allocated_mb"] == pytest.approx(1024, rel=0.01)
+        assert stats["total_mb"] == pytest.approx(8192, rel=0.01)
+        assert stats["free_mb"] == pytest.approx(7168, rel=0.01)
+        assert stats["utilization_pct"] == pytest.approx(12.5, rel=0.1)
 
 
 class TestCacheClearing:
@@ -106,7 +109,9 @@ class TestCacheClearing:
 
         assert manager.should_clear_cache() is False
 
-    def test_should_clear_cache_below_threshold(self, mock_gpu, temp_config, reset_config):
+    def test_should_clear_cache_below_threshold(
+        self, mock_gpu, temp_config, reset_config
+    ):
         """Should return False when below threshold."""
         from utils.memory_manager import MemoryManager
 
@@ -116,7 +121,9 @@ class TestCacheClearing:
 
         assert manager.should_clear_cache() is False
 
-    def test_should_clear_cache_above_threshold(self, mock_gpu, temp_config, reset_config):
+    def test_should_clear_cache_above_threshold(
+        self, mock_gpu, temp_config, reset_config
+    ):
         """Should return True when above threshold."""
         from utils.memory_manager import MemoryManager
 
@@ -128,8 +135,9 @@ class TestCacheClearing:
 
     def test_clear_cache_forced(self, mock_gpu, temp_config, reset_config):
         """Should clear cache when forced."""
-        from utils.memory_manager import MemoryManager
         import torch.cuda as cuda
+
+        from utils.memory_manager import MemoryManager
 
         manager = MemoryManager()
         manager.clear_cache(force=True)
@@ -160,7 +168,9 @@ class TestOptimalBatchSize:
 
         assert result == 4  # Should keep current
 
-    def test_optimal_batch_reduces_when_needed(self, mock_gpu, temp_config, reset_config):
+    def test_optimal_batch_reduces_when_needed(
+        self, mock_gpu, temp_config, reset_config
+    ):
         """Should reduce batch size when memory limited."""
         from utils.memory_manager import MemoryManager
 
@@ -168,8 +178,7 @@ class TestOptimalBatchSize:
 
         # Request very large batch with limited memory
         result = manager.get_optimal_batch_size(
-            current_batch_size=100,
-            available_vram_mb=1000  # Only 1GB available
+            current_batch_size=100, available_vram_mb=1000  # Only 1GB available
         )
 
         # ~1000MB / 500MB per batch = 2 batches max
@@ -183,8 +192,7 @@ class TestOptimalBatchSize:
         manager.min_batch_size = 2
 
         result = manager.get_optimal_batch_size(
-            current_batch_size=10,
-            available_vram_mb=100  # Very limited
+            current_batch_size=10, available_vram_mb=100  # Very limited
         )
 
         assert result >= 2
@@ -203,6 +211,7 @@ class TestIsMemoryError:
 
     def test_detects_torch_cuda_oom(self):
         import torch
+
         from utils.memory_manager import is_memory_error
 
         assert is_memory_error(torch.cuda.OutOfMemoryError("CUDA OOM"))
@@ -260,8 +269,9 @@ class TestOOMHandling:
 
     def test_handle_oom_clears_cache(self, mock_gpu, temp_config, reset_config):
         """Should clear cache when handling OOM."""
-        from utils.memory_manager import MemoryManager
         import torch.cuda as cuda
+
+        from utils.memory_manager import MemoryManager
 
         manager = MemoryManager()
         manager.handle_oom_error(8)
@@ -278,23 +288,26 @@ class TestAutoMemoryManager:
 
         with AutoMemoryManager() as manager:
             assert manager is not None
-            assert hasattr(manager, 'get_memory_stats')
+            assert hasattr(manager, "get_memory_stats")
 
     def test_context_manager_clears_on_exit(self, reset_config):
         """Should clear cache on exit by default."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from utils.memory_manager import AutoMemoryManager
 
         # Create a fresh mock for this specific test
         # Use 2GB allocated to exceed 1024MB threshold and trigger clear
-        with patch('torch.cuda.is_available', return_value=True), \
-             patch('torch.cuda.empty_cache') as mock_empty, \
-             patch('torch.cuda.synchronize'), \
-             patch('torch.cuda.memory_allocated', return_value=2*1024*1024*1024), \
-             patch('torch.cuda.memory_reserved', return_value=3*1024*1024*1024), \
-             patch('torch.cuda.get_device_properties') as mock_props:
+        with (
+            patch("torch.cuda.is_available", return_value=True),
+            patch("torch.cuda.empty_cache") as mock_empty,
+            patch("torch.cuda.synchronize"),
+            patch("torch.cuda.memory_allocated", return_value=2 * 1024 * 1024 * 1024),
+            patch("torch.cuda.memory_reserved", return_value=3 * 1024 * 1024 * 1024),
+            patch("torch.cuda.get_device_properties") as mock_props,
+        ):
 
-            mock_props.return_value = MagicMock(total_memory=8*1024*1024*1024)
+            mock_props.return_value = MagicMock(total_memory=8 * 1024 * 1024 * 1024)
 
             with AutoMemoryManager(clear_on_exit=True):
                 pass
@@ -304,8 +317,9 @@ class TestAutoMemoryManager:
 
     def test_context_manager_no_clear(self, mock_gpu, temp_config, reset_config):
         """Should not clear cache when clear_on_exit=False."""
-        from utils.memory_manager import AutoMemoryManager
         import torch.cuda as cuda
+
+        from utils.memory_manager import AutoMemoryManager
 
         cuda.empty_cache.reset_mock()
 
@@ -315,7 +329,9 @@ class TestAutoMemoryManager:
         # Only called during enter's should_clear_cache check, not on exit
         # The fixture has auto_clear=False so it shouldn't be called
 
-    def test_context_manager_handles_exception(self, mock_gpu, temp_config, reset_config):
+    def test_context_manager_handles_exception(
+        self, mock_gpu, temp_config, reset_config
+    ):
         """Should not suppress exceptions."""
         from utils.memory_manager import AutoMemoryManager
 
@@ -329,8 +345,9 @@ class TestConvenienceFunctions:
 
     def test_clear_cuda_cache(self, mock_gpu, temp_config, reset_config):
         """Should clear CUDA cache."""
-        from utils.memory_manager import clear_cuda_cache
         import torch.cuda as cuda
+
+        from utils.memory_manager import clear_cuda_cache
 
         clear_cuda_cache()
 
@@ -342,8 +359,8 @@ class TestConvenienceFunctions:
 
         stats = get_memory_stats()
 
-        assert 'allocated_mb' in stats
-        assert 'total_mb' in stats
+        assert "allocated_mb" in stats
+        assert "total_mb" in stats
 
 
 class TestLogMemoryStats:
@@ -395,27 +412,48 @@ class TestEdgeCases:
 class TestRefreshAndEnhancementPrep:
     """Tests for staged memory refresh helpers."""
 
-    def test_refresh_gpu_memory_calls_empty_cache(self, mock_gpu, temp_config, reset_config):
-        from utils.memory_manager import refresh_gpu_memory
+    def test_refresh_gpu_memory_calls_empty_cache(
+        self, mock_gpu, temp_config, reset_config
+    ):
         import torch.cuda as cuda
+
+        from utils.memory_manager import refresh_gpu_memory
 
         stats = refresh_gpu_memory(0, force=True)
         assert 0 in stats
         cuda.empty_cache.assert_called()
 
-    def test_select_enhancement_gpu_prefers_most_free(self, mock_gpu, temp_config, reset_config):
+    def test_select_enhancement_gpu_prefers_most_free(
+        self, mock_gpu, temp_config, reset_config
+    ):
         from unittest.mock import patch
+
         from utils.memory_manager import MemoryManager, select_enhancement_gpu
 
         with patch.object(MemoryManager, "get_memory_stats") as mock_stats:
             mock_stats.side_effect = [
-                {"free_mb": 500, "total_mb": 8000, "allocated_mb": 7500, "reserved_mb": 7600, "utilization_pct": 90},
-                {"free_mb": 3000, "total_mb": 8000, "allocated_mb": 5000, "reserved_mb": 5100, "utilization_pct": 60},
+                {
+                    "free_mb": 500,
+                    "total_mb": 8000,
+                    "allocated_mb": 7500,
+                    "reserved_mb": 7600,
+                    "utilization_pct": 90,
+                },
+                {
+                    "free_mb": 3000,
+                    "total_mb": 8000,
+                    "allocated_mb": 5000,
+                    "reserved_mb": 5100,
+                    "utilization_pct": 60,
+                },
             ]
             assert select_enhancement_gpu(0, [0, 1]) == 1
 
-    def test_prepare_for_enhancement_releases_swap_models(self, mock_gpu, temp_config, reset_config):
+    def test_prepare_for_enhancement_releases_swap_models(
+        self, mock_gpu, temp_config, reset_config
+    ):
         from unittest.mock import MagicMock, patch
+
         from utils.memory_manager import prepare_for_enhancement
 
         mock_pool = MagicMock()

@@ -8,8 +8,9 @@ Tests:
 - Error message formatting
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 import torch
 
 
@@ -22,7 +23,7 @@ class TestFriendlyError:
             title="Test Error",
             message="This is a test",
             suggestions=["Try this", "Or this"],
-            technical_details="Stack trace here"
+            technical_details="Stack trace here",
         )
 
         assert error.title == "Test Error"
@@ -35,7 +36,7 @@ class TestFriendlyError:
         error = FriendlyError(
             title="Test Error",
             message="Something went wrong",
-            suggestions=["Fix A", "Fix B"]
+            suggestions=["Fix A", "Fix B"],
         )
 
         formatted = error.format_message()
@@ -48,11 +49,7 @@ class TestFriendlyError:
 
     def test_friendly_error_no_suggestions(self):
         """Should format correctly with no suggestions."""
-        error = FriendlyError(
-            title="Error",
-            message="Message",
-            suggestions=[]
-        )
+        error = FriendlyError(title="Error", message="Message", suggestions=[])
 
         formatted = error.format_message()
 
@@ -61,11 +58,7 @@ class TestFriendlyError:
 
     def test_friendly_error_inherits_exception(self):
         """Should be raisable as exception."""
-        error = FriendlyError(
-            title="Test",
-            message="Raisable",
-            suggestions=[]
-        )
+        error = FriendlyError(title="Test", message="Raisable", suggestions=[])
 
         with pytest.raises(FriendlyError) as exc_info:
             raise error
@@ -74,7 +67,7 @@ class TestFriendlyError:
 
 
 # Import after test class to avoid import errors during collection
-from utils.error_handler import FriendlyError, ErrorHandler, wrap_error
+from utils.error_handler import ErrorHandler, FriendlyError, wrap_error
 
 
 class TestErrorHandlerOOM:
@@ -84,11 +77,7 @@ class TestErrorHandlerOOM:
         """Should handle OOM errors correctly."""
         oom_error = MemoryError("CUDA out of memory")
 
-        context = {
-            'tile_size': 512,
-            'outscale': 4,
-            'restore_faces': True
-        }
+        context = {"tile_size": 512, "outscale": 4, "restore_faces": True}
 
         result = ErrorHandler.handle_error(oom_error, context)
 
@@ -100,7 +89,7 @@ class TestErrorHandlerOOM:
         """Should suggest reducing tile size."""
         oom_error = MemoryError("out of memory")
 
-        context = {'tile_size': 512, 'outscale': 4}
+        context = {"tile_size": 512, "outscale": 4}
         result = ErrorHandler.handle_error(oom_error, context)
 
         tile_suggestion = [s for s in result.suggestions if "tile" in s.lower()]
@@ -110,7 +99,7 @@ class TestErrorHandlerOOM:
         """Should suggest reducing output scale."""
         oom_error = MemoryError("out of memory")
 
-        context = {'tile_size': 256, 'outscale': 4}
+        context = {"tile_size": 256, "outscale": 4}
         result = ErrorHandler.handle_error(oom_error, context)
 
         scale_suggestion = [s for s in result.suggestions if "scale" in s.lower()]
@@ -124,7 +113,7 @@ class TestErrorHandlerNoFaces:
         """Should handle no faces errors correctly."""
         error = ValueError("No faces detected in image")
 
-        context = {'face_confidence': 0.5}
+        context = {"face_confidence": 0.5}
         result = ErrorHandler.handle_error(error, context)
 
         assert result.title == "No Faces Detected"
@@ -134,7 +123,7 @@ class TestErrorHandlerNoFaces:
         """Should suggest lowering confidence threshold."""
         error = ValueError("no face found")
 
-        context = {'face_confidence': 0.7}
+        context = {"face_confidence": 0.7}
         result = ErrorHandler.handle_error(error, context)
 
         conf_suggestion = [s for s in result.suggestions if "confidence" in s.lower()]
@@ -148,7 +137,7 @@ class TestErrorHandlerFileNotFound:
         """Should handle file not found errors."""
         error = FileNotFoundError("No such file: test.jpg")
 
-        context = {'file_path': '/path/to/test.jpg'}
+        context = {"file_path": "/path/to/test.jpg"}
         result = ErrorHandler.handle_error(error, context)
 
         assert result.title == "File Not Found"
@@ -160,8 +149,9 @@ class TestErrorHandlerFileNotFound:
 
         result = ErrorHandler.handle_error(error, {})
 
-        assert any("path" in s.lower() or "file" in s.lower()
-                   for s in result.suggestions)
+        assert any(
+            "path" in s.lower() or "file" in s.lower() for s in result.suggestions
+        )
 
 
 class TestErrorHandlerPermission:
@@ -197,7 +187,7 @@ class TestErrorHandlerInvalidMapping:
         """Should handle invalid face mapping errors."""
         error = ValueError("Invalid mapping: index out of range")
 
-        context = {'source_faces': 2, 'dest_faces': 3}
+        context = {"source_faces": 2, "dest_faces": 3}
         result = ErrorHandler.handle_error(error, context)
 
         assert result.title == "Invalid Face Mapping"
@@ -261,6 +251,7 @@ class TestWrapErrorDecorator:
 
     def test_wrap_error_returns_result(self):
         """Should return function result when no error."""
+
         @wrap_error
         def successful_function():
             return "success"
@@ -270,6 +261,7 @@ class TestWrapErrorDecorator:
 
     def test_wrap_error_converts_exception(self):
         """Should convert exceptions to FriendlyError."""
+
         @wrap_error
         def failing_function():
             raise MemoryError("out of memory")
@@ -284,7 +276,7 @@ class TestWrapErrorDecorator:
         original = FriendlyError(
             title="Original",
             message="Original message",
-            suggestions=["Original suggestion"]
+            suggestions=["Original suggestion"],
         )
 
         @wrap_error
@@ -298,12 +290,13 @@ class TestWrapErrorDecorator:
 
     def test_wrap_error_uses_context(self):
         """Should pass context to error handler."""
+
         @wrap_error
         def function_with_context(context=None):
             raise MemoryError("OOM")
 
         with pytest.raises(FriendlyError):
-            function_with_context(context={'tile_size': 512})
+            function_with_context(context={"tile_size": 512})
 
 
 class TestErrorContext:
@@ -314,11 +307,11 @@ class TestErrorContext:
         error = MemoryError("OOM")
 
         # With restore_faces enabled
-        context1 = {'restore_faces': True, 'tile_size': 256, 'outscale': 4}
+        context1 = {"restore_faces": True, "tile_size": 256, "outscale": 4}
         result1 = ErrorHandler.handle_error(error, context1)
 
         # Without restore_faces
-        context2 = {'restore_faces': False, 'tile_size': 256, 'outscale': 4}
+        context2 = {"restore_faces": False, "tile_size": 256, "outscale": 4}
         result2 = ErrorHandler.handle_error(error, context2)
 
         # Should have different suggestions

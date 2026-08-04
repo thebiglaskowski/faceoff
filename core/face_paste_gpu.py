@@ -51,8 +51,12 @@ def _warp_affine_gpu(
     theta = _cv2_inv_affine_to_theta(
         M_inv, src.shape[2], src.shape[3], out_h, out_w, src.device
     )
-    grid = F.affine_grid(theta, size=(src.shape[0], src.shape[1], out_h, out_w), align_corners=True)
-    return F.grid_sample(src, grid, mode="bilinear", padding_mode="zeros", align_corners=True)
+    grid = F.affine_grid(
+        theta, size=(src.shape[0], src.shape[1], out_h, out_w), align_corners=True
+    )
+    return F.grid_sample(
+        src, grid, mode="bilinear", padding_mode="zeros", align_corners=True
+    )
 
 
 def paste_swapped_face_gpu(
@@ -81,7 +85,10 @@ def paste_swapped_face_gpu(
     fake_diff[:, :2] = 0
     fake_diff[:, -2:] = 0
 
-    ones = torch.ones((aimg.shape[0], aimg.shape[1]), device=device, dtype=torch.float32) * 255.0
+    ones = (
+        torch.ones((aimg.shape[0], aimg.shape[1]), device=device, dtype=torch.float32)
+        * 255.0
+    )
     fake_nchw = fake_f.permute(2, 0, 1).unsqueeze(0)
     ones_nchw = ones.unsqueeze(0).unsqueeze(0)
     diff_nchw = fake_diff.unsqueeze(0).unsqueeze(0)
@@ -90,9 +97,15 @@ def paste_swapped_face_gpu(
     warped_white = _warp_affine_gpu(ones_nchw, IM, h, w).squeeze(0).squeeze(0)
     warped_diff = _warp_affine_gpu(diff_nchw, IM, h, w).squeeze(0).squeeze(0)
 
-    warped_white = torch.where(warped_white > 20, torch.tensor(255.0, device=device), warped_white)
+    warped_white = torch.where(
+        warped_white > 20, torch.tensor(255.0, device=device), warped_white
+    )
     fthresh = 10.0
-    warped_diff = torch.where(warped_diff < fthresh, torch.zeros_like(warped_diff), torch.full_like(warped_diff, 255.0))
+    warped_diff = torch.where(
+        warped_diff < fthresh,
+        torch.zeros_like(warped_diff),
+        torch.full_like(warped_diff, 255.0),
+    )
 
     mask = warped_white
     mask_inds = (mask >= 255.0).nonzero(as_tuple=False)

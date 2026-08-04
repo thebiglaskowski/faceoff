@@ -10,15 +10,17 @@ Performance optimizations (in order of preference):
 3. SDPA (Scaled Dot Product Attention) - PyTorch 2.0+ native (cross-platform)
 4. FP16 autocast - Always enabled on CUDA (reduced memory, faster)
 """
-import cv2
+
 import gc
 import logging
-import numpy as np
 import sys
-import torch
 from pathlib import Path
-from PIL import Image
 from typing import List, Optional, Tuple
+
+import cv2
+import numpy as np
+import torch
+from PIL import Image
 
 from utils.lru_cache import LRUModelCache
 
@@ -29,13 +31,15 @@ logger = logging.getLogger("FaceOff")
 # Optimization Availability Checks
 # =============================================================================
 
+
 def _check_torch_compile_available() -> bool:
     """Check if torch.compile() is available and functional (requires Triton on Linux)."""
-    if not hasattr(torch, 'compile') or torch.__version__ < '2.0':
+    if not hasattr(torch, "compile") or torch.__version__ < "2.0":
         return False
     # Check for Triton (required for inductor backend on CUDA)
     try:
         import triton
+
         return True
     except ImportError:
         return False
@@ -45,6 +49,7 @@ def _check_bettertransformer_available() -> bool:
     """Check if BetterTransformer from optimum is available."""
     try:
         from optimum.bettertransformer import BetterTransformer
+
         return True
     except ImportError as e:
         logger.debug("BetterTransformer import failed: %s", e)
@@ -57,7 +62,10 @@ def _check_bettertransformer_available() -> bool:
 def _check_sdpa_available() -> bool:
     """Check if PyTorch SDPA (Scaled Dot Product Attention) is available."""
     # SDPA is available in PyTorch 2.0+ and provides Flash Attention when possible
-    return hasattr(torch.nn.functional, 'scaled_dot_product_attention') and torch.__version__ >= '2.0'
+    return (
+        hasattr(torch.nn.functional, "scaled_dot_product_attention")
+        and torch.__version__ >= "2.0"
+    )
 
 
 # Check available optimizations at module load
@@ -73,7 +81,10 @@ if BETTERTRANSFORMER_AVAILABLE:
     _opt_status.append("BetterTransformer")
 if SDPA_AVAILABLE:
     _opt_status.append("SDPA")
-logger.debug("SwinIR optimizations available: %s", ", ".join(_opt_status) if _opt_status else "FP16 only")
+logger.debug(
+    "SwinIR optimizations available: %s",
+    ", ".join(_opt_status) if _opt_status else "FP16 only",
+)
 
 
 def _cleanup_swinir_model(model_tuple):
@@ -118,10 +129,7 @@ SWINIR_MODELS = {
 DEFAULT_SWINIR_MODEL = "Swin2SR_RealWorld_x4"
 
 
-def _get_swinir_model(
-    model_name: str = DEFAULT_SWINIR_MODEL,
-    gpu_id: int = 0
-) -> Tuple:
+def _get_swinir_model(model_name: str = DEFAULT_SWINIR_MODEL, gpu_id: int = 0) -> Tuple:
     """
     Get or create Swin2SR model instance (cached).
 
@@ -147,14 +155,16 @@ def _get_swinir_model(
 
     model_id = SWINIR_MODELS[model_name]["model_id"]
 
-    logger.info("Loading Swin2SR model: %s (ID: %s) on GPU %d", model_name, model_id, gpu_id)
+    logger.info(
+        "Loading Swin2SR model: %s (ID: %s) on GPU %d", model_name, model_id, gpu_id
+    )
 
     # Load processor and model
     processor = AutoImageProcessor.from_pretrained(model_id)
     model = Swin2SRForImageSuperResolution.from_pretrained(model_id)
 
     # Move to GPU
-    device = torch.device(f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     model.eval()
 
@@ -162,27 +172,34 @@ def _get_swinir_model(
     optimization_applied = None
 
     # Option 1: torch.compile() - Best performance but requires Triton (Linux only)
-    if TORCH_COMPILE_AVAILABLE and device.type == 'cuda':
+    if TORCH_COMPILE_AVAILABLE and device.type == "cuda":
         try:
             logger.info("Applying torch.compile() optimization (Triton backend)...")
-            model = torch.compile(model, mode='reduce-overhead')
+            model = torch.compile(model, mode="reduce-overhead")
             optimization_applied = "torch.compile"
-            logger.info("torch.compile() applied - expect ~30-50%% speedup after warmup")
+            logger.info(
+                "torch.compile() applied - expect ~30-50%% speedup after warmup"
+            )
         except Exception as e:
             logger.warning("torch.compile() failed: %s", e)
 
     # Option 2: BetterTransformer - Good cross-platform optimization
     # Try the native HF method first (model.to_bettertransformer()), then fall back to optimum
-    if optimization_applied is None and device.type == 'cuda':
+    if optimization_applied is None and device.type == "cuda":
         # Method 2a: Native HuggingFace to_bettertransformer() (preferred)
-        if hasattr(model, 'to_bettertransformer'):
+        if hasattr(model, "to_bettertransformer"):
             try:
-                logger.info("Applying BetterTransformer optimization (native HF method)...")
+                logger.info(
+                    "Applying BetterTransformer optimization (native HF method)..."
+                )
                 model = model.to_bettertransformer()
                 optimization_applied = "BetterTransformer"
                 logger.info("BetterTransformer applied - expect ~20-40%% speedup")
             except Exception as e:
-                logger.info("BetterTransformer not compatible with Swin2SR model: %s", type(e).__name__)
+                logger.info(
+                    "BetterTransformer not compatible with Swin2SR model: %s",
+                    type(e).__name__,
+                )
                 logger.debug("BetterTransformer error details: %s", e)
         else:
             logger.debug("Model does not have to_bettertransformer() method")
@@ -191,7 +208,10 @@ def _get_swinir_model(
         if optimization_applied is None and BETTERTRANSFORMER_AVAILABLE:
             try:
                 from optimum.bettertransformer import BetterTransformer
-                logger.info("Applying BetterTransformer optimization (optimum library)...")
+
+                logger.info(
+                    "Applying BetterTransformer optimization (optimum library)..."
+                )
                 model = BetterTransformer.transform(model)
                 optimization_applied = "BetterTransformer"
                 logger.info("BetterTransformer applied - expect ~20-40%% speedup")
@@ -199,7 +219,7 @@ def _get_swinir_model(
                 logger.debug("Optimum BetterTransformer failed: %s", e)
 
     # Option 3: Enable SDPA (Scaled Dot Product Attention) for Flash Attention
-    if SDPA_AVAILABLE and device.type == 'cuda':
+    if SDPA_AVAILABLE and device.type == "cuda":
         try:
             # Enable Flash Attention via SDPA if available
             # This is automatic in PyTorch 2.0+ for supported models
@@ -207,15 +227,19 @@ def _get_swinir_model(
             torch.backends.cuda.enable_mem_efficient_sdp(True)
             if optimization_applied is None:
                 optimization_applied = "SDPA"
-                logger.info("SDPA (Flash Attention) enabled for faster attention computation")
+                logger.info(
+                    "SDPA (Flash Attention) enabled for faster attention computation"
+                )
             else:
                 logger.debug("SDPA enabled alongside %s", optimization_applied)
         except Exception as e:
             logger.debug("SDPA configuration failed (non-critical): %s", e)
 
     # Log final optimization status
-    if optimization_applied is None and device.type == 'cuda':
-        logger.info("Using FP16 autocast only (install 'optimum' for BetterTransformer: pip install optimum)")
+    if optimization_applied is None and device.type == "cuda":
+        logger.info(
+            "Using FP16 autocast only (install 'optimum' for BetterTransformer: pip install optimum)"
+        )
 
     # Cache the model
     model_tuple = (processor, model, device)
@@ -277,15 +301,17 @@ def enhance_image_swinir(
 
         # Inference with FP16 autocast for speed (if on CUDA)
         with torch.no_grad():
-            if device.type == 'cuda':
+            if device.type == "cuda":
                 # FP16 inference - faster and lower memory
-                with torch.autocast(device_type='cuda', dtype=torch.float16):
+                with torch.autocast(device_type="cuda", dtype=torch.float16):
                     outputs = model(**inputs)
             else:
                 outputs = model(**inputs)
 
         # Post-process output
-        output = outputs.reconstruction.data.squeeze().float().cpu().clamp_(0, 1).numpy()
+        output = (
+            outputs.reconstruction.data.squeeze().float().cpu().clamp_(0, 1).numpy()
+        )
         output = np.moveaxis(output, source=0, destination=-1)
         output = (output * 255.0).round().astype(np.uint8)
 

@@ -6,7 +6,7 @@ before InsightFace ORT inference — avoids full-resolution host copies.
 
 from __future__ import annotations
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
 import torch
@@ -38,7 +38,9 @@ def downscale_frame_gpu(
     new_h = max(1, int(h * scale))
     new_w = max(1, int(w * scale))
     nchw = frame.permute(2, 0, 1).unsqueeze(0).float()
-    scaled = F.interpolate(nchw, size=(new_h, new_w), mode="bilinear", align_corners=False)
+    scaled = F.interpolate(
+        nchw, size=(new_h, new_w), mode="bilinear", align_corners=False
+    )
     out = scaled.squeeze(0).permute(1, 2, 0).clamp(0, 255).to(torch.uint8)
     actual = new_w / float(w)
     return out, actual

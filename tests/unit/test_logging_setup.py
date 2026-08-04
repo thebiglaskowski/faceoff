@@ -54,8 +54,8 @@ def test_setup_logging_writes_to_file(tmp_path):
 
 
 def test_setup_logging_attaches_terminal_handler(tmp_path):
-    from utils import logging_setup
     from ui.components.terminal_tab import terminal_handler
+    from utils import logging_setup
 
     terminal_handler.clear()
     with patch.object(logging_setup, "config", _mock_log_config(tmp_path)):

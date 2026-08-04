@@ -1,13 +1,15 @@
 """Tests for Wave 3 phase 3 GPU detection."""
 
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
-from unittest.mock import MagicMock, patch
 
 
 class TestGpuDetection:
     def test_downscale_frame_gpu(self, mock_gpu):
         import torch
+
         from core.gpu_detection import downscale_frame_gpu
 
         frame = torch.zeros((200, 400, 3), dtype=torch.uint8, device="cuda:0")
@@ -18,6 +20,7 @@ class TestGpuDetection:
 
     def test_detect_faces_from_gpu_uses_instance(self, mock_gpu):
         import torch
+
         from core.gpu_detection import detect_faces_from_gpu
 
         gpu_inst = MagicMock()

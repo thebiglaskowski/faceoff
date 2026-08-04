@@ -1,6 +1,7 @@
 """
 Chunked streaming pipeline for video and GIF face-swap processing.
 """
+
 import logging
 import time
 from dataclasses import dataclass, replace
@@ -11,9 +12,9 @@ import numpy as np
 import torch
 
 from core.face_processor import (
+    FaceTracker,
     filter_faces_by_confidence,
     sort_faces_by_position,
-    FaceTracker,
 )
 from core.gpu_frame import ChunkFrameBuffer
 from core.media_processor import MediaProcessor
@@ -24,7 +25,9 @@ from processing.resolution_adaptive import ResolutionAdaptiveProcessor
 from processing.restoration_session import RestorationSession
 from processing.workload_profile import (
     WorkloadProfile,
-    flag as profile_flag,
+)
+from processing.workload_profile import flag as profile_flag
+from processing.workload_profile import (
     log_workload_profile,
     resolve_workload_profile,
 )
@@ -49,9 +52,7 @@ def _stack_rgb_frames(frames: List[np.ndarray]) -> np.ndarray:
     for i, frame in enumerate(frames):
         arr = np.asarray(frame, dtype=np.uint8)
         if arr.ndim != 3 or arr.shape[2] != 3:
-            raise ValueError(
-                f"frame {i}: expected HxWx3 uint8, got shape {arr.shape}"
-            )
+            raise ValueError(f"frame {i}: expected HxWx3 uint8, got shape {arr.shape}")
         arrays.append(arr)
     return np.ascontiguousarray(np.stack(arrays, axis=0))
 
@@ -131,7 +132,9 @@ def _effective_chunk_size(
         size = requested
     else:
         mm = MemoryManager(device_ids[0])
-        size = max(config.min_batch_size, min(requested, mm.get_optimal_batch_size(requested)))
+        size = max(
+            config.min_batch_size, min(requested, mm.get_optimal_batch_size(requested))
+        )
 
     if enhance:
         divisor = max(1, min(outscale, 4))
@@ -149,9 +152,7 @@ def _gpu_chain_active(
         and profile_flag(
             profile, "enhancement_chain", config.gpu_enhancement_chain_enabled
         )
-        and profile_flag(
-            profile, "frame_retention", config.gpu_frame_retention_enabled
-        )
+        and profile_flag(profile, "frame_retention", config.gpu_frame_retention_enabled)
         and profile_flag(profile, "paste_on_gpu", config.gpu_paste_on_gpu)
         and restoration_session is None
     )
@@ -173,7 +174,10 @@ def _process_chunk(
     profile: Optional[WorkloadProfile] = None,
 ) -> Tuple[List[np.ndarray], Optional[ChunkFrameBuffer]]:
     frame_buffer = None
-    if profile_flag(profile, "frame_retention", config.gpu_frame_retention_enabled) and device_ids:
+    if (
+        profile_flag(profile, "frame_retention", config.gpu_frame_retention_enabled)
+        and device_ids
+    ):
         frame_buffer = ChunkFrameBuffer(chunk, device_ids[0])
 
     if len(device_ids) > 1 and gpu_instances:
@@ -238,7 +242,9 @@ def _process_chunk_with_oom_fallback(
         fallback_kwargs["defer_download"] = False
         fallback_kwargs["batch_size"] = new_batch if should_retry else batch_size
         for frame in chunk:
-            single_tracker = FaceTracker(iou_threshold=config.iou_threshold) if tracker else None
+            single_tracker = (
+                FaceTracker(iou_threshold=config.iou_threshold) if tracker else None
+            )
             batch, _ = _process_chunk(
                 [frame],
                 face_tracker=single_tracker or tracker,
@@ -355,7 +361,9 @@ def process_streaming(
     progress = get_progress_tracker()
     progress.set_stage("🔍 Face Detection")
     progress.log("📸 Detecting faces in source image...")
-    src_faces = _detect_source_faces(processor, source_image, face_confidence, device_ids)
+    src_faces = _detect_source_faces(
+        processor, source_image, face_confidence, device_ids
+    )
     progress.log(f"✅ Found {len(src_faces)} source face(s)")
 
     if face_mappings:
@@ -418,9 +426,7 @@ def process_streaming(
         logger.info("Multi-GPU chunk size capped at %d frames", chunk_size)
     elif enhance and len(device_ids) > 1:
         chunk_size = max(config.min_batch_size, chunk_size // 2)
-        logger.info(
-            "Enhancement multi-GPU chunk size capped at %d frames", chunk_size
-        )
+        logger.info("Enhancement multi-GPU chunk size capped at %d frames", chunk_size)
     if enhance:
         logger.info(
             "Enhancement enabled: chunk_size=%d, outscale=%dx, face_in_esrgan=%s, model=%s",
@@ -462,8 +468,7 @@ def process_streaming(
     # Pinned NVENC expects one contiguous host batch. Multi-GPU uses CPU paste and
     # per-GPU frame lists — keep pinned encode on single-GPU jobs only.
     use_pinned_encode = bool(
-        (profile.pinned_encode if profile else use_gpu_chain)
-        and len(device_ids) == 1
+        (profile.pinned_encode if profile else use_gpu_chain) and len(device_ids) == 1
     )
     gpu_paste_active = bool(
         len(device_ids) == 1
@@ -520,7 +525,9 @@ def process_streaming(
                                 restoration_session=restoration_session,
                                 enhancer=enhancer,
                                 maintain_dimensions=enhance,
-                                original_size=(reader.width, reader.height) if enhance else None,
+                                original_size=(
+                                    (reader.width, reader.height) if enhance else None
+                                ),
                                 frame_buffer=frame_buffer,
                             )
                             _write_chunk_frames(

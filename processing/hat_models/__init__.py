@@ -1,3 +1,3 @@
-from .hat_arch import HAT, HAB, OCAB, AttenBlocks, RHAG
+from .hat_arch import HAB, HAT, OCAB, RHAG, AttenBlocks
 
 __all__ = ["HAT", "HAB", "OCAB", "AttenBlocks", "RHAG"]

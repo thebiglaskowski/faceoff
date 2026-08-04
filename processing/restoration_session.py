@@ -1,4 +1,5 @@
 """Cached face-restoration session for streaming jobs."""
+
 import logging
 from typing import List, Optional
 
@@ -36,7 +37,9 @@ class RestorationSession:
             from processing.face_restoration import FaceRestorer
 
             self._restorer = FaceRestorer(device_id=self.gpu_id)
-            self._fn = lambda bgr, w: self._restorer.restore_faces_in_frame(bgr, weight=w)
+            self._fn = lambda bgr, w: self._restorer.restore_faces_in_frame(
+                bgr, weight=w
+            )
 
     def restore_rgb_frames(self, frames: List[np.ndarray]) -> List[np.ndarray]:
         restored = []

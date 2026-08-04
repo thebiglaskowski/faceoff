@@ -30,7 +30,7 @@ class CleanupManager:
         output_dir: str = "outputs",
         temp_dir: str = "temp",
         max_age_hours: float = 24,
-        enabled: bool = True
+        enabled: bool = True,
     ):
         """
         Initialize cleanup manager.
@@ -63,7 +63,7 @@ class CleanupManager:
         self,
         directory: Path,
         extensions: Optional[List[str]] = None,
-        dry_run: bool = False
+        dry_run: bool = False,
     ) -> Tuple[int, int, float]:
         """
         Clean up old files in a directory.
@@ -87,7 +87,7 @@ class CleanupManager:
         bytes_freed = 0.0
 
         try:
-            for item in directory.rglob('*'):
+            for item in directory.rglob("*"):
                 if not item.is_file():
                     continue
 
@@ -103,8 +103,12 @@ class CleanupManager:
                 file_size = item.stat().st_size
 
                 if dry_run:
-                    logger.info("[DRY RUN] Would delete: %s (%.2f MB, %.1f hours old)",
-                               item, file_size / (1024*1024), self._get_file_age_hours(item))
+                    logger.info(
+                        "[DRY RUN] Would delete: %s (%.2f MB, %.1f hours old)",
+                        item,
+                        file_size / (1024 * 1024),
+                        self._get_file_age_hours(item),
+                    )
                 else:
                     try:
                         item.unlink()
@@ -132,19 +136,21 @@ class CleanupManager:
         total_bytes = 0.0
 
         # Clean each output subdirectory
-        for subdir in ['image', 'gif', 'video']:
+        for subdir in ["image", "gif", "video"]:
             dir_path = self.output_dir / subdir
             deleted, skipped, bytes_freed = self.cleanup_directory(
-                dir_path,
-                dry_run=dry_run
+                dir_path, dry_run=dry_run
             )
             total_deleted += deleted
             total_skipped += skipped
             total_bytes += bytes_freed
 
         if total_deleted > 0:
-            logger.info("Output cleanup: deleted %d files, freed %.2f MB",
-                       total_deleted, total_bytes / (1024*1024))
+            logger.info(
+                "Output cleanup: deleted %d files, freed %.2f MB",
+                total_deleted,
+                total_bytes / (1024 * 1024),
+            )
 
         return total_deleted, total_skipped, total_bytes
 
@@ -156,13 +162,15 @@ class CleanupManager:
             Tuple of (files_deleted, files_skipped, bytes_freed)
         """
         deleted, skipped, bytes_freed = self.cleanup_directory(
-            self.temp_dir,
-            dry_run=dry_run
+            self.temp_dir, dry_run=dry_run
         )
 
         if deleted > 0:
-            logger.info("Temp cleanup: deleted %d files, freed %.2f MB",
-                       deleted, bytes_freed / (1024*1024))
+            logger.info(
+                "Temp cleanup: deleted %d files, freed %.2f MB",
+                deleted,
+                bytes_freed / (1024 * 1024),
+            )
 
         # Also clean empty directories
         self._cleanup_empty_dirs(self.temp_dir)
@@ -174,7 +182,7 @@ class CleanupManager:
         if not directory.exists():
             return
 
-        for item in list(directory.rglob('*')):
+        for item in list(directory.rglob("*")):
             if item.is_dir():
                 try:
                     if not any(item.iterdir()):
@@ -196,7 +204,7 @@ class CleanupManager:
         return (
             out_deleted + temp_deleted,
             out_skipped + temp_skipped,
-            out_bytes + temp_bytes
+            out_bytes + temp_bytes,
         )
 
     def get_disk_usage(self) -> Tuple[float, float]:
@@ -209,7 +217,7 @@ class CleanupManager:
         output_size = self._get_directory_size(self.output_dir)
         temp_size = self._get_directory_size(self.temp_dir)
 
-        return output_size / (1024*1024), temp_size / (1024*1024)
+        return output_size / (1024 * 1024), temp_size / (1024 * 1024)
 
     def _get_directory_size(self, directory: Path) -> float:
         """Get total size of files in directory in bytes."""
@@ -218,7 +226,7 @@ class CleanupManager:
 
         total = 0
         try:
-            for item in directory.rglob('*'):
+            for item in directory.rglob("*"):
                 if item.is_file():
                     total += item.stat().st_size
         except OSError:
@@ -236,12 +244,9 @@ def get_cleanup_manager() -> CleanupManager:
     global _cleanup_manager
     if _cleanup_manager is None:
         # Read from config
-        enabled = config.get('cleanup', 'enabled', default=True)
-        max_age = config.get('cleanup', 'max_age_hours', default=24)
-        _cleanup_manager = CleanupManager(
-            max_age_hours=max_age,
-            enabled=enabled
-        )
+        enabled = config.get("cleanup", "enabled", default=True)
+        max_age = config.get("cleanup", "max_age_hours", default=24)
+        _cleanup_manager = CleanupManager(max_age_hours=max_age, enabled=enabled)
     return _cleanup_manager
 
 

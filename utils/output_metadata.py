@@ -153,9 +153,7 @@ def format_settings_detail(
 
     lines.append(f"- **Enhancement:** {'on' if settings.get('enhance') else 'off'}")
     if settings.get("enhance"):
-        lines.append(
-            f"  - Framework: {settings.get('enhancement_model', '—')}"
-        )
+        lines.append(f"  - Framework: {settings.get('enhancement_model', '—')}")
         display = settings.get("model_display") or settings.get("model_name", "—")
         lines.append(f"  - Model: {display}")
         lines.append(f"  - Upscale: {settings.get('outscale', '—')}x")

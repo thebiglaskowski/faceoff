@@ -9,9 +9,10 @@ Tests:
 - FaceMappingManager
 """
 
-import pytest
-import numpy as np
 from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pytest
 
 
 class TestFilterFacesByConfidence:
@@ -63,6 +64,7 @@ class TestFilterFacesByConfidence:
 
         # Reload config to use temp_config
         from utils.config_manager import Config
+
         Config._instance = None
         config = Config()
 
@@ -97,12 +99,12 @@ class TestSortFacesByPosition:
 
         # Set specific positions
         mock_faces[0].bbox = np.array([200, 50, 300, 150])  # Right
-        mock_faces[1].bbox = np.array([50, 50, 150, 150])   # Left
+        mock_faces[1].bbox = np.array([50, 50, 150, 150])  # Left
         mock_faces[2].bbox = np.array([125, 50, 225, 150])  # Middle
 
         result = sort_faces_by_position(mock_faces)
 
-        assert result[0].bbox[0] == 50   # Left first
+        assert result[0].bbox[0] == 50  # Left first
         assert result[1].bbox[0] == 125  # Middle second
         assert result[2].bbox[0] == 200  # Right last
 
@@ -118,7 +120,7 @@ class TestSortFacesByPosition:
 
         result = sort_faces_by_position(faces)
 
-        assert result[0].bbox[1] == 50   # Top first
+        assert result[0].bbox[1] == 50  # Top first
         assert result[1].bbox[1] == 100  # Middle second
         assert result[2].bbox[1] == 150  # Bottom last
 
@@ -147,8 +149,8 @@ class TestCalculateIoU:
         """Should calculate correct IoU for partial overlap."""
         from core.face_processor import calculate_iou
 
-        bbox1 = [0, 0, 100, 100]      # Area = 10000
-        bbox2 = [50, 50, 150, 150]    # Area = 10000
+        bbox1 = [0, 0, 100, 100]  # Area = 10000
+        bbox2 = [50, 50, 150, 150]  # Area = 10000
         # Intersection: [50,50] to [100,100] = 50*50 = 2500
         # Union: 10000 + 10000 - 2500 = 17500
         # IoU = 2500/17500 = 0.1428...
@@ -160,8 +162,8 @@ class TestCalculateIoU:
         """Should handle one box completely inside another."""
         from core.face_processor import calculate_iou
 
-        bbox1 = [0, 0, 100, 100]     # Area = 10000
-        bbox2 = [25, 25, 75, 75]     # Area = 2500, completely inside bbox1
+        bbox1 = [0, 0, 100, 100]  # Area = 10000
+        bbox2 = [25, 25, 75, 75]  # Area = 2500, completely inside bbox1
         # Intersection = 2500
         # Union = 10000 (just the larger box since small is inside)
         # IoU = 2500/10000 = 0.25
@@ -421,6 +423,7 @@ class TestFaceMappingManager:
 # =============================================================================
 # Edge Cases and Error Handling
 # =============================================================================
+
 
 class TestEdgeCases:
     """Tests for edge cases and boundary conditions."""

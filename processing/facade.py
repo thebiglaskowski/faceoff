@@ -13,10 +13,10 @@ Architecture (from CLAUDE.md):
 
 # Re-export face processor functionality
 from core.face_processor import (
-    FaceProcessor,
     FaceMappingManager,
-    sort_faces_by_position,
+    FaceProcessor,
     filter_faces_by_confidence,
+    sort_faces_by_position,
 )
 
 # Re-export GPU management

@@ -5,11 +5,12 @@ This module provides factory functions for creating the common
 UI components used across image, GIF, and video tabs.
 """
 
-import gradio as gr
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from utils.constants import MODEL_OPTIONS, DEFAULT_MODEL
+import gradio as gr
+
 from ui.helpers.gpu_utils import get_gpu_choices
+from utils.constants import DEFAULT_MODEL, MODEL_OPTIONS
 
 
 def create_source_section(tab_suffix: str = "") -> Dict[str, Any]:
@@ -27,13 +28,13 @@ def create_source_section(tab_suffix: str = "") -> Dict[str, Any]:
             label="Source Face",
             type="pil",
             height=300,
-            elem_id=f"source_img{tab_suffix}"
+            elem_id=f"source_img{tab_suffix}",
         )
         face_info = gr.Textbox(
             label="Detected Faces",
             interactive=False,
             lines=3,
-            elem_id=f"face_info{tab_suffix}"
+            elem_id=f"face_info{tab_suffix}",
         )
 
     return {
@@ -59,12 +60,12 @@ def create_enhancement_controls(tab_suffix: str = "") -> Dict[str, Any]:
         enhance_toggle = gr.Checkbox(
             label="Enable Enhancement",
             value=False,
-            elem_id=f"enhance_toggle{tab_suffix}"
+            elem_id=f"enhance_toggle{tab_suffix}",
         )
         restore_faces_toggle = gr.Checkbox(
             label="Enable Face Restoration",
             value=False,
-            elem_id=f"restore_faces_toggle{tab_suffix}"
+            elem_id=f"restore_faces_toggle{tab_suffix}",
         )
 
     components[f"enhance_toggle{tab_suffix}"] = enhance_toggle
@@ -85,7 +86,7 @@ def create_enhancement_controls(tab_suffix: str = "") -> Dict[str, Any]:
             value=0.5,
             step=0.1,
             label="Denoise Strength",
-            visible=False
+            visible=False,
         )
 
     components[f"model_row{tab_suffix}"] = model_row
@@ -100,15 +101,10 @@ def create_enhancement_controls(tab_suffix: str = "") -> Dict[str, Any]:
             value=256,
             step=64,
             label="Tile Size",
-            info="Lower = less VRAM"
+            info="Lower = less VRAM",
         )
         outscale_slider = gr.Slider(
-            minimum=2,
-            maximum=4,
-            value=4,
-            step=2,
-            label="Output Scale",
-            info="2x or 4x"
+            minimum=2, maximum=4, value=4, step=2, label="Output Scale", info="2x or 4x"
         )
 
     components[f"enhancement_options_row{tab_suffix}"] = enhancement_options_row
@@ -118,9 +114,7 @@ def create_enhancement_controls(tab_suffix: str = "") -> Dict[str, Any]:
     # Advanced enhancement row
     with gr.Row(visible=False) as enhancement_advanced_row:
         use_fp32_checkbox = gr.Checkbox(
-            label="Use FP32",
-            value=False,
-            info="More VRAM, slightly better quality"
+            label="Use FP32", value=False, info="More VRAM, slightly better quality"
         )
         pre_pad_slider = gr.Slider(
             minimum=0,
@@ -128,7 +122,7 @@ def create_enhancement_controls(tab_suffix: str = "") -> Dict[str, Any]:
             value=0,
             step=1,
             label="Pre-Padding",
-            info="Reduce edge artifacts"
+            info="Reduce edge artifacts",
         )
 
     components[f"enhancement_advanced_row{tab_suffix}"] = enhancement_advanced_row
@@ -143,7 +137,7 @@ def create_enhancement_controls(tab_suffix: str = "") -> Dict[str, Any]:
             value=0.5,
             step=0.1,
             label="Restoration Weight",
-            info="0 = original, 1 = fully restored"
+            info="0 = original, 1 = fully restored",
         )
 
     components[f"restoration_row{tab_suffix}"] = restoration_row
@@ -171,12 +165,12 @@ def create_detection_controls(tab_suffix: str = "") -> Dict[str, Any]:
             value=0.5,
             step=0.1,
             label="Face Confidence",
-            info="Higher = more strict detection"
+            info="Higher = more strict detection",
         )
         gpu_selection = gr.Dropdown(
             choices=get_gpu_choices(),
             value=get_gpu_choices()[0] if get_gpu_choices() else None,
-            label="GPU Selection"
+            label="GPU Selection",
         )
 
     components[f"face_confidence{tab_suffix}"] = face_confidence
@@ -198,67 +192,39 @@ def create_face_mapping_section(tab_suffix: str = "") -> Dict[str, Any]:
     components = {}
 
     with gr.Accordion("Face Mapping (Advanced)", open=False):
-        gr.Markdown("Map specific source faces to target faces for multi-face swapping.")
+        gr.Markdown(
+            "Map specific source faces to target faces for multi-face swapping."
+        )
 
         with gr.Row():
-            detect_faces_btn = gr.Button(
-                "Detect Faces",
-                variant="secondary",
-                scale=1
-            )
+            detect_faces_btn = gr.Button("Detect Faces", variant="secondary", scale=1)
 
         with gr.Row():
             source_faces_gallery = gr.Gallery(
-                label="Source Faces",
-                columns=4,
-                height=150,
-                allow_preview=False
+                label="Source Faces", columns=4, height=150, allow_preview=False
             )
             target_faces_gallery = gr.Gallery(
-                label="Target Faces",
-                columns=4,
-                height=150,
-                allow_preview=False
+                label="Target Faces", columns=4, height=150, allow_preview=False
             )
 
         with gr.Row():
             mapping_source_idx = gr.Number(
-                label="Source Face Index",
-                value=0,
-                minimum=0,
-                precision=0,
-                scale=1
+                label="Source Face Index", value=0, minimum=0, precision=0, scale=1
             )
             mapping_target_idx = gr.Number(
-                label="Target Face Index",
-                value=0,
-                minimum=0,
-                precision=0,
-                scale=1
+                label="Target Face Index", value=0, minimum=0, precision=0, scale=1
             )
-            add_mapping_btn = gr.Button(
-                "Add Mapping",
-                variant="secondary",
-                scale=1
-            )
-            clear_mappings_btn = gr.Button(
-                "Clear All",
-                variant="secondary",
-                scale=1
-            )
+            add_mapping_btn = gr.Button("Add Mapping", variant="secondary", scale=1)
+            clear_mappings_btn = gr.Button("Clear All", variant="secondary", scale=1)
 
         with gr.Row():
             current_mappings = gr.Textbox(
                 label="Current Mappings",
                 value="No mappings",
                 interactive=False,
-                lines=3
+                lines=3,
             )
-            face_mapping_status = gr.Textbox(
-                label="Status",
-                interactive=False,
-                lines=2
-            )
+            face_mapping_status = gr.Textbox(label="Status", interactive=False, lines=2)
 
     components[f"detect_faces_btn{tab_suffix}"] = detect_faces_btn
     components[f"source_faces_gallery{tab_suffix}"] = source_faces_gallery
@@ -273,10 +239,7 @@ def create_face_mapping_section(tab_suffix: str = "") -> Dict[str, Any]:
     return components
 
 
-def create_process_button(
-    label: str = "Process",
-    tab_suffix: str = ""
-) -> gr.Button:
+def create_process_button(label: str = "Process", tab_suffix: str = "") -> gr.Button:
     """
     Create the main process button.
 
@@ -291,5 +254,5 @@ def create_process_button(
         label,
         variant="primary",
         elem_classes=["primary-btn"],
-        elem_id=f"process_btn{tab_suffix}"
+        elem_id=f"process_btn{tab_suffix}",
     )

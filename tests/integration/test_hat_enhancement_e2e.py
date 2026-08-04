@@ -9,10 +9,11 @@ These tests verify the full HAT enhancement workflow including:
 - Integration with image/video/GIF processing pipelines
 """
 
-import pytest
-import numpy as np
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pytest
 from PIL import Image
 
 
@@ -22,7 +23,7 @@ class TestHATIntegration:
     @pytest.mark.integration
     def test_hat_model_configuration(self):
         """Test HAT model configuration is properly loaded."""
-        from processing.hat_enhancement import HAT_MODELS, DEFAULT_HAT_MODEL
+        from processing.hat_enhancement import DEFAULT_HAT_MODEL, HAT_MODELS
         from utils.constants import HAT_MODEL_OPTIONS
 
         assert "HAT_Base_4x_ImageNet" in HAT_MODELS
@@ -71,6 +72,7 @@ class TestHATIntegration:
     def test_image_processing_has_hat_enhancement(self):
         """Test image_processing routes enhancement through InMemoryEnhancer."""
         from processing import image_processing
+
         src = open(image_processing.__file__).read()
 
         assert "InMemoryEnhancer" in src
@@ -82,6 +84,7 @@ class TestHATIntegration:
     def test_video_processing_has_hat_enhancement(self):
         """Test video_processing module imports HAT."""
         from processing import video_processing
+
         src = open(video_processing.__file__).read()
 
         # HAT enhancement should be in processing path
@@ -91,6 +94,7 @@ class TestHATIntegration:
     def test_gif_processing_has_hat_enhancement(self):
         """Test gif_processing module imports HAT."""
         from processing import gif_processing
+
         src = open(gif_processing.__file__).read()
 
         # HAT enhancement should be in processing path

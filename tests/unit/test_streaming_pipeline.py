@@ -1,8 +1,9 @@
 """Unit tests for streaming video/GIF pipeline components."""
 
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
-from unittest.mock import MagicMock, patch
 
 from processing.gpu_scheduler import assign_frames_to_gpus, frame_pixel_weights
 from utils import video_io
@@ -20,7 +21,10 @@ class TestGpuScheduler:
         assert set(i for indices in result.values() for i in indices) == set(range(10))
 
     def test_frame_pixel_weights(self):
-        frames = [np.zeros((100, 200, 3), dtype=np.uint8), np.zeros((50, 50, 3), dtype=np.uint8)]
+        frames = [
+            np.zeros((100, 200, 3), dtype=np.uint8),
+            np.zeros((50, 50, 3), dtype=np.uint8),
+        ]
         weights = frame_pixel_weights(frames)
         assert weights[0] == 20000.0
         assert weights[1] == 2500.0
@@ -52,6 +56,7 @@ class TestStreamingVideoIO:
     def test_gif_zero_copy_cuda_decode_fails(self, tmp_path):
         """GIF paletted decode cannot use CUDA hwaccel_output_format (regression guard)."""
         import subprocess
+
         from PIL import Image
 
         gif_path = tmp_path / "probe.gif"
@@ -90,15 +95,11 @@ class TestStreamingVideoIO:
         """Write then read back a few frames via raw pipe."""
         out = tmp_path / "out.mp4"
         w, h, fps = 16, 16, 2.0
-        frames = [
-            np.full((h, w, 3), fill, dtype=np.uint8) for fill in (255, 128, 64)
-        ]
+        frames = [np.full((h, w, 3), fill, dtype=np.uint8) for fill in (255, 128, 64)]
 
         # Create source video first
         src = tmp_path / "src.mp4"
-        with video_io.StreamingVideoWriter(
-            src, w, h, fps, use_nvenc=False
-        ) as writer:
+        with video_io.StreamingVideoWriter(src, w, h, fps, use_nvenc=False) as writer:
             writer.write_frames(frames)
 
         with video_io.StreamingFrameReader(str(src), hwaccel=False) as reader:
@@ -126,7 +127,10 @@ class TestFrameBatch:
         frames = [np.zeros((4, 4, 3), dtype=np.uint8)]
         src_faces = [MagicMock()]
 
-        with patch("processing.frame_batch.filter_faces_by_confidence", side_effect=lambda f, _: f):
+        with patch(
+            "processing.frame_batch.filter_faces_by_confidence",
+            side_effect=lambda f, _: f,
+        ):
             result = process_frames_batch(
                 frames,
                 src_faces,
@@ -142,9 +146,7 @@ class TestFrameBatch:
         from processing.frame_batch import process_chunk_multi_gpu
         from processing.workload_profile import WorkloadProfile
 
-        frames = [
-            np.full((4, 4, 3), fill, dtype=np.uint8) for fill in (10, 20, 30, 40)
-        ]
+        frames = [np.full((4, 4, 3), fill, dtype=np.uint8) for fill in (10, 20, 30, 40)]
         face = MagicMock()
         profile = WorkloadProfile(
             name="stream_swap_only",
@@ -161,17 +163,21 @@ class TestFrameBatch:
             inst = MagicMock()
             inst.device_id = dev_id
             inst.get_faces.return_value = [face]
-            inst.swap_face_batch.side_effect = (
-                lambda img, dst, src, **kw: np.full(img.shape, dev_id * 100 + 7, np.uint8)
+            inst.swap_face_batch.side_effect = lambda img, dst, src, **kw: np.full(
+                img.shape, dev_id * 100 + 7, np.uint8
             )
             return inst
 
         gpu_instances = [_make_gpu(0), _make_gpu(1)]
 
-        with patch("processing.frame_batch.assign_frames_to_gpus") as mock_assign, patch(
-            "processing.frame_batch.filter_faces_by_confidence",
-            side_effect=lambda f, _: f,
-        ), patch("processing.frame_batch.config") as cfg:
+        with (
+            patch("processing.frame_batch.assign_frames_to_gpus") as mock_assign,
+            patch(
+                "processing.frame_batch.filter_faces_by_confidence",
+                side_effect=lambda f, _: f,
+            ),
+            patch("processing.frame_batch.config") as cfg,
+        ):
             mock_assign.return_value = {0: [0, 1], 1: [2, 3]}
             cfg.workers_per_gpu = 1
             cfg.iou_threshold = 0.5
@@ -201,20 +207,19 @@ class TestFrameBatch:
 
 class TestEnhanceSwapVram:
     def test_postprocess_releases_swap_before_enhance(self, mock_gpu):
-        from processing.streaming_media import _postprocess_chunk
         from unittest.mock import MagicMock, patch
+
+        from processing.streaming_media import _postprocess_chunk
 
         enhancer = MagicMock()
         enhancer.device_ids = [0, 1]
         frames = [np.zeros((4, 4, 3), dtype=np.uint8)]
 
-        with patch(
-            "processing.streaming_media.prepare_for_enhancement"
-        ) as mock_prepare, patch(
-            "processing.streaming_media.refresh_gpu_memory"
-        ) as mock_refresh, patch(
-            "processing.streaming_media.config"
-        ) as cfg:
+        with (
+            patch("processing.streaming_media.prepare_for_enhancement") as mock_prepare,
+            patch("processing.streaming_media.refresh_gpu_memory") as mock_refresh,
+            patch("processing.streaming_media.config") as cfg,
+        ):
             cfg.release_swap_models_before_enhance = True
             enhancer.enhance_rgb_frames.return_value = frames
             result = _postprocess_chunk(
@@ -232,9 +237,10 @@ class TestEnhanceSwapVram:
 
 class TestMultiGpuWorkloadTrim:
     def test_streaming_trims_profile_for_multi_gpu(self, mock_gpu):
+        from unittest.mock import MagicMock, patch
+
         from processing.streaming_media import process_streaming
         from processing.workload_profile import WorkloadProfile
-        from unittest.mock import MagicMock, patch
 
         profile = WorkloadProfile(
             name="stream_swap_only",
@@ -248,30 +254,35 @@ class TestMultiGpuWorkloadTrim:
             chunk_size=32,
         )
 
-        with patch("processing.streaming_media.resolve_workload_profile", return_value=profile), patch(
-            "processing.streaming_media._detect_source_faces",
-            return_value=[MagicMock()],
-        ), patch(
-            "processing.streaming_media.video_io.open_streaming_reader"
-        ) as mock_reader, patch(
-            "processing.streaming_media.log_workload_profile"
-        ) as mock_log, patch(
-            "processing.streaming_media.get_progress_tracker"
-        ) as mock_progress, patch(
-            "processing.streaming_media.get_model_pool"
-        ) as mock_pool, patch(
-            "processing.streaming_media._process_chunk_with_oom_fallback",
-            return_value=([], None),
-        ), patch(
-            "processing.streaming_media._postprocess_chunk",
-            return_value=[],
-        ), patch(
-            "processing.streaming_media._write_chunk_frames"
-        ), patch(
-            "processing.streaming_media._effective_chunk_size",
-            return_value=32,
-        ), patch(
-            "processing.streaming_media.MemoryManager"
+        with (
+            patch(
+                "processing.streaming_media.resolve_workload_profile",
+                return_value=profile,
+            ),
+            patch(
+                "processing.streaming_media._detect_source_faces",
+                return_value=[MagicMock()],
+            ),
+            patch(
+                "processing.streaming_media.video_io.open_streaming_reader"
+            ) as mock_reader,
+            patch("processing.streaming_media.log_workload_profile") as mock_log,
+            patch("processing.streaming_media.get_progress_tracker") as mock_progress,
+            patch("processing.streaming_media.get_model_pool") as mock_pool,
+            patch(
+                "processing.streaming_media._process_chunk_with_oom_fallback",
+                return_value=([], None),
+            ),
+            patch(
+                "processing.streaming_media._postprocess_chunk",
+                return_value=[],
+            ),
+            patch("processing.streaming_media._write_chunk_frames"),
+            patch(
+                "processing.streaming_media._effective_chunk_size",
+                return_value=32,
+            ),
+            patch("processing.streaming_media.MemoryManager"),
         ):
             reader = MagicMock()
             reader.__enter__.return_value = reader
@@ -280,7 +291,10 @@ class TestMultiGpuWorkloadTrim:
             reader.height = 1080
             mock_reader.return_value = reader
             mock_progress.return_value = MagicMock()
-            mock_pool.return_value.get_instances.return_value = [MagicMock(), MagicMock()]
+            mock_pool.return_value.get_instances.return_value = [
+                MagicMock(),
+                MagicMock(),
+            ]
 
             ctx = MagicMock()
             ctx.media_type = "video"
@@ -297,7 +311,10 @@ class TestMultiGpuWorkloadTrim:
             writer.finalize.return_value = True
             writer.frames_written = 1
 
-            with patch("processing.streaming_media.video_io.StreamingVideoWriter", return_value=writer):
+            with patch(
+                "processing.streaming_media.video_io.StreamingVideoWriter",
+                return_value=writer,
+            ):
                 process_streaming(
                     MagicMock(),
                     np.zeros((8, 8, 3), dtype=np.uint8),

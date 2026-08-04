@@ -56,7 +56,10 @@ def main() -> int:
     sess = ort.InferenceSession(
         str(det_model),
         providers=[
-            ("CUDAExecutionProvider", {"device_id": 0, "cudnn_conv_algo_search": "HEURISTIC"}),
+            (
+                "CUDAExecutionProvider",
+                {"device_id": 0, "cudnn_conv_algo_search": "HEURISTIC"},
+            ),
             "CPUExecutionProvider",
         ],
     )

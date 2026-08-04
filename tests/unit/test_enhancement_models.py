@@ -9,16 +9,17 @@ Tests cover:
 - Model selection and routing
 """
 
-import pytest
-import numpy as np
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
-from PIL import Image
+from unittest.mock import MagicMock, PropertyMock, patch
 
+import numpy as np
+import pytest
+from PIL import Image
 
 # =============================================================================
 # Test Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def sample_rgb_array():
@@ -40,7 +41,7 @@ def temp_frames_dir(tmp_path):
 
     # Create 5 sample frames
     for i in range(5):
-        img = Image.new('RGB', (128, 128), color=(i * 50, 100, 150))
+        img = Image.new("RGB", (128, 128), color=(i * 50, 100, 150))
         img.save(frames_dir / f"frame_{i:04d}.png")
 
     return frames_dir
@@ -57,6 +58,7 @@ def temp_output_dir(tmp_path):
 # =============================================================================
 # RealESRGAN Tests
 # =============================================================================
+
 
 class TestRealESRGAN:
     """Tests for RealESRGAN enhancement module."""
@@ -128,8 +130,10 @@ class TestRealESRGAN:
         assert MODEL_SCALES["RealESRGAN_x2plus"] == 2
 
     @pytest.mark.unit
-    @patch('processing.enhancement._get_upsampler')
-    def test_enhance_image_calls_upsampler(self, mock_get_upsampler, sample_bgr_array, mock_gpu):
+    @patch("processing.enhancement._get_upsampler")
+    def test_enhance_image_calls_upsampler(
+        self, mock_get_upsampler, sample_bgr_array, mock_gpu
+    ):
         """Test that enhance_image creates the upsampler correctly."""
         from processing.enhancement import enhance_image
 
@@ -137,22 +141,24 @@ class TestRealESRGAN:
         mock_upsampler.enhance.return_value = (sample_bgr_array * 2, None)
         mock_get_upsampler.return_value = mock_upsampler
 
-        with patch('processing.enhancement._get_face_enhancer', return_value=None):
+        with patch("processing.enhancement._get_face_enhancer", return_value=None):
             result = enhance_image(
                 sample_bgr_array,
                 model_name="RealESRGAN_x4plus",
                 gpu_id=0,
                 outscale=4,
                 tile_size=256,
-                face_enhance=False
+                face_enhance=False,
             )
 
         mock_get_upsampler.assert_called_once()
         mock_upsampler.enhance.assert_called_once()
 
     @pytest.mark.unit
-    @patch('processing.enhancement._get_upsampler')
-    def test_enhance_image_returns_array(self, mock_get_upsampler, sample_bgr_array, mock_gpu):
+    @patch("processing.enhancement._get_upsampler")
+    def test_enhance_image_returns_array(
+        self, mock_get_upsampler, sample_bgr_array, mock_gpu
+    ):
         """Test that enhance_image returns a numpy array."""
         from processing.enhancement import enhance_image
 
@@ -167,7 +173,7 @@ class TestRealESRGAN:
             gpu_id=0,
             outscale=4,
             tile_size=256,
-            face_enhance=False
+            face_enhance=False,
         )
 
         assert isinstance(result, np.ndarray)
@@ -184,7 +190,7 @@ class TestRealESRGAN:
     @pytest.mark.unit
     def test_clear_enhancement_cache(self, mock_gpu):
         """Test that enhancement cache can be cleared."""
-        from processing.enhancement import clear_enhancement_cache, _upsampler_cache
+        from processing.enhancement import _upsampler_cache, clear_enhancement_cache
 
         # Clear should not raise
         clear_enhancement_cache()
@@ -196,6 +202,7 @@ class TestRealESRGAN:
 # =============================================================================
 # SwinIR Tests
 # =============================================================================
+
 
 class TestSwinIR:
     """Tests for SwinIR/Swin2SR enhancement module."""
@@ -244,9 +251,7 @@ class TestSwinIR:
         # Should log a warning but use default model
         # With mocked GPU it will fail at model loading, returning None
         result = enhance_image_swinir(
-            sample_bgr_array,
-            model_name="InvalidModel",
-            gpu_id=0
+            sample_bgr_array, model_name="InvalidModel", gpu_id=0
         )
 
         # Without actual model loading, result should be None
@@ -258,18 +263,14 @@ class TestSwinIR:
         from processing.swinir_enhancement import enhance_image_swinir
 
         # None input should fail gracefully
-        result = enhance_image_swinir(
-            None,
-            model_name="Swin2SR_x4",
-            gpu_id=0
-        )
+        result = enhance_image_swinir(None, model_name="Swin2SR_x4", gpu_id=0)
 
         assert result is None
 
     @pytest.mark.unit
     def test_swinir_cache_clear(self, mock_gpu):
         """Test that SwinIR cache can be cleared."""
-        from processing.swinir_enhancement import clear_swinir_cache, _swinir_cache
+        from processing.swinir_enhancement import _swinir_cache, clear_swinir_cache
 
         clear_swinir_cache()
         assert len(_swinir_cache) == 0
@@ -277,7 +278,10 @@ class TestSwinIR:
     @pytest.mark.unit
     def test_get_available_swinir_models(self):
         """Test that available models can be retrieved."""
-        from processing.swinir_enhancement import get_available_swinir_models, SWINIR_MODELS
+        from processing.swinir_enhancement import (
+            SWINIR_MODELS,
+            get_available_swinir_models,
+        )
 
         available = get_available_swinir_models()
         assert available == SWINIR_MODELS
@@ -288,6 +292,7 @@ class TestSwinIR:
 # =============================================================================
 # HAT Tests
 # =============================================================================
+
 
 class TestHAT:
     """Tests for HAT (Hybrid Attention Transformer) enhancement module."""
@@ -327,6 +332,7 @@ class TestHAT:
     def test_hat_window_padding(self):
         """HAT inputs must be padded to multiples of window_size (7)."""
         import numpy as np
+
         from processing.hat_enhancement import (
             HAT_WINDOW_SIZE,
             _hat_tile_dim,
@@ -368,7 +374,7 @@ class TestHAT:
     @pytest.mark.unit
     def test_hat_cache_clear(self, mock_gpu):
         """Test that HAT cache can be cleared."""
-        from processing.hat_enhancement import clear_hat_cache, _hat_cache
+        from processing.hat_enhancement import _hat_cache, clear_hat_cache
 
         clear_hat_cache()
         assert len(_hat_cache) == 0
@@ -379,7 +385,11 @@ class TestHAT:
         import threading
         from unittest.mock import MagicMock, patch
 
-        from processing.hat_enhancement import _get_hat_model, _hat_cache, clear_hat_cache
+        from processing.hat_enhancement import (
+            _get_hat_model,
+            _hat_cache,
+            clear_hat_cache,
+        )
 
         clear_hat_cache()
         load_count = 0
@@ -431,7 +441,7 @@ class TestHAT:
     @pytest.mark.unit
     def test_get_available_hat_models(self):
         """Test that available HAT models can be retrieved."""
-        from processing.hat_enhancement import get_available_hat_models, HAT_MODELS
+        from processing.hat_enhancement import HAT_MODELS, get_available_hat_models
 
         available = get_available_hat_models()
         assert available == HAT_MODELS
@@ -440,10 +450,13 @@ class TestHAT:
     @pytest.mark.unit
     def test_should_use_tiled_when_vram_low(self, mock_gpu, temp_config, reset_config):
         from unittest.mock import patch
+
         from processing.hat_enhancement import _should_use_tiled_inference
         from utils.memory_manager import MemoryManager
 
-        with patch.object(MemoryManager, "get_memory_stats", return_value={"free_mb": 500}):
+        with patch.object(
+            MemoryManager, "get_memory_stats", return_value={"free_mb": 500}
+        ):
             assert _should_use_tiled_inference(200, 200, 256, gpu_id=0) is True
 
     @pytest.mark.unit
@@ -460,6 +473,7 @@ class TestHAT:
         """HAT.forward() normalizes mean internally — do not subtract twice."""
         import numpy as np
         import torch
+
         from processing.hat_enhancement import _apply_hat_model
 
         class _RecordingModel(torch.nn.Module):
@@ -472,7 +486,9 @@ class TestHAT:
             def forward(self, x):
                 self.last_input_mean = float(x.mean().item())
                 batch, _, h, w = x.shape
-                out = torch.nn.functional.interpolate(x, scale_factor=4, mode="bilinear")
+                out = torch.nn.functional.interpolate(
+                    x, scale_factor=4, mode="bilinear"
+                )
                 return torch.clamp(out, 0.0, 1.0)
 
         model = _RecordingModel()
@@ -489,6 +505,7 @@ class TestHAT:
         """HAT must not use FP16 autocast (produces NaN/black frames on consumer GPUs)."""
         import numpy as np
         import torch
+
         from processing.hat_enhancement import _get_hat_model, clear_hat_cache
 
         if not torch.cuda.is_available():
@@ -497,9 +514,11 @@ class TestHAT:
         clear_hat_cache()
         model, device, mean, img_range = _get_hat_model("HAT_Base_4x_ImageNet", 0)
         rgb = np.full((64, 64, 3), 128, dtype=np.uint8)
-        img = torch.from_numpy(
-            np.moveaxis(rgb.astype(np.float32) / 255.0, -1, 0)
-        ).unsqueeze(0).to(device)
+        img = (
+            torch.from_numpy(np.moveaxis(rgb.astype(np.float32) / 255.0, -1, 0))
+            .unsqueeze(0)
+            .to(device)
+        )
         with torch.no_grad():
             with torch.autocast(device_type="cuda", dtype=torch.float16):
                 fp16_out = model(img)
@@ -512,6 +531,7 @@ class TestHAT:
         """Tiled path must not return an all-black frame (weight_map bug regression)."""
         import numpy as np
         import torch
+
         from processing.hat_enhancement import HAT_UPSCALE, _enhance_image_tiled
 
         class _IdentityScaleModel(torch.nn.Module):
@@ -542,6 +562,7 @@ class TestHAT:
 # GFPGAN Tests
 # =============================================================================
 
+
 class TestGFPGAN:
     """Tests for GFPGAN face restoration module."""
 
@@ -549,19 +570,21 @@ class TestGFPGAN:
     def test_face_restorer_module_exists(self):
         """Test that face_restoration module exists and has FaceRestorer."""
         from processing.face_restoration import FaceRestorer
+
         assert FaceRestorer is not None
 
     @pytest.mark.unit
     def test_face_restorer_init_params(self):
         """Test FaceRestorer accepts correct init parameters."""
-        from processing.face_restoration import FaceRestorer
         import inspect
+
+        from processing.face_restoration import FaceRestorer
 
         sig = inspect.signature(FaceRestorer.__init__)
         params = list(sig.parameters.keys())
 
-        assert 'device_id' in params
-        assert 'model_version' in params
+        assert "device_id" in params
+        assert "model_version" in params
 
     @pytest.mark.unit
     def test_face_restorer_init_no_immediate_load(self, mock_gpu):
@@ -579,21 +602,22 @@ class TestGFPGAN:
         """Test FaceRestorer has restore_face method."""
         from processing.face_restoration import FaceRestorer
 
-        assert hasattr(FaceRestorer, 'restore_face')
-        assert callable(getattr(FaceRestorer, 'restore_face'))
+        assert hasattr(FaceRestorer, "restore_face")
+        assert callable(getattr(FaceRestorer, "restore_face"))
 
     @pytest.mark.unit
     def test_face_restorer_has_cleanup_method(self):
         """Test FaceRestorer has cleanup method."""
         from processing.face_restoration import FaceRestorer
 
-        assert hasattr(FaceRestorer, 'cleanup')
-        assert callable(getattr(FaceRestorer, 'cleanup'))
+        assert hasattr(FaceRestorer, "cleanup")
+        assert callable(getattr(FaceRestorer, "cleanup"))
 
 
 # =============================================================================
 # CodeFormer Tests
 # =============================================================================
+
 
 class TestCodeFormer:
     """Tests for CodeFormer face restoration module."""
@@ -602,20 +626,22 @@ class TestCodeFormer:
     def test_codeformer_module_exists(self):
         """Test that codeformer_restoration module exists."""
         from processing.codeformer_restoration import CodeFormerRestorer
+
         assert CodeFormerRestorer is not None
 
     @pytest.mark.unit
     def test_codeformer_restorer_init_params(self):
         """Test CodeFormerRestorer accepts correct parameters."""
-        from processing.codeformer_restoration import CodeFormerRestorer
         import inspect
+
+        from processing.codeformer_restoration import CodeFormerRestorer
 
         sig = inspect.signature(CodeFormerRestorer.__init__)
         params = list(sig.parameters.keys())
 
-        assert 'device_id' in params
-        assert 'upscale' in params
-        assert 'model_dir' in params
+        assert "device_id" in params
+        assert "upscale" in params
+        assert "model_dir" in params
 
     @pytest.mark.unit
     def test_codeformer_model_urls_defined(self):
@@ -623,7 +649,7 @@ class TestCodeFormer:
         from processing.codeformer_restoration import (
             CODEFORMER_MODEL_URL,
             DETECTION_MODEL_URL,
-            PARSING_MODEL_URL
+            PARSING_MODEL_URL,
         )
 
         assert CODEFORMER_MODEL_URL.startswith("https://")
@@ -634,18 +660,23 @@ class TestCodeFormer:
     def test_codeformer_convenience_function_exists(self):
         """Test that convenience function exists."""
         from processing.codeformer_restoration import restore_faces_codeformer
+
         assert callable(restore_faces_codeformer)
 
     @pytest.mark.unit
     def test_codeformer_frames_function_exists(self):
         """Test that frame restoration function exists."""
         from processing.codeformer_restoration import restore_frames_codeformer
+
         assert callable(restore_frames_codeformer)
 
     @pytest.mark.unit
     def test_codeformer_cache_clear(self, mock_gpu):
         """Test that CodeFormer cache can be cleared."""
-        from processing.codeformer_restoration import clear_codeformer_cache, _codeformer_cache
+        from processing.codeformer_restoration import (
+            _codeformer_cache,
+            clear_codeformer_cache,
+        )
 
         clear_codeformer_cache()
         assert len(_codeformer_cache) == 0
@@ -654,6 +685,7 @@ class TestCodeFormer:
 # =============================================================================
 # Model Selection/Routing Tests
 # =============================================================================
+
 
 class TestModelRouting:
     """Tests for model selection and routing logic."""
@@ -703,6 +735,7 @@ class TestModelRouting:
     def test_in_memory_enhancer_routes_to_swinir(self):
         """InMemoryEnhancer should call SwinIR for SwinIR model selection."""
         import numpy as np
+
         from processing.in_memory_enhancement import InMemoryEnhancer
 
         frame = np.zeros((8, 8, 3), dtype=np.uint8)
@@ -722,37 +755,41 @@ class TestModelRouting:
 # Processing Pipeline Tests
 # =============================================================================
 
+
 class TestProcessingPipeline:
     """Tests for the processing pipeline with model selection."""
 
     @pytest.mark.unit
     def test_process_image_signature_includes_model_params(self):
         """Test that process_image accepts model selection parameters."""
-        from processing.image_processing import process_image
         import inspect
+
+        from processing.image_processing import process_image
 
         sig = inspect.signature(process_image)
         param_names = list(sig.parameters.keys())
 
-        assert 'restore_faces' in param_names
-        assert 'restoration_weight' in param_names
+        assert "restore_faces" in param_names
+        assert "restoration_weight" in param_names
 
     @pytest.mark.unit
     def test_orchestrator_signature_includes_model_params(self):
         """Test that orchestrator accepts model selection parameters."""
-        from processing.orchestrator import ProcessOptions
         import dataclasses
+
+        from processing.orchestrator import ProcessOptions
 
         fields = {f.name for f in dataclasses.fields(ProcessOptions)}
 
-        assert 'enhancement_model' in fields
-        assert 'restoration_model' in fields
+        assert "enhancement_model" in fields
+        assert "restoration_model" in fields
 
     @pytest.mark.unit
     def test_default_enhancement_model(self):
         """Test that default enhancement model is RealESRGAN."""
-        from processing.orchestrator import ProcessOptions
         import dataclasses
+
+        from processing.orchestrator import ProcessOptions
 
         defaults = {
             f.name: f.default
@@ -760,13 +797,14 @@ class TestProcessingPipeline:
             if f.default is not dataclasses.MISSING
         }
 
-        assert defaults.get('enhancement_model') == 'RealESRGAN'
+        assert defaults.get("enhancement_model") == "RealESRGAN"
 
     @pytest.mark.unit
     def test_default_restoration_model(self):
         """Test that default restoration model is GFPGAN."""
-        from processing.orchestrator import ProcessOptions
         import dataclasses
+
+        from processing.orchestrator import ProcessOptions
 
         defaults = {
             f.name: f.default
@@ -774,12 +812,13 @@ class TestProcessingPipeline:
             if f.default is not dataclasses.MISSING
         }
 
-        assert defaults.get('restoration_model') == 'GFPGAN'
+        assert defaults.get("restoration_model") == "GFPGAN"
 
 
 # =============================================================================
 # Handler Tests
 # =============================================================================
+
 
 class TestProcessingHandlers:
     """Tests for UI processing handlers."""
@@ -787,43 +826,47 @@ class TestProcessingHandlers:
     @pytest.mark.unit
     def test_process_image_handler_signature(self):
         """Test that process_image handler accepts model parameters."""
-        from ui.handlers.processing_handlers import process_image
         import inspect
+
+        from ui.handlers.processing_handlers import process_image
 
         sig = inspect.signature(process_image)
         param_names = list(sig.parameters.keys())
 
-        assert 'enhancement_model' in param_names
-        assert 'restoration_model' in param_names
+        assert "enhancement_model" in param_names
+        assert "restoration_model" in param_names
 
     @pytest.mark.unit
     def test_process_gif_handler_signature(self):
         """Test that process_gif handler accepts model parameters."""
-        from ui.handlers.processing_handlers import process_gif
         import inspect
+
+        from ui.handlers.processing_handlers import process_gif
 
         sig = inspect.signature(process_gif)
         param_names = list(sig.parameters.keys())
 
-        assert 'enhancement_model' in param_names
-        assert 'restoration_model' in param_names
+        assert "enhancement_model" in param_names
+        assert "restoration_model" in param_names
 
     @pytest.mark.unit
     def test_process_video_handler_signature(self):
         """Test that process_video handler accepts model parameters."""
-        from ui.handlers.processing_handlers import process_video
         import inspect
+
+        from ui.handlers.processing_handlers import process_video
 
         sig = inspect.signature(process_video)
         param_names = list(sig.parameters.keys())
 
-        assert 'enhancement_model' in param_names
-        assert 'restoration_model' in param_names
+        assert "enhancement_model" in param_names
+        assert "restoration_model" in param_names
 
 
 # =============================================================================
 # UI Component Tests
 # =============================================================================
+
 
 class TestUIComponents:
     """Tests for UI component model selectors."""
@@ -832,33 +875,39 @@ class TestUIComponents:
     def test_image_tab_has_model_selectors(self):
         """Test that image_tab returns model selector components."""
         # We can check this by verifying the returned keys
-        from ui.components.image_tab import create_image_tab
-        import gradio as gr
-
         # Can't easily test Gradio component creation without running
         # Instead, test that the module has the expected structure
         import inspect
+
+        import gradio as gr
+
+        from ui.components.image_tab import create_image_tab
+
         source = inspect.getsource(create_image_tab)
 
-        assert 'enhancement_model_selector' in source
-        assert 'restoration_model_selector' in source
+        assert "enhancement_model_selector" in source
+        assert "restoration_model_selector" in source
 
     @pytest.mark.unit
     def test_gif_tab_has_model_selectors(self):
         """Test that gif_tab returns model selector components."""
-        from ui.components.gif_tab import create_gif_tab
         import inspect
+
+        from ui.components.gif_tab import create_gif_tab
+
         source = inspect.getsource(create_gif_tab)
 
-        assert 'enhancement_model_selector_gif' in source
-        assert 'restoration_model_selector_gif' in source
+        assert "enhancement_model_selector_gif" in source
+        assert "restoration_model_selector_gif" in source
 
     @pytest.mark.unit
     def test_video_tab_has_model_selectors(self):
         """Test that video_tab returns model selector components."""
-        from ui.components.video_tab import create_video_tab
         import inspect
+
+        from ui.components.video_tab import create_video_tab
+
         source = inspect.getsource(create_video_tab)
 
-        assert 'enhancement_model_selector_vid' in source
-        assert 'restoration_model_selector_vid' in source
+        assert "enhancement_model_selector_vid" in source
+        assert "restoration_model_selector_vid" in source

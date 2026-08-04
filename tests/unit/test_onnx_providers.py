@@ -50,7 +50,9 @@ def test_tensorrt_compile_guard_serializes_workers():
 
     a_start, a_end = order.index("a-start"), order.index("a-end")
     b_start, b_end = order.index("b-start"), order.index("b-end")
-    assert (a_end < b_start and a_start < b_start) or (b_end < a_start and b_start < a_start)
+    assert (a_end < b_start and a_start < b_start) or (
+        b_end < a_start and b_start < a_start
+    )
 
 
 def test_tensorrt_unavailable_when_libs_missing():
@@ -75,7 +77,9 @@ def test_build_swapper_providers_cuda_only():
 def test_build_face_analysis_heuristic_cudnn():
     from utils.onnx_providers import build_face_analysis_providers
 
-    with patch("utils.onnx_providers.is_tensorrt_runtime_available", return_value=False):
+    with patch(
+        "utils.onnx_providers.is_tensorrt_runtime_available", return_value=False
+    ):
         providers = build_face_analysis_providers(0, use_tensorrt=True)
     cuda_opts = providers[0][1]
     assert cuda_opts["cudnn_conv_algo_search"] == "HEURISTIC"

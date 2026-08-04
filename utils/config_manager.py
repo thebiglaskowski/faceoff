@@ -5,51 +5,56 @@ This module handles loading and accessing configuration from config.yaml,
 with fallbacks to default values if config is missing or invalid.
 """
 
+import logging
 import os
-import yaml
 from pathlib import Path
 from typing import Any, Dict, Optional
-import logging
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
 
 class Config:
     """Configuration manager with fallback to defaults."""
-    
+
     _instance = None
     _config: Dict[str, Any] = {}
-    _config_path: Path = Path(__file__).parent.parent / "config.yaml"  # Root directory, not utils/
-    
+    _config_path: Path = (
+        Path(__file__).parent.parent / "config.yaml"
+    )  # Root directory, not utils/
+
     def __new__(cls):
         """Singleton pattern to ensure single config instance."""
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls)
             cls._instance._load_config()
         return cls._instance
-    
+
     def _load_config(self) -> None:
         """Load configuration from YAML file."""
         try:
             if self._config_path.exists():
-                with open(self._config_path, 'r', encoding='utf-8') as f:
+                with open(self._config_path, "r", encoding="utf-8") as f:
                     self._config = yaml.safe_load(f) or {}
                 logger.info(f"Configuration loaded from {self._config_path}")
             else:
-                logger.warning(f"Config file not found: {self._config_path}. Using defaults.")
+                logger.warning(
+                    f"Config file not found: {self._config_path}. Using defaults."
+                )
                 self._config = {}
         except Exception as e:
             logger.error(f"Error loading config: {e}. Using defaults.")
             self._config = {}
-    
+
     def get(self, *keys: str, default: Any = None) -> Any:
         """
         Get configuration value using dot notation.
-        
+
         Args:
             *keys: Keys to traverse the config hierarchy
             default: Default value if key not found
-            
+
         Example:
             config.get('gpu', 'batch_size', default=4)
         """
@@ -62,7 +67,7 @@ class Config:
             else:
                 return default
         return value if value is not None else default
-    
+
     def reload(self) -> None:
         """Reload configuration from file."""
         self._load_config()
@@ -97,386 +102,402 @@ class Config:
     # =============================================================================
     # Convenience properties for commonly accessed values
     # =============================================================================
-    
+
     # File limits
     @property
     def max_file_size_mb(self) -> int:
-        return self.get('limits', 'max_file_size_mb', default=500)
-    
+        return self.get("limits", "max_file_size_mb", default=500)
+
     @property
     def max_video_duration_sec(self) -> int:
-        return self.get('limits', 'max_video_duration_sec', default=300)
-    
+        return self.get("limits", "max_video_duration_sec", default=300)
+
     @property
     def max_image_pixels(self) -> int:
-        return self.get('limits', 'max_image_pixels', default=16777216)
-    
+        return self.get("limits", "max_image_pixels", default=16777216)
+
     @property
     def max_gif_frames(self) -> int:
-        return self.get('limits', 'max_gif_frames', default=500)
-    
+        return self.get("limits", "max_gif_frames", default=500)
+
     # GPU settings
     @property
     def batch_size(self) -> int:
-        return self.get('gpu', 'batch_size', default=4)
-    
+        return self.get("gpu", "batch_size", default=4)
+
     @property
     def max_batch_size(self) -> int:
-        return self.get('gpu', 'max_batch_size', default=16)
-    
+        return self.get("gpu", "max_batch_size", default=16)
+
     @property
     def workers_per_gpu(self) -> int:
-        return self.get('gpu', 'workers_per_gpu', default=4)
+        return self.get("gpu", "workers_per_gpu", default=4)
 
     @property
     def multi_gpu_video_enabled(self) -> bool:
-        return self.get('gpu', 'multi_gpu_video_enabled', default=True)
+        return self.get("gpu", "multi_gpu_video_enabled", default=True)
 
     @property
     def tensorrt_enabled(self) -> bool:
-        return self.get('gpu', 'tensorrt_enabled', default=True)
+        return self.get("gpu", "tensorrt_enabled", default=True)
 
     @property
     def gpu_frame_retention_enabled(self) -> bool:
-        return self.get('gpu', 'frame_retention_enabled', default=False)
+        return self.get("gpu", "frame_retention_enabled", default=False)
 
     @property
     def gpu_paste_on_gpu(self) -> bool:
-        return self.get('gpu', 'paste_on_gpu', default=False)
+        return self.get("gpu", "paste_on_gpu", default=False)
 
     @property
     def gpu_detection_on_gpu(self) -> bool:
-        return self.get('gpu', 'detection_on_gpu', default=False)
+        return self.get("gpu", "detection_on_gpu", default=False)
 
     @property
     def gpu_enhancement_chain_enabled(self) -> bool:
-        return self.get('gpu', 'enhancement_chain_enabled', default=False)
+        return self.get("gpu", "enhancement_chain_enabled", default=False)
 
     @property
     def gpu_auto_workload_tune(self) -> bool:
-        return self.get('gpu', 'auto_workload_tune', default=True)
-    
+        return self.get("gpu", "auto_workload_tune", default=True)
+
     @property
     def tensorrt_fp16(self) -> bool:
-        return self.get('gpu', 'tensorrt_fp16', default=True)
-    
+        return self.get("gpu", "tensorrt_fp16", default=True)
+
     @property
     def tensorrt_workspace_mb(self) -> int:
-        return self.get('gpu', 'tensorrt_workspace_mb', default=2048)
-    
+        return self.get("gpu", "tensorrt_workspace_mb", default=2048)
+
     # Face detection
     @property
     def inswapper_model_path(self) -> str:
-        return self.get('face_detection', 'inswapper_model_path', default='inswapper_128.onnx')
-    
+        return self.get(
+            "face_detection", "inswapper_model_path", default="inswapper_128.onnx"
+        )
+
     @property
     def buffalo_model_path(self) -> str:
-        return self.get('face_detection', 'buffalo_model_path', default='models/buffalo_l')
-    
+        return self.get(
+            "face_detection", "buffalo_model_path", default="models/buffalo_l"
+        )
+
     @property
     def face_analysis_name(self) -> str:
-        return self.get('face_detection', 'face_analysis_name', default='buffalo_l')
-    
+        return self.get("face_detection", "face_analysis_name", default="buffalo_l")
+
     @property
     def face_analysis_det_size(self) -> list:
-        return self.get('face_detection', 'face_analysis_det_size', default=[640, 640])
-    
+        return self.get("face_detection", "face_analysis_det_size", default=[640, 640])
+
     @property
     def face_confidence_threshold(self) -> float:
-        return self.get('face_detection', 'confidence_threshold', default=0.5)
+        return self.get("face_detection", "confidence_threshold", default=0.5)
 
     @property
     def iou_threshold(self) -> float:
-        return self.get('face_detection', 'iou_threshold', default=0.3)
+        return self.get("face_detection", "iou_threshold", default=0.3)
 
     @property
     def embedding_tracking_enabled(self) -> bool:
-        return self.get('face_detection', 'embedding_tracking_enabled', default=True)
+        return self.get("face_detection", "embedding_tracking_enabled", default=True)
 
     @property
     def embedding_similarity_threshold(self) -> float:
-        return self.get('face_detection', 'embedding_similarity_threshold', default=0.35)
+        return self.get(
+            "face_detection", "embedding_similarity_threshold", default=0.35
+        )
 
     @property
     def embedding_ema_alpha(self) -> float:
-        return self.get('face_detection', 'embedding_ema_alpha', default=0.25)
+        return self.get("face_detection", "embedding_ema_alpha", default=0.25)
 
     @property
     def ui_padding(self) -> int:
-        return self.get('face_detection', 'ui_padding', default=20)
+        return self.get("face_detection", "ui_padding", default=20)
 
     @property
     def adaptive_detection_enabled(self) -> bool:
-        return self.get('face_detection', 'adaptive_enabled', default=True)
-    
+        return self.get("face_detection", "adaptive_enabled", default=True)
+
     @property
     def detection_scale(self) -> float:
-        return self.get('face_detection', 'detection_scale', default=0.5)
-    
+        return self.get("face_detection", "detection_scale", default=0.5)
+
     @property
     def min_detection_resolution(self) -> int:
-        return self.get('face_detection', 'min_resolution', default=640)
-    
+        return self.get("face_detection", "min_resolution", default=640)
+
     # Enhancement
     @property
     def default_enhancement_model(self) -> str:
-        return self.get('enhancement', 'default_model', default='RealESRGAN_x4plus')
-    
+        return self.get("enhancement", "default_model", default="RealESRGAN_x4plus")
+
     @property
     def enhancement_models(self) -> Dict[str, Dict[str, Any]]:
-        return self.get('enhancement', 'models', default={})
-    
+        return self.get("enhancement", "models", default={})
+
     @property
     def default_tile_size(self) -> int:
-        return self.get('enhancement', 'defaults', 'tile_size', default=256)
-    
+        return self.get("enhancement", "defaults", "tile_size", default=256)
+
     @property
     def default_outscale(self) -> int:
-        return self.get('enhancement', 'defaults', 'outscale', default=4)
-    
+        return self.get("enhancement", "defaults", "outscale", default=4)
+
     @property
     def default_pre_pad(self) -> int:
-        return self.get('enhancement', 'defaults', 'pre_pad', default=0)
-    
+        return self.get("enhancement", "defaults", "pre_pad", default=0)
+
     @property
     def default_use_fp32(self) -> bool:
-        return self.get('enhancement', 'defaults', 'use_fp32', default=False)
-    
+        return self.get("enhancement", "defaults", "use_fp32", default=False)
+
     @property
     def default_denoise_strength(self) -> float:
-        return self.get('enhancement', 'defaults', 'denoise_strength', default=0.5)
+        return self.get("enhancement", "defaults", "denoise_strength", default=0.5)
 
     @property
     def enhancement_multi_gpu_enabled(self) -> bool:
-        return self.get('enhancement', 'multi_gpu_enabled', default=False)
-    
+        return self.get("enhancement", "multi_gpu_enabled", default=False)
+
     # Face restoration
     @property
     def gfpgan_enabled_by_default(self) -> bool:
-        return self.get('face_restoration', 'enabled_by_default', default=False)
-    
+        return self.get("face_restoration", "enabled_by_default", default=False)
+
     @property
     def gfpgan_model_version(self) -> str:
-        return self.get('face_restoration', 'model_version', default='1.3')
-    
+        return self.get("face_restoration", "model_version", default="1.3")
+
     @property
     def gfpgan_default_weight(self) -> float:
-        return self.get('face_restoration', 'default_weight', default=0.5)
-    
+        return self.get("face_restoration", "default_weight", default=0.5)
+
     # Streaming pipeline
     @property
     def streaming_enabled(self) -> bool:
-        return self.get('streaming', 'enabled', default=True)
+        return self.get("streaming", "enabled", default=True)
 
     @property
     def streaming_chunk_size(self) -> int:
-        return self.get('streaming', 'chunk_size', default=32)
+        return self.get("streaming", "chunk_size", default=32)
 
     @property
     def streaming_video_face_enhance(self) -> bool:
-        return self.get('streaming', 'video_face_enhance', default=False)
+        return self.get("streaming", "video_face_enhance", default=False)
 
     @property
     def streaming_gif_decode_fps(self) -> float:
-        return float(self.get('streaming', 'gif_decode_fps', default=10.0))
+        return float(self.get("streaming", "gif_decode_fps", default=10.0))
 
     @property
     def streaming_hwaccel_decode(self) -> bool:
-        return self.get('streaming', 'hwaccel_decode', default=True)
+        return self.get("streaming", "hwaccel_decode", default=True)
 
     @property
     def streaming_zero_copy_enabled(self) -> bool:
-        return self.get('streaming', 'zero_copy_enabled', default=False)
+        return self.get("streaming", "zero_copy_enabled", default=False)
 
     @property
     def streaming_nvcodec_decode(self) -> bool:
-        return self.get('streaming', 'nvcodec_decode', default=True)
+        return self.get("streaming", "nvcodec_decode", default=True)
 
     @property
     def streaming_nvenc_encode(self) -> bool:
-        return self.get('streaming', 'nvenc_encode', default=True)
+        return self.get("streaming", "nvenc_encode", default=True)
 
     @property
     def streaming_video_codec(self) -> str:
-        return self.get('streaming', 'video_codec', default='libx264')
+        return self.get("streaming", "video_codec", default="libx264")
 
     @property
     def streaming_video_preset(self) -> str:
-        return self.get('streaming', 'video_preset', default='medium')
+        return self.get("streaming", "video_preset", default="medium")
 
     @property
     def streaming_video_crf(self) -> int:
-        return self.get('streaming', 'video_crf', default=18)
+        return self.get("streaming", "video_crf", default=18)
 
     @property
     def compression_skip_optimized_video(self) -> bool:
-        return self.get('compression', 'skip_optimized_video', default=True)
+        return self.get("compression", "skip_optimized_video", default=True)
 
     @property
     def preload_enhancement_on_startup(self) -> bool:
-        return self.get('model_cache', 'preload_enhancement_on_startup', default=False)
-    
+        return self.get("model_cache", "preload_enhancement_on_startup", default=False)
+
     # Logging
     @property
     def log_file(self) -> str:
-        return self.get('logging', 'log_file', default='app.log')
-    
+        return self.get("logging", "log_file", default="app.log")
+
     @property
     def log_max_file_size_mb(self) -> int:
-        return self.get('logging', 'max_file_size_mb', default=10)
-    
+        return self.get("logging", "max_file_size_mb", default=10)
+
     @property
     def log_backup_count(self) -> int:
-        return self.get('logging', 'backup_count', default=5)
-    
+        return self.get("logging", "backup_count", default=5)
+
     @property
     def log_console_level(self) -> str:
-        return self.get('logging', 'console_level', default='INFO')
-    
+        return self.get("logging", "console_level", default="INFO")
+
     @property
     def log_file_level(self) -> str:
-        return self.get('logging', 'file_level', default='DEBUG')
-    
+        return self.get("logging", "file_level", default="DEBUG")
+
     @property
     def log_format(self) -> str:
-        return self.get('logging', 'format', default='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    
+        return self.get(
+            "logging",
+            "format",
+            default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
+
     @property
     def log_date_format(self) -> str:
-        return self.get('logging', 'date_format', default='%Y-%m-%d %H:%M:%S')
+        return self.get("logging", "date_format", default="%Y-%m-%d %H:%M:%S")
 
     @property
     def log_json_format(self) -> bool:
-        return self.get('logging', 'json_format', default=False)
+        return self.get("logging", "json_format", default=False)
 
     @property
     def log_json_file(self) -> str:
-        return self.get('logging', 'json_log_file', default='app.json.log')
+        return self.get("logging", "json_log_file", default="app.json.log")
 
     @property
     def log_terminal_buffer_lines(self) -> int:
-        return self.get('logging', 'terminal_buffer_lines', default=3000)
+        return self.get("logging", "terminal_buffer_lines", default=3000)
 
     @property
     def log_terminal_auto_refresh_sec(self) -> float:
-        return float(self.get('logging', 'terminal_auto_refresh_sec', default=2))
+        return float(self.get("logging", "terminal_auto_refresh_sec", default=2))
 
     # Model cache
     @property
     def tensorrt_cache_dir(self) -> str:
-        return self.get('model_cache', 'tensorrt_cache_dir', default='cache/tensorrt')
-    
+        return self.get("model_cache", "tensorrt_cache_dir", default="cache/tensorrt")
+
     @property
     def tensorrt_cache_enabled(self) -> bool:
-        return self.get('model_cache', 'tensorrt_cache_enabled', default=True)
-    
+        return self.get("model_cache", "tensorrt_cache_enabled", default=True)
+
     @property
     def preload_on_startup(self) -> bool:
-        return self.get('model_cache', 'preload_on_startup', default=False)
-    
+        return self.get("model_cache", "preload_on_startup", default=False)
+
     @property
     def preload_models(self) -> list:
-        return self.get('model_cache', 'preload_models', default=['buffalo_l', 'inswapper_128'])
-    
+        return self.get(
+            "model_cache", "preload_models", default=["buffalo_l", "inswapper_128"]
+        )
+
     # Memory management
     @property
     def auto_clear_cache(self) -> bool:
-        return self.get('memory', 'auto_clear_cache', default=True)
-    
+        return self.get("memory", "auto_clear_cache", default=True)
+
     @property
     def clear_cache_threshold_mb(self) -> int:
-        return self.get('memory', 'clear_cache_threshold_mb', default=1024)
-    
+        return self.get("memory", "clear_cache_threshold_mb", default=1024)
+
     @property
     def reduce_batch_on_oom(self) -> bool:
-        return self.get('memory', 'reduce_batch_on_oom', default=True)
+        return self.get("memory", "reduce_batch_on_oom", default=True)
 
     @property
     def mb_per_batch_estimate(self) -> int:
-        return self.get('memory', 'mb_per_batch_estimate', default=500)
+        return self.get("memory", "mb_per_batch_estimate", default=500)
 
     @property
     def min_batch_size(self) -> int:
-        return self.get('memory', 'min_batch_size', default=1)
+        return self.get("memory", "min_batch_size", default=1)
 
     @property
     def release_swap_models_before_enhance(self) -> bool:
-        return self.get('memory', 'release_swap_models_before_enhance', default=True)
+        return self.get("memory", "release_swap_models_before_enhance", default=True)
 
     @property
     def hat_force_tiled_below_free_mb(self) -> int:
-        return self.get('memory', 'hat_force_tiled_below_free_mb', default=2048)
+        return self.get("memory", "hat_force_tiled_below_free_mb", default=2048)
 
     @property
     def hat_oom_min_tile_size(self) -> int:
-        return self.get('memory', 'hat_oom_min_tile_size', default=64)
+        return self.get("memory", "hat_oom_min_tile_size", default=64)
 
     # File formats
     @property
     def supported_image_formats(self) -> list:
-        return self.get('file_formats', 'images', default=['.jpg', '.jpeg', '.png', '.bmp', '.webp'])
-    
+        return self.get(
+            "file_formats", "images", default=[".jpg", ".jpeg", ".png", ".bmp", ".webp"]
+        )
+
     @property
     def supported_video_formats(self) -> list:
-        return self.get('file_formats', 'videos', default=['.mp4', '.webp', '.avi', '.mov'])
-    
+        return self.get(
+            "file_formats", "videos", default=[".mp4", ".webp", ".avi", ".mov"]
+        )
+
     @property
     def supported_gif_formats(self) -> list:
-        return self.get('file_formats', 'gifs', default=['.gif'])
-    
+        return self.get("file_formats", "gifs", default=[".gif"])
+
     # Directories
     @property
     def temp_gif_frames_dir(self) -> str:
-        return self.get('directories', 'temp_gif_frames', default='temp_gif_frames')
-    
+        return self.get("directories", "temp_gif_frames", default="temp_gif_frames")
+
     @property
     def temp_gif_enhanced_dir(self) -> str:
-        return self.get('directories', 'temp_gif_enhanced', default='temp_gif_enhanced')
-    
+        return self.get("directories", "temp_gif_enhanced", default="temp_gif_enhanced")
+
     @property
     def output_dir(self) -> str:
-        return self.get('directories', 'output', default='outputs')
-    
+        return self.get("directories", "output", default="outputs")
+
     @property
     def models_dir(self) -> str:
-        return self.get('directories', 'models', default='models')
-    
+        return self.get("directories", "models", default="models")
+
     @property
     def cache_dir(self) -> str:
-        return self.get('directories', 'cache', default='cache')
-    
+        return self.get("directories", "cache", default="cache")
+
     # UI settings
     @property
     def ui_server_name(self) -> str:
-        return self.get('ui', 'server_name', default='127.0.0.1')
-    
+        return self.get("ui", "server_name", default="127.0.0.1")
+
     @property
     def server_name(self) -> str:
         """Alias for ui_server_name."""
         return self.ui_server_name
-    
+
     @property
     def ui_server_port(self) -> int:
-        return self.get('ui', 'server_port', default=7860)
-    
+        return self.get("ui", "server_port", default=7860)
+
     @property
     def server_port(self) -> int:
         """Alias for ui_server_port."""
         return self.ui_server_port
-    
+
     @property
     def ui_share(self) -> bool:
-        return self.get('ui', 'share', default=False)
-    
+        return self.get("ui", "share", default=False)
+
     @property
     def share(self) -> bool:
         """Alias for ui_share."""
         return self.ui_share
-    
+
     @property
     def ui_theme(self) -> str:
-        return self.get('ui', 'theme', default='default')
-    
+        return self.get("ui", "theme", default="default")
+
     @property
     def theme(self) -> str:
         """Alias for ui_theme."""
@@ -491,7 +512,7 @@ config = Config()
 def get_model_options() -> Dict[str, Dict[str, Any]]:
     """
     Get enhancement models in UI-compatible format.
-    
+
     Returns:
         Dict mapping display names to model configurations
         Example: {"RealESRGAN_x4plus (General)": {"model_name": "RealESRGAN_x4plus", ...}}
@@ -503,43 +524,43 @@ def get_model_options() -> Dict[str, Dict[str, Any]]:
             "RealESRGAN_x4plus (General - Best for Photos)": {
                 "model_name": "RealESRGAN_x4plus",
                 "supports_denoise": False,
-                "description": "General purpose, best for photorealistic images"
+                "description": "General purpose, best for photorealistic images",
             },
             "RealESRGAN_x4plus_anime_6B (Anime/Illustrations)": {
                 "model_name": "RealESRGAN_x4plus_anime_6B",
                 "supports_denoise": False,
-                "description": "Optimized for anime and illustrated content"
+                "description": "Optimized for anime and illustrated content",
             },
             "RealESRNet_x4plus (Conservative)": {
                 "model_name": "RealESRNet_x4plus",
                 "supports_denoise": False,
-                "description": "More conservative, fewer artifacts"
+                "description": "More conservative, fewer artifacts",
             },
             "realesr-general-x4v3 (With Denoise)": {
                 "model_name": "realesr-general-x4v3",
                 "supports_denoise": True,
-                "description": "General model with adjustable denoising"
+                "description": "General model with adjustable denoising",
             },
             "realesr-animevideov3 (Anime Video)": {
                 "model_name": "realesr-animevideov3",
                 "supports_denoise": False,
-                "description": "Designed specifically for anime videos"
+                "description": "Designed specifically for anime videos",
             },
             "RealESRGAN_x2plus (Fast 2x)": {
                 "model_name": "RealESRGAN_x2plus",
                 "supports_denoise": False,
-                "description": "Faster 2x upscaling"
-            }
+                "description": "Faster 2x upscaling",
+            },
         }
-    
+
     # Build options dict from config
     result = {}
     for model_name, model_config in models.items():
-        display_name = model_config.get('display_name', model_name)
+        display_name = model_config.get("display_name", model_name)
         result[display_name] = {
-            'model_name': model_name,
-            'supports_denoise': model_config.get('supports_denoise', False),
-            'description': model_config.get('description', '')
+            "model_name": model_name,
+            "supports_denoise": model_config.get("supports_denoise", False),
+            "description": model_config.get("description", ""),
         }
     return result
 
@@ -555,23 +576,23 @@ def get_swinir_model_options() -> Dict[str, Dict[str, Any]]:
         "Swin2SR_RealWorld_x4 (Recommended)": {
             "model_name": "Swin2SR_RealWorld_x4",
             "scale": 4,
-            "description": "Real-world SR 4x - Best for degraded images"
+            "description": "Real-world SR 4x - Best for degraded images",
         },
         "Swin2SR_x4 (Standard)": {
             "model_name": "Swin2SR_x4",
             "scale": 4,
-            "description": "Classical SR 4x - Standard upscaling"
+            "description": "Classical SR 4x - Standard upscaling",
         },
         "Swin2SR_Compressed_x4 (JPEG Artifacts)": {
             "model_name": "Swin2SR_Compressed_x4",
             "scale": 4,
-            "description": "Compressed SR 4x - For JPEG artifacts"
+            "description": "Compressed SR 4x - For JPEG artifacts",
         },
         "Swin2SR_x2 (Fast 2x)": {
             "model_name": "Swin2SR_x2",
             "scale": 2,
-            "description": "Classical SR 2x - Fast, good for clean images"
-        }
+            "description": "Classical SR 2x - Fast, good for clean images",
+        },
     }
 
 
@@ -586,11 +607,11 @@ def get_hat_model_options() -> Dict[str, Dict[str, Any]]:
         "HAT_Base_4x_ImageNet (General)": {
             "model_name": "HAT_Base_4x_ImageNet",
             "scale": 4,
-            "description": "HAT Base 4x pre-trained on ImageNet — strong general SR"
+            "description": "HAT Base 4x pre-trained on ImageNet — strong general SR",
         },
         "HAT_Base_4x_GAN_sharper (Real-World Sharpness)": {
             "model_name": "HAT_Base_4x_GAN_sharper",
             "scale": 4,
-            "description": "HAT GAN 4x — sharper perceptual quality for real-world SR"
+            "description": "HAT GAN 4x — sharper perceptual quality for real-world SR",
         },
     }

@@ -9,12 +9,13 @@ These tests verify the full video processing workflow including:
 - Output encoding
 """
 
-import pytest
-import numpy as np
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pytest
 from PIL import Image
-import tempfile
 
 
 @pytest.fixture
@@ -48,6 +49,7 @@ def mock_video_processor():
 
     def mock_swap(frame, target, source):
         return frame.copy()
+
     processor.swap_face.side_effect = mock_swap
 
     return processor
@@ -69,7 +71,9 @@ class TestVideoProcessingE2E:
         assert fps == 30, f"Expected 30 fps, got {fps}"
 
     @pytest.mark.integration
-    def test_video_frame_processing_sequence(self, mock_video_clip, mock_video_processor):
+    def test_video_frame_processing_sequence(
+        self, mock_video_clip, mock_video_processor
+    ):
         """Test frames are processed in sequence."""
         frames = list(mock_video_clip.iter_frames())
 
@@ -90,7 +94,7 @@ class TestVideoProcessingE2E:
 
         batches = []
         for i in range(0, len(frames), batch_size):
-            batch = frames[i:i + batch_size]
+            batch = frames[i : i + batch_size]
             batches.append(batch)
 
         expected_batches = (len(frames) + batch_size - 1) // batch_size
@@ -169,15 +173,15 @@ class TestVideoOutputEncoding:
         """Test correct codec is selected based on output format."""
         # Common codec mappings
         codec_map = {
-            '.mp4': 'libx264',
-            '.webm': 'libvpx',
-            '.avi': 'mpeg4',
+            ".mp4": "libx264",
+            ".webm": "libvpx",
+            ".avi": "mpeg4",
         }
 
         for ext, expected_codec in codec_map.items():
             output_path = tmp_path / f"output{ext}"
             # In real code, codec would be selected based on extension
-            codec = codec_map.get(ext, 'libx264')
+            codec = codec_map.get(ext, "libx264")
             assert codec == expected_codec
 
     @pytest.mark.integration
@@ -185,15 +189,15 @@ class TestVideoOutputEncoding:
         """Test quality settings are applied to output."""
         # Quality presets
         quality_presets = {
-            'low': {'crf': 28, 'preset': 'ultrafast'},
-            'medium': {'crf': 23, 'preset': 'medium'},
-            'high': {'crf': 18, 'preset': 'slow'},
+            "low": {"crf": 28, "preset": "ultrafast"},
+            "medium": {"crf": 23, "preset": "medium"},
+            "high": {"crf": 18, "preset": "slow"},
         }
 
         for preset_name, settings in quality_presets.items():
-            assert 'crf' in settings
-            assert 'preset' in settings
-            assert 0 <= settings['crf'] <= 51  # Valid CRF range
+            assert "crf" in settings
+            assert "preset" in settings
+            assert 0 <= settings["crf"] <= 51  # Valid CRF range
 
 
 class TestVideoValidation:
@@ -238,7 +242,7 @@ class TestVideoValidation:
 
         # Create a small test file
         test_file = tmp_path / "small_video.mp4"
-        test_file.write_bytes(b'0' * (1024 * 1024))  # 1MB
+        test_file.write_bytes(b"0" * (1024 * 1024))  # 1MB
 
         file_size_mb = test_file.stat().st_size / (1024 * 1024)
         assert file_size_mb <= max_size_mb

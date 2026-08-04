@@ -55,11 +55,11 @@ class ProfilingStats:
 
         timings = self._timings[name]
         return {
-            'count': len(timings),
-            'total': sum(timings),
-            'mean': sum(timings) / len(timings),
-            'min': min(timings),
-            'max': max(timings),
+            "count": len(timings),
+            "total": sum(timings),
+            "mean": sum(timings) / len(timings),
+            "min": min(timings),
+            "max": max(timings),
         }
 
     def get_all_stats(self) -> Dict[str, Dict[str, float]]:
@@ -82,11 +82,15 @@ class ProfilingStats:
 
         lines = ["Performance Profile:"]
         lines.append("-" * 70)
-        lines.append(f"{'Operation':<35} {'Count':>8} {'Total':>10} {'Mean':>10} {'Max':>10}")
+        lines.append(
+            f"{'Operation':<35} {'Count':>8} {'Total':>10} {'Mean':>10} {'Max':>10}"
+        )
         lines.append("-" * 70)
 
-        for name, stats in sorted(all_stats.items(), key=lambda x: x[1]['total'], reverse=True):
-            if stats['mean'] * 1000 < threshold_ms:
+        for name, stats in sorted(
+            all_stats.items(), key=lambda x: x[1]["total"], reverse=True
+        ):
+            if stats["mean"] * 1000 < threshold_ms:
                 continue
 
             lines.append(
@@ -127,6 +131,7 @@ def profile(name: Optional[str] = None):
         def other_function():
             ...
     """
+
     def decorator(func: Callable) -> Callable:
         operation_name = name or func.__qualname__
 

@@ -9,11 +9,12 @@ Tests:
 - validate_media_type
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-from PIL import Image
+from unittest.mock import MagicMock, patch
+
 import numpy as np
+import pytest
+from PIL import Image
 
 
 class TestValidateFileSize:
@@ -87,12 +88,12 @@ class TestValidateImageResolution:
 
     def test_exactly_at_limit(self, tmp_path):
         """Should pass for images exactly at limit."""
-        from utils.validation import validate_image_resolution
         from utils.constants import MAX_IMAGE_PIXELS
+        from utils.validation import validate_image_resolution
 
         # Create image exactly at limit (2048x2048 for 4M limit)
-        side = int(MAX_IMAGE_PIXELS ** 0.5)
-        img = Image.new('RGB', (side, side))
+        side = int(MAX_IMAGE_PIXELS**0.5)
+        img = Image.new("RGB", (side, side))
         img_path = tmp_path / "exact.png"
         img.save(img_path)
 
@@ -106,8 +107,8 @@ class TestValidateVideoDuration:
         """Should pass for videos under limit."""
         from utils.validation import validate_video_duration
 
-        with patch('utils.video_io.probe_video') as mock_probe:
-            mock_probe.return_value = {'duration': 30}
+        with patch("utils.video_io.probe_video") as mock_probe:
+            mock_probe.return_value = {"duration": 30}
 
             validate_video_duration(str(tmp_path / "test.mp4"))
 
@@ -115,8 +116,8 @@ class TestValidateVideoDuration:
         """Should raise for videos over limit."""
         from utils.validation import validate_video_duration
 
-        with patch('utils.video_io.probe_video') as mock_probe:
-            mock_probe.return_value = {'duration': 600}
+        with patch("utils.video_io.probe_video") as mock_probe:
+            mock_probe.return_value = {"duration": 600}
 
             with pytest.raises(ValueError) as exc_info:
                 validate_video_duration(str(tmp_path / "long.mp4"))
@@ -127,7 +128,7 @@ class TestValidateVideoDuration:
         """Should raise for invalid video files."""
         from utils.validation import validate_video_duration
 
-        with patch('utils.video_io.probe_video') as mock_probe:
+        with patch("utils.video_io.probe_video") as mock_probe:
             mock_probe.side_effect = Exception("Cannot open file")
 
             with pytest.raises(ValueError) as exc_info:
@@ -148,22 +149,18 @@ class TestValidateGifFrames:
 
     def test_too_many_frames(self, tmp_path):
         """Should raise for GIFs with too many frames."""
-        from utils.validation import validate_gif_frames
         from utils.constants import MAX_GIF_FRAMES
+        from utils.validation import validate_gif_frames
 
         # Create GIF with many frames
         frames = []
         for i in range(MAX_GIF_FRAMES + 10):
-            img = Image.new('RGB', (10, 10), color=(i % 255, 0, 0))
+            img = Image.new("RGB", (10, 10), color=(i % 255, 0, 0))
             frames.append(img)
 
         gif_path = tmp_path / "many_frames.gif"
         frames[0].save(
-            gif_path,
-            save_all=True,
-            append_images=frames[1:],
-            duration=50,
-            loop=0
+            gif_path, save_all=True, append_images=frames[1:], duration=50, loop=0
         )
 
         with pytest.raises(ValueError) as exc_info:
@@ -192,7 +189,7 @@ class TestValidateMediaType:
         """Should detect image media type."""
         from utils.validation import validate_media_type
 
-        with patch('utils.validation.magic') as mock_magic:
+        with patch("utils.validation.magic") as mock_magic:
             mock_magic.from_file.return_value = "image/png"
 
             result = validate_media_type(str(sample_image))
@@ -202,7 +199,7 @@ class TestValidateMediaType:
         """Should detect GIF media type."""
         from utils.validation import validate_media_type
 
-        with patch('utils.validation.magic') as mock_magic:
+        with patch("utils.validation.magic") as mock_magic:
             mock_magic.from_file.return_value = "image/gif"
 
             result = validate_media_type(str(sample_gif))
@@ -215,7 +212,7 @@ class TestValidateMediaType:
         video_file = tmp_path / "test.mp4"
         video_file.touch()
 
-        with patch('utils.validation.magic') as mock_magic:
+        with patch("utils.validation.magic") as mock_magic:
             mock_magic.from_file.return_value = "video/mp4"
 
             result = validate_media_type(str(video_file))
@@ -228,7 +225,7 @@ class TestValidateMediaType:
         text_file = tmp_path / "test.txt"
         text_file.write_text("hello")
 
-        with patch('utils.validation.magic') as mock_magic:
+        with patch("utils.validation.magic") as mock_magic:
             mock_magic.from_file.return_value = "text/plain"
 
             with pytest.raises(ValueError) as exc_info:
@@ -251,7 +248,7 @@ class TestValidateMediaType:
             test_file = tmp_path / filename
             test_file.touch()
 
-            with patch('utils.validation.magic') as mock_magic:
+            with patch("utils.validation.magic") as mock_magic:
                 mock_magic.from_file.return_value = mime_type
 
                 result = validate_media_type(str(test_file))
@@ -272,7 +269,7 @@ class TestValidateMediaType:
             test_file = tmp_path / filename
             test_file.touch()
 
-            with patch('utils.validation.magic') as mock_magic:
+            with patch("utils.validation.magic") as mock_magic:
                 mock_magic.from_file.return_value = mime_type
 
                 result = validate_media_type(str(test_file))
@@ -287,10 +284,10 @@ class TestValidationIntegration:
         from utils.validation import (
             validate_file_size,
             validate_image_resolution,
-            validate_media_type
+            validate_media_type,
         )
 
-        with patch('utils.validation.magic') as mock_magic:
+        with patch("utils.validation.magic") as mock_magic:
             mock_magic.from_file.return_value = "image/png"
 
             # All should pass
@@ -305,10 +302,10 @@ class TestValidationIntegration:
         from utils.validation import (
             validate_file_size,
             validate_gif_frames,
-            validate_media_type
+            validate_media_type,
         )
 
-        with patch('utils.validation.magic') as mock_magic:
+        with patch("utils.validation.magic") as mock_magic:
             mock_magic.from_file.return_value = "image/gif"
 
             validate_file_size(str(sample_gif))
@@ -364,6 +361,7 @@ class TestValidateSafePath:
 
     def test_allows_gradio_temp_upload(self, tmp_path):
         import tempfile
+
         from utils.validation import validate_safe_path
 
         gradio_dir = Path(tempfile.gettempdir()) / "gradio" / "abc123"
@@ -437,10 +435,13 @@ class TestGradioPathAndMappings:
         from utils.validation import validate_face_mappings_or_raise
 
         with pytest.raises(ValueError, match="No valid face mappings"):
-            validate_face_mappings_or_raise([(0, 1)], src_face_count=1, dst_face_count=1)
+            validate_face_mappings_or_raise(
+                [(0, 1)], src_face_count=1, dst_face_count=1
+            )
 
     def test_is_animated_gif_image_detects_multi_frame(self):
         from PIL import Image
+
         from utils.validation import is_animated_gif_image
 
         frames = [

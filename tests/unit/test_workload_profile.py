@@ -1,7 +1,8 @@
 """Tests for automatic workload profiling (Wave 4)."""
 
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 
 class TestWorkloadProfile:
@@ -9,9 +10,7 @@ class TestWorkloadProfile:
         from processing.workload_profile import resolve_workload_profile
 
         with patch("processing.workload_profile._cuda_ready", return_value=True):
-            with patch(
-                "utils.gpu_decode.nvcodec_decode_available", return_value=False
-            ):
+            with patch("utils.gpu_decode.nvcodec_decode_available", return_value=False):
                 profile = resolve_workload_profile(
                     media_type="video",
                     enhance=False,
@@ -34,9 +33,7 @@ class TestWorkloadProfile:
         from processing.workload_profile import resolve_workload_profile
 
         with patch("processing.workload_profile._cuda_ready", return_value=True):
-            with patch(
-                "utils.gpu_decode.nvcodec_decode_available", return_value=False
-            ):
+            with patch("utils.gpu_decode.nvcodec_decode_available", return_value=False):
                 profile = resolve_workload_profile(
                     media_type="video",
                     enhance=True,
@@ -56,9 +53,7 @@ class TestWorkloadProfile:
         from processing.workload_profile import resolve_workload_profile
 
         with patch("processing.workload_profile._cuda_ready", return_value=True):
-            with patch(
-                "utils.gpu_decode.nvcodec_decode_available", return_value=False
-            ):
+            with patch("utils.gpu_decode.nvcodec_decode_available", return_value=False):
                 profile = resolve_workload_profile(
                     media_type="video",
                     enhance=False,
@@ -77,9 +72,7 @@ class TestWorkloadProfile:
         from processing.workload_profile import resolve_workload_profile
 
         with patch("processing.workload_profile._cuda_ready", return_value=True):
-            with patch(
-                "utils.gpu_decode.nvcodec_decode_available", return_value=True
-            ):
+            with patch("utils.gpu_decode.nvcodec_decode_available", return_value=True):
                 profile = resolve_workload_profile(
                     media_type="video",
                     enhance=False,
@@ -97,9 +90,7 @@ class TestWorkloadProfile:
         from processing.workload_profile import resolve_workload_profile
 
         with patch("processing.workload_profile._cuda_ready", return_value=True):
-            with patch(
-                "utils.gpu_decode.nvcodec_decode_available", return_value=True
-            ):
+            with patch("utils.gpu_decode.nvcodec_decode_available", return_value=True):
                 profile = resolve_workload_profile(
                     media_type="gif",
                     enhance=False,
@@ -116,8 +107,8 @@ class TestWorkloadProfile:
         assert profile.pinned_encode is False
 
     def test_auto_tune_disabled_returns_none(self, temp_config, reset_config):
-        from utils.config_manager import config
         from processing.workload_profile import resolve_workload_profile
+        from utils.config_manager import config
 
         config._config["gpu"]["auto_workload_tune"] = False
         profile = resolve_workload_profile(

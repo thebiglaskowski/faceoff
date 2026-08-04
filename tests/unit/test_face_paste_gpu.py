@@ -1,13 +1,15 @@
 """Tests for GPU face paste (Wave 3 phase 2)."""
 
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
-from unittest.mock import MagicMock, patch
 
 
 class TestGpuPasteWiring:
     def test_process_frames_batch_downloads_chunk_when_gpu_paste(self, mock_gpu):
         import torch
+
         from core.gpu_frame import ChunkFrameBuffer
         from processing.frame_batch import process_frames_batch
 
@@ -17,9 +19,9 @@ class TestGpuPasteWiring:
 
         gpu_inst = MagicMock()
         gpu_inst.get_faces.return_value = [face]
-        gpu_inst.swap_face_batch.return_value = torch.ones(
-            (8, 8, 3), dtype=torch.uint8, device="cuda:0"
-        ) * 42
+        gpu_inst.swap_face_batch.return_value = (
+            torch.ones((8, 8, 3), dtype=torch.uint8, device="cuda:0") * 42
+        )
 
         with patch("processing.frame_batch.config") as cfg:
             cfg.gpu_frame_retention_enabled = True

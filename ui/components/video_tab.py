@@ -1,32 +1,37 @@
 """Video tab component for face swapping."""
 
 import gradio as gr
-from ui.helpers.gpu_utils import get_gpu_options
+
 from ui.helpers.face_detection import detect_faces_simple, detect_faces_with_thumbnails
 from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
+from ui.helpers.gpu_utils import get_gpu_options
 from utils.constants import (
+    DEFAULT_HAT_MODEL,
+    DEFAULT_MODEL,
+    DEFAULT_OUTSCALE,
+    DEFAULT_PRE_PAD,
+    DEFAULT_SWINIR_MODEL,
+    DEFAULT_TILE_SIZE,
+    DEFAULT_USE_FP32,
+    HAT_MODEL_OPTIONS,
     MODEL_OPTIONS,
     SWINIR_MODEL_OPTIONS,
-    HAT_MODEL_OPTIONS,
-    DEFAULT_MODEL,
-    DEFAULT_SWINIR_MODEL,
-    DEFAULT_HAT_MODEL,
-    DEFAULT_TILE_SIZE,
-    DEFAULT_OUTSCALE,
-    DEFAULT_USE_FP32,
-    DEFAULT_PRE_PAD,
 )
 
 
 def create_video_tab():
     """Create the video face swapping tab."""
-    
+
     with gr.Tab("Video"):
         with gr.Row():
             with gr.Column():
                 source_vid = gr.Image(type="pil", label="Source Image")
-                face_info_vid = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
-                source_faces_gallery_vid = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
+                face_info_vid = gr.Textbox(
+                    label="Face Detection Info", lines=4, interactive=False
+                )
+                source_faces_gallery_vid = gr.Gallery(
+                    label="Source Faces", columns=4, height="auto", visible=False
+                )
             with gr.Column():
                 # File upload avoids Gradio's in-browser video decoder (HEVC / odd
                 # profiles trigger "Video not playable"). First frame shown below.
@@ -39,14 +44,19 @@ def create_video_tab():
                     visible=False,
                     show_label=True,
                 )
-                target_faces_gallery_vid = gr.Gallery(label="Target Faces (First Frame)", columns=4, height="auto", visible=False)
+                target_faces_gallery_vid = gr.Gallery(
+                    label="Target Faces (First Frame)",
+                    columns=4,
+                    height="auto",
+                    visible=False,
+                )
             with gr.Column():
                 result_vid = gr.Video(
                     label="Swapped Result",
                     format="mp4",
                     autoplay=True,
                 )
-        
+
         # Face mapping controls for Video
         with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
             gr.Markdown("""
@@ -56,45 +66,47 @@ def create_video_tab():
             3. Add mappings for which source face goes to which target face
             4. Mappings apply to all frames in the video
             """)
-            
-            detect_faces_btn_vid = gr.Button("🔍 Detect Faces", variant="primary", size="sm")
-            
+
+            detect_faces_btn_vid = gr.Button(
+                "🔍 Detect Faces", variant="primary", size="sm"
+            )
+
             face_mapping_status_vid = gr.Textbox(
                 label="Mapping Status",
                 value="Upload images to detect faces",
-                interactive=False
+                interactive=False,
             )
-            
+
             with gr.Row():
                 mapping_source_idx_vid = gr.Dropdown(
-                    label="Source Face Index",
-                    choices=[],
-                    interactive=True
+                    label="Source Face Index", choices=[], interactive=True
                 )
                 mapping_arrow_vid = gr.Markdown("→")
                 mapping_target_idx_vid = gr.Dropdown(
-                    label="Target Face Index",
-                    choices=[],
-                    interactive=True
+                    label="Target Face Index", choices=[], interactive=True
                 )
-            
+
             current_mappings_vid = gr.Textbox(
                 label="Current Mappings",
                 value="No mappings",
                 interactive=False,
-                lines=3
+                lines=3,
             )
-            
+
             with gr.Row():
-                add_mapping_btn_vid = gr.Button("➕ Add Mapping", size="sm", variant="secondary")
-                clear_mappings_btn_vid = gr.Button("🗑️ Clear All Mappings", size="sm", variant="secondary")
-        
+                add_mapping_btn_vid = gr.Button(
+                    "➕ Add Mapping", size="sm", variant="secondary"
+                )
+                clear_mappings_btn_vid = gr.Button(
+                    "🗑️ Clear All Mappings", size="sm", variant="secondary"
+                )
+
         with gr.Row():
             enhance_toggle_vid = gr.Checkbox(label="Enable Enhancement", value=False)
             restore_faces_toggle_vid = gr.Checkbox(
                 label="Restore Faces",
                 value=False,
-                info="Enhance face quality after swapping"
+                info="Enhance face quality after swapping",
             )
 
         with gr.Row():
@@ -103,14 +115,14 @@ def create_video_tab():
                 value="RealESRGAN",
                 label="Enhancement Framework",
                 info="RealESRGAN (fast) or SwinIR/HAT (transformer-based SR)",
-                visible=False
+                visible=False,
             )
             restoration_model_selector_vid = gr.Dropdown(
                 choices=["GFPGAN", "CodeFormer"],
                 value="GFPGAN",
                 label="Face Restoration Model",
                 info="GFPGAN (fast) or CodeFormer (better fidelity control)",
-                visible=False
+                visible=False,
             )
 
         with gr.Row(visible=False) as restoration_row_vid:
@@ -120,40 +132,57 @@ def create_video_tab():
                 value=0.5,
                 step=0.1,
                 label="Restoration Strength",
-                info="0=original face, 1=fully restored"
+                info="0=original face, 1=fully restored",
             )
-        
+
         with gr.Row(visible=False) as model_row_vid:
             model_selector_vid = gr.Dropdown(
                 choices=list(MODEL_OPTIONS.keys()),
                 value=DEFAULT_MODEL,
-                label="Enhancement Model"
+                label="Enhancement Model",
             )
             denoise_slider_vid = gr.Slider(
-                minimum=0.0, maximum=1.0, value=0.5, step=0.1,
-                label="Denoise Strength", visible=False
+                minimum=0.0,
+                maximum=1.0,
+                value=0.5,
+                step=0.1,
+                label="Denoise Strength",
+                visible=False,
             )
-        
+
         with gr.Row(visible=False) as enhancement_options_row_vid:
             tile_size_slider_vid = gr.Slider(
-                minimum=128, maximum=512, value=DEFAULT_TILE_SIZE, step=64,
-                label="Tile Size", info="Lower = less VRAM usage"
+                minimum=128,
+                maximum=512,
+                value=DEFAULT_TILE_SIZE,
+                step=64,
+                label="Tile Size",
+                info="Lower = less VRAM usage",
             )
             outscale_slider_vid = gr.Slider(
-                minimum=2, maximum=4, value=DEFAULT_OUTSCALE, step=1,
-                label="Upscale Factor", info="2x or 4x upscaling"
+                minimum=2,
+                maximum=4,
+                value=DEFAULT_OUTSCALE,
+                step=1,
+                label="Upscale Factor",
+                info="2x or 4x upscaling",
             )
-        
+
         with gr.Row(visible=False) as enhancement_advanced_row_vid:
             use_fp32_checkbox_vid = gr.Checkbox(
-                label="High Precision (FP32)", value=DEFAULT_USE_FP32,
-                info="Uses more VRAM but slightly better quality"
+                label="High Precision (FP32)",
+                value=DEFAULT_USE_FP32,
+                info="Uses more VRAM but slightly better quality",
             )
             pre_pad_slider_vid = gr.Slider(
-                minimum=0, maximum=20, value=DEFAULT_PRE_PAD, step=5,
-                label="Edge Padding", info="Reduces edge artifacts"
+                minimum=0,
+                maximum=20,
+                value=DEFAULT_PRE_PAD,
+                step=5,
+                label="Edge Padding",
+                info="Reduces edge artifacts",
             )
-        
+
         with gr.Accordion("⚙️ Advanced Settings", open=False):
             with gr.Row():
                 face_confidence_video = gr.Slider(
@@ -162,23 +191,23 @@ def create_video_tab():
                     value=0.5,
                     step=0.05,
                     label="Face Detection Confidence Threshold",
-                    info="Higher = stricter face detection (0.5 recommended)"
+                    info="Higher = stricter face detection (0.5 recommended)",
                 )
                 gpu_selection_video = gr.Dropdown(
                     choices=get_gpu_options(),
                     value=get_gpu_options()[0] if get_gpu_options() else None,
                     label="GPU Selection",
-                    info="Choose which GPU(s) to use for processing"
+                    info="Choose which GPU(s) to use for processing",
                 )
             with gr.Row():
                 tensorrt_fp16_checkbox_vid = gr.Checkbox(
                     label="TensorRT FP16 Mode",
                     value=True,
-                    info="~30% faster inference, minimal quality impact (requires TensorRT)"
+                    info="~30% faster inference, minimal quality impact (requires TensorRT)",
                 )
-        
+
         run_video_btn = gr.Button("Run Video Swap", variant="primary")
-    
+
     # Return all components needed for event binding
     return {
         "source_vid": source_vid,

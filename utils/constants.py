@@ -5,7 +5,12 @@ This module now uses the centralized config manager.
 Legacy constants are maintained for backward compatibility.
 """
 
-from utils.config_manager import config, get_model_options, get_swinir_model_options, get_hat_model_options
+from utils.config_manager import (
+    config,
+    get_hat_model_options,
+    get_model_options,
+    get_swinir_model_options,
+)
 
 # File size and resource limits (from config)
 MAX_FILE_SIZE_MB = config.max_file_size_mb
@@ -23,9 +28,21 @@ SWINIR_MODEL_OPTIONS = get_swinir_model_options()
 HAT_MODEL_OPTIONS = get_hat_model_options()
 
 # Default models (from config)
-DEFAULT_MODEL = list(MODEL_OPTIONS.keys())[0] if MODEL_OPTIONS else "RealESRGAN_x4plus (General - Best for Photos)"
-DEFAULT_SWINIR_MODEL = list(SWINIR_MODEL_OPTIONS.keys())[0] if SWINIR_MODEL_OPTIONS else "Swin2SR_RealWorld_x4 (Recommended)"
-DEFAULT_HAT_MODEL = list(HAT_MODEL_OPTIONS.keys())[0] if HAT_MODEL_OPTIONS else "HAT_Base_4x_ImageNet (General)"
+DEFAULT_MODEL = (
+    list(MODEL_OPTIONS.keys())[0]
+    if MODEL_OPTIONS
+    else "RealESRGAN_x4plus (General - Best for Photos)"
+)
+DEFAULT_SWINIR_MODEL = (
+    list(SWINIR_MODEL_OPTIONS.keys())[0]
+    if SWINIR_MODEL_OPTIONS
+    else "Swin2SR_RealWorld_x4 (Recommended)"
+)
+DEFAULT_HAT_MODEL = (
+    list(HAT_MODEL_OPTIONS.keys())[0]
+    if HAT_MODEL_OPTIONS
+    else "HAT_Base_4x_ImageNet (General)"
+)
 
 # Default enhancement settings (from config)
 DEFAULT_TILE_SIZE = config.default_tile_size
@@ -49,7 +66,9 @@ USE_OPTICAL_FLOW = False
 # TensorRT optimization settings (from config)
 DEFAULT_TENSORRT_ENABLED = config.tensorrt_enabled
 TENSORRT_FP16_MODE = config.tensorrt_fp16
-TENSORRT_WORKSPACE_SIZE = config.tensorrt_workspace_mb * 1024 * 1024  # Convert MB to bytes
+TENSORRT_WORKSPACE_SIZE = (
+    config.tensorrt_workspace_mb * 1024 * 1024
+)  # Convert MB to bytes
 
 # Frame batching settings (from config)
 DEFAULT_BATCH_SIZE = config.batch_size

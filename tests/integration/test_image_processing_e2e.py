@@ -9,10 +9,11 @@ These tests verify the full image processing workflow including:
 - Enhancement (optional)
 """
 
-import pytest
-import numpy as np
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
+
+import numpy as np
+import pytest
 from PIL import Image
 
 

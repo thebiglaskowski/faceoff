@@ -28,11 +28,12 @@ class TestOpenStreamingReader:
         from utils import video_io
 
         fake_reader = MagicMock()
-        with patch(
-            "utils.gpu_decode.nvcodec_decode_available", return_value=True
-        ), patch(
-            "utils.gpu_decode.NvCodecFrameReader", return_value=fake_reader
-        ) as mock_nv:
+        with (
+            patch("utils.gpu_decode.nvcodec_decode_available", return_value=True),
+            patch(
+                "utils.gpu_decode.NvCodecFrameReader", return_value=fake_reader
+            ) as mock_nv,
+        ):
             reader = video_io.open_streaming_reader(
                 str(tmp_path / "clip.mp4"),
                 use_nvcodec=True,
@@ -44,14 +45,14 @@ class TestOpenStreamingReader:
     def test_falls_back_to_ffmpeg_on_nvcodec_failure(self, tmp_path):
         from utils import video_io
 
-        with patch(
-            "utils.gpu_decode.nvcodec_decode_available", return_value=True
-        ), patch(
-            "utils.gpu_decode.NvCodecFrameReader",
-            side_effect=RuntimeError("no gpu"),
-        ), patch.object(
-            video_io, "StreamingFrameReader"
-        ) as mock_ff:
+        with (
+            patch("utils.gpu_decode.nvcodec_decode_available", return_value=True),
+            patch(
+                "utils.gpu_decode.NvCodecFrameReader",
+                side_effect=RuntimeError("no gpu"),
+            ),
+            patch.object(video_io, "StreamingFrameReader") as mock_ff,
+        ):
             mock_ff.return_value = MagicMock()
             reader = video_io.open_streaming_reader(
                 str(tmp_path / "clip.mp4"),
@@ -65,11 +66,10 @@ class TestOpenStreamingReader:
     def test_skips_nvcodec_when_not_installed(self, tmp_path):
         from utils import video_io
 
-        with patch(
-            "utils.gpu_decode.nvcodec_decode_available", return_value=False
-        ), patch.object(
-            video_io, "StreamingFrameReader"
-        ) as mock_ff:
+        with (
+            patch("utils.gpu_decode.nvcodec_decode_available", return_value=False),
+            patch.object(video_io, "StreamingFrameReader") as mock_ff,
+        ):
             mock_ff.return_value = MagicMock()
             video_io.open_streaming_reader(
                 str(tmp_path / "clip.mp4"),
@@ -101,10 +101,9 @@ class TestNvCodecFrameReader:
 
         fake_rgb = np.arange(12, dtype=np.uint8).reshape(2, 2, 3)
 
-        with patch(
-            "utils.gpu_decode._decoded_frame_to_numpy", return_value=fake_rgb
-        ), patch(
-            "PyNvVideoCodec.CreateSimpleDecoder", return_value=decoder
+        with (
+            patch("utils.gpu_decode._decoded_frame_to_numpy", return_value=fake_rgb),
+            patch("PyNvVideoCodec.CreateSimpleDecoder", return_value=decoder),
         ):
             reader = NvCodecFrameReader("clip.mp4")
             chunk = reader.read_chunk(1)

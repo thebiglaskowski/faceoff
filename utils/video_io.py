@@ -4,6 +4,7 @@ Video and GIF I/O utilities using direct FFmpeg subprocess calls.
 Replaces moviepy for video/GIF read, frame extraction, and video writing.
 All operations are subprocess-based; no Python video codec dependencies.
 """
+
 import logging
 import re
 import subprocess
@@ -74,6 +75,7 @@ class _FfmpegStderrDrain:
 # Video/GIF probe (metadata only -- no decoding)
 # =============================================================================
 
+
 def probe_video(video_path: str) -> dict:
     """
     Probe video metadata using ffprobe --show_entries.
@@ -86,13 +88,16 @@ def probe_video(video_path: str) -> dict:
     try:
         cmd = [
             "ffprobe",
-            "-v", "error",
-            "-select_streams", "v",
+            "-v",
+            "error",
+            "-select_streams",
+            "v",
             "-show_entries",
             "stream=width,height,codec_name,r_frame_rate,avg_frame_rate,index",
             "-show_entries",
             "format=duration",
-            "-of", "json",
+            "-of",
+            "json",
             video_path,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -108,7 +113,7 @@ def probe_video(video_path: str) -> dict:
 
         # Extract stream info
         # width/hight/codec_name/r_frame_rate/avg_frame_rate/index
-        streams = re.findall(r'\{[^}]+\}', raw)
+        streams = re.findall(r"\{[^}]+\}", raw)
         video_stream = streams[0] if streams else "{}"
 
         def _json_val(obj, key):
@@ -144,9 +149,16 @@ def probe_video(video_path: str) -> dict:
         audio_codec = ""
         try:
             cmd2 = [
-                "ffprobe", "-v", "error", "-select_streams", "a",
-                "-show_entries", "stream=codec_name",
-                "-of", "json", video_path,
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "json",
+                video_path,
             ]
             res2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=15)
             if res2.returncode == 0 and "codec_name" in res2.stdout:
@@ -319,13 +331,18 @@ class StreamingFrameReader:
                 break
             if self._pinned_pool is not None:
                 frame = self._pinned_pool.borrow(i)
-                np.copyto(frame, np.frombuffer(data, dtype=np.uint8).reshape(
-                    self.height, self.width, 3
-                ))
+                np.copyto(
+                    frame,
+                    np.frombuffer(data, dtype=np.uint8).reshape(
+                        self.height, self.width, 3
+                    ),
+                )
             else:
-                frame = np.frombuffer(data, dtype=np.uint8).reshape(
-                    self.height, self.width, 3
-                ).copy()
+                frame = (
+                    np.frombuffer(data, dtype=np.uint8)
+                    .reshape(self.height, self.width, 3)
+                    .copy()
+                )
             frames.append(frame)
             self.frames_read += 1
         return frames
@@ -381,9 +398,7 @@ def open_streaming_reader(
                     exc,
                 )
         else:
-            logger.debug(
-                "NVCodec decode requested but PyNvVideoCodec is not installed"
-            )
+            logger.debug("NVCodec decode requested but PyNvVideoCodec is not installed")
 
     return StreamingFrameReader(
         media_path,
@@ -420,20 +435,35 @@ class StreamingVideoWriter:
 
         video_codec = "h264_nvenc" if use_nvenc and nvenc_available() else codec
         cmd = [
-            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-            "-f", "rawvideo", "-pix_fmt", "rgb24",
-            "-s", f"{width}x{height}", "-r", str(fps),
-            "-i", "pipe:0",
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-s",
+            f"{width}x{height}",
+            "-r",
+            str(fps),
+            "-i",
+            "pipe:0",
         ]
         if audio_path:
-            cmd.extend(["-i", str(audio_path), "-map", "0:v:0", "-map", "1:a:0", "-shortest"])
+            cmd.extend(
+                ["-i", str(audio_path), "-map", "0:v:0", "-map", "1:a:0", "-shortest"]
+            )
         if video_codec == "h264_nvenc":
             cmd.extend(["-c:v", "h264_nvenc", "-preset", "p4", "-cq", str(crf)])
         else:
             cmd.extend(["-c:v", video_codec, "-preset", preset, "-crf", str(crf)])
         if audio_path:
             cmd.extend(["-c:a", "aac", "-b:a", "192k"])
-        cmd.extend(["-pix_fmt", pix_fmt, "-movflags", "+faststart", str(self.output_path)])
+        cmd.extend(
+            ["-pix_fmt", pix_fmt, "-movflags", "+faststart", str(self.output_path)]
+        )
 
         self._proc = subprocess.Popen(
             cmd,
@@ -507,9 +537,17 @@ class StreamingVideoWriter:
         self._proc.wait(timeout=600)
         ok = self._proc.returncode == 0 and self.output_path.exists()
         if ok:
-            logger.info("Streaming encode complete: %d frames → %s", self.frames_written, self.output_path)
+            logger.info(
+                "Streaming encode complete: %d frames → %s",
+                self.frames_written,
+                self.output_path,
+            )
         else:
-            logger.error("Streaming encode failed (rc=%s): %s", self._proc.returncode, stderr[:500])
+            logger.error(
+                "Streaming encode failed (rc=%s): %s",
+                self._proc.returncode,
+                stderr[:500],
+            )
         return ok
 
     def __enter__(self) -> "StreamingVideoWriter":
@@ -619,6 +657,7 @@ class StreamingGifWriter:
 # Frame extraction (video -> frames) — legacy / tests only
 # =============================================================================
 
+
 @dataclass
 class FrameResult:
     path: Path
@@ -651,37 +690,41 @@ def extract_video_frames(
 
     try:
         cmd = [
-            "ffmpeg", "-y",
-            "-i", video_path,
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
         ]
         cmd.extend(["-ss", str(start_time)])
         if duration:
             cmd.extend(["-t", str(duration)])
-        cmd.extend([
-            "-vf", f"fps={fps}",
-            "-q:v", "3",
-            str(output_dir / "frame_%06d.png"),
-        ])
-
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=600
+        cmd.extend(
+            [
+                "-vf",
+                f"fps={fps}",
+                "-q:v",
+                "3",
+                str(output_dir / "frame_%06d.png"),
+            ]
         )
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if result.returncode != 0:
             logger.error(
                 "FFmpeg extract frames failed (rc=%d): %s",
-                result.returncode, result.stderr.strip()[:500],
+                result.returncode,
+                result.stderr.strip()[:500],
             )
             return []
 
         frames = []
         for i, f in enumerate(sorted(output_dir.glob("frame_*.png"))):
-            frames.append(FrameResult(
-                path=f, frame_index=i, pts_sec=i / fps
-            ))
+            frames.append(FrameResult(path=f, frame_index=i, pts_sec=i / fps))
 
         logger.info(
             "Extracted %d frames from video (%.2f fps)",
-            len(frames), fps,
+            len(frames),
+            fps,
         )
         return frames
 
@@ -699,6 +742,7 @@ def extract_video_frames(
 # =============================================================================
 # Video writing (frames -> video) — legacy fallback
 # =============================================================================
+
 
 def write_video_from_pil_frames(
     frames,
@@ -737,6 +781,7 @@ def write_video_from_pil_frames(
 
     # Write frames to temp dir as PNGs
     import tempfile
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
         frame_paths = []
@@ -745,9 +790,7 @@ def write_video_from_pil_frames(
             # Ensure RGB for PNG
             if isinstance(frame, np.ndarray):
                 # If it's a numpy array, it's already in RGB format
-                pil_frame = Image.fromarray(
-                    np.clip(frame, 0, 255).astype(np.uint8)
-                )
+                pil_frame = Image.fromarray(np.clip(frame, 0, 255).astype(np.uint8))
             else:
                 pil_frame = Image.fromarray(np.array(frame))
             pil_frame = pil_frame.convert("RGB")
@@ -760,16 +803,37 @@ def write_video_from_pil_frames(
         try:
             cmd = ["ffmpeg", "-y", "-framerate", str(fps)]
             cmd.extend(["-i", str(tmpdir / "frame_%06d.png")])
-            cmd.extend([
-                "-c:v", codec,
-                "-preset", preset,
-                "-crf", str(crf),
-                "-pix_fmt", pix_fmt,
-                "-movflags", "+faststart",
-            ])
+            cmd.extend(
+                [
+                    "-c:v",
+                    codec,
+                    "-preset",
+                    preset,
+                    "-crf",
+                    str(crf),
+                    "-pix_fmt",
+                    pix_fmt,
+                    "-movflags",
+                    "+faststart",
+                ]
+            )
 
             if audio_path:
-                cmd.extend(["-i", str(audio_path), "-c:a", "aac", "-b:a", "192k", "-map", "0:v:0", "-map", "1:a:0", "-shortest"])
+                cmd.extend(
+                    [
+                        "-i",
+                        str(audio_path),
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "192k",
+                        "-map",
+                        "0:v:0",
+                        "-map",
+                        "1:a:0",
+                        "-shortest",
+                    ]
+                )
 
             cmd.append(str(output_path))
 
@@ -795,7 +859,7 @@ def write_video_from_frames(
     frames,
     output_path: Union[str, Path],
     fps: float,
-    audio_path:Optional[Union[str, Path]] = None,
+    audio_path: Optional[Union[str, Path]] = None,
     codec: str = "libx264",
     preset: str = "medium",
     crf: int = 18,
@@ -822,6 +886,7 @@ def write_video_from_frames(
 # Audio extraction
 # =============================================================================
 
+
 def extract_audio(
     video_path: Union[str, Path],
     output_dir: Union[str, Path],
@@ -839,11 +904,16 @@ def extract_audio(
 
     try:
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(video_path),
-            "-map", "0:a?",
-            "-c:a", codec,
-            "-b:a", bitrate,
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-map",
+            "0:a?",
+            "-c:a",
+            codec,
+            "-b:a",
+            bitrate,
             str(audio_path),
         ]
 
@@ -868,6 +938,7 @@ def extract_audio(
 # GIF frame duration extraction
 # =============================================================================
 
+
 def extract_gif_frame_durations(gif_path: str) -> List[int]:
     """
     Extract frame durations from a GIF (in ms) using ffprobe.
@@ -876,14 +947,15 @@ def extract_gif_frame_durations(gif_path: str) -> List[int]:
     Returns list of durations in milliseconds.
     """
     import PIL.Image as PILImage
+
     durations = []
 
     try:
         gif = PILImage.open(gif_path)
-        if hasattr(gif, 'n_frames'):
+        if hasattr(gif, "n_frames"):
             for i in range(gif.n_frames):
                 gif.seek(i)
-                duration = gif.info.get('duration', 100)
+                duration = gif.info.get("duration", 100)
                 durations.append(int(duration))
             gif.close()
             return durations
@@ -903,6 +975,7 @@ def extract_gif_frame_durations(gif_path: str) -> List[int]:
 # =============================================================================
 # GIF writing
 # =============================================================================
+
 
 def write_gif(
     frames,
@@ -933,13 +1006,16 @@ def write_gif(
     for frame in frames:
         if isinstance(frame, np.ndarray):
             pil_frame = Image.fromarray(
-                np.clip(frame, 0, 255).astype(np.uint8), mode='RGBA' if frame.shape[2] == 4 else 'RGB'
+                np.clip(frame, 0, 255).astype(np.uint8),
+                mode="RGBA" if frame.shape[2] == 4 else "RGB",
             )
         else:
-            pil_frame = Image.fromarray(np.array(frame), mode='RGBA' if frame.mode == 'RGBA' else 'RGB')
+            pil_frame = Image.fromarray(
+                np.array(frame), mode="RGBA" if frame.mode == "RGBA" else "RGB"
+            )
 
-        if pil_frame.mode != 'RGBA':
-            pil_frame = pil_frame.convert('RGBA')
+        if pil_frame.mode != "RGBA":
+            pil_frame = pil_frame.convert("RGBA")
 
         pil_frames.append(pil_frame)
 
@@ -980,6 +1056,7 @@ def write_gif(
 # =============================================================================
 # Helpers
 # =============================================================================
+
 
 def get_video_info(video_path: str) -> dict:
     """Convenience function. Returns same dict as probe_video."""

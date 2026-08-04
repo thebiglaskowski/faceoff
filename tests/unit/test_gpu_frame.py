@@ -1,13 +1,15 @@
 """Tests for Wave 3 GPU frame retention."""
 
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
-from unittest.mock import MagicMock, patch
 
 
 class TestChunkFrameBuffer:
     def test_upload_creates_gpu_batch(self, mock_gpu):
         import torch
+
         from core.gpu_frame import ChunkFrameBuffer
 
         frames = [
@@ -33,6 +35,7 @@ class TestChunkFrameBuffer:
 
     def test_update_frame_gpu_and_download_all(self, mock_gpu):
         import torch
+
         from core.gpu_frame import ChunkFrameBuffer
 
         frames = [
@@ -57,7 +60,9 @@ class TestSwapperIoBinding:
         swapper = MagicMock()
         swapper.input_names = ["target", "source"]
         swapper.output_names = ["output"]
-        swapper.session.run.return_value = [np.zeros((1, 3, 128, 128), dtype=np.float32)]
+        swapper.session.run.return_value = [
+            np.zeros((1, 3, 128, 128), dtype=np.float32)
+        ]
 
         inst = GPUModelInstance.__new__(GPUModelInstance)
         inst.device_id = 0

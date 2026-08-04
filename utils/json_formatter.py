@@ -32,7 +32,7 @@ class JSONFormatter(logging.Formatter):
         self,
         include_timestamp: bool = True,
         include_source: bool = True,
-        timestamp_format: Optional[str] = None
+        timestamp_format: Optional[str] = None,
     ):
         """
         Initialize the JSON formatter.
@@ -54,41 +54,61 @@ class JSONFormatter(logging.Formatter):
         # Timestamp
         if self.include_timestamp:
             if self.timestamp_format:
-                log_dict['timestamp'] = datetime.fromtimestamp(record.created).strftime(
+                log_dict["timestamp"] = datetime.fromtimestamp(record.created).strftime(
                     self.timestamp_format
                 )
             else:
-                log_dict['timestamp'] = datetime.fromtimestamp(record.created).isoformat()
+                log_dict["timestamp"] = datetime.fromtimestamp(
+                    record.created
+                ).isoformat()
 
         # Core fields
-        log_dict['level'] = record.levelname
-        log_dict['logger'] = record.name
-        log_dict['message'] = record.getMessage()
+        log_dict["level"] = record.levelname
+        log_dict["logger"] = record.name
+        log_dict["message"] = record.getMessage()
 
         # Source location
         if self.include_source:
-            log_dict['module'] = record.module
-            log_dict['function'] = record.funcName
-            log_dict['line'] = record.lineno
+            log_dict["module"] = record.module
+            log_dict["function"] = record.funcName
+            log_dict["line"] = record.lineno
 
         # Exception info
         if record.exc_info:
-            log_dict['exception'] = self.formatException(record.exc_info)
+            log_dict["exception"] = self.formatException(record.exc_info)
 
         # Extra fields (anything added via logger.info("msg", extra={...}))
         extra_fields = {
             key: value
             for key, value in record.__dict__.items()
-            if key not in {
-                'name', 'msg', 'args', 'created', 'filename', 'funcName',
-                'levelname', 'levelno', 'lineno', 'module', 'msecs',
-                'pathname', 'process', 'processName', 'relativeCreated',
-                'stack_info', 'exc_info', 'exc_text', 'message', 'thread',
-                'threadName', 'taskName'
+            if key
+            not in {
+                "name",
+                "msg",
+                "args",
+                "created",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "module",
+                "msecs",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "stack_info",
+                "exc_info",
+                "exc_text",
+                "message",
+                "thread",
+                "threadName",
+                "taskName",
             }
         }
         if extra_fields:
-            log_dict['extra'] = extra_fields
+            log_dict["extra"] = extra_fields
 
         return json.dumps(log_dict, default=str)
 
@@ -103,9 +123,9 @@ class JSONLogHandler(logging.FileHandler):
     def __init__(
         self,
         filename: str,
-        mode: str = 'a',
-        encoding: str = 'utf-8',
-        **formatter_kwargs
+        mode: str = "a",
+        encoding: str = "utf-8",
+        **formatter_kwargs,
     ):
         """
         Initialize the JSON log handler.
@@ -124,7 +144,7 @@ def create_json_handler(
     filename: str,
     level: int = logging.DEBUG,
     include_timestamp: bool = True,
-    include_source: bool = True
+    include_source: bool = True,
 ) -> logging.Handler:
     """
     Create a JSON logging handler.
@@ -139,9 +159,7 @@ def create_json_handler(
         Configured logging handler
     """
     handler = JSONLogHandler(
-        filename,
-        include_timestamp=include_timestamp,
-        include_source=include_source
+        filename, include_timestamp=include_timestamp, include_source=include_source
     )
     handler.setLevel(level)
     return handler

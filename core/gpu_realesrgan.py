@@ -15,11 +15,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger("FaceOff")
 
 
-def _rgb_uint8_to_model_input(frame_rgb: torch.Tensor, device: torch.device) -> torch.Tensor:
+def _rgb_uint8_to_model_input(
+    frame_rgb: torch.Tensor, device: torch.device
+) -> torch.Tensor:
     """HWC uint8 RGB → NCHW float RGB on device."""
-    return (
-        frame_rgb.permute(2, 0, 1).float().unsqueeze(0) / 255.0
-    ).to(device)
+    return (frame_rgb.permute(2, 0, 1).float().unsqueeze(0) / 255.0).to(device)
 
 
 def _apply_mod_pad(img: torch.Tensor, scale: int) -> tuple[torch.Tensor, int, int]:
@@ -96,9 +96,9 @@ def enhance_rgb_frame_gpu(
     if pre_pad:
         out = out[:, : -(pre_pad * scale) or None, : -(pre_pad * scale) or None]
     if mod_pad_h:
-        out = out[:, :-mod_pad_h * scale, :]
+        out = out[:, : -mod_pad_h * scale, :]
     if mod_pad_w:
-        out = out[:, :, :-mod_pad_w * scale]
+        out = out[:, :, : -mod_pad_w * scale]
 
     out_rgb = (out.permute(1, 2, 0) * 255.0).clamp(0, 255).to(torch.uint8)
 

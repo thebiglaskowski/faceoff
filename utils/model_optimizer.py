@@ -9,9 +9,10 @@ This module optimizes ONNX models by:
 """
 
 import logging
-import onnx
 from pathlib import Path
 from typing import Optional
+
+import onnx
 
 logger = logging.getLogger("FaceOff")
 
@@ -39,7 +40,9 @@ def optimize_onnx_model(
         return str(model_path)
 
     if optimized_path is None:
-        optimized_path = model_path.parent / f"{model_path.stem}_optimized{model_path.suffix}"
+        optimized_path = (
+            model_path.parent / f"{model_path.stem}_optimized{model_path.suffix}"
+        )
     else:
         optimized_path = Path(optimized_path)
 

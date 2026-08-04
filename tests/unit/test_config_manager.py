@@ -9,9 +9,10 @@ Tests:
 - get_model_options helper
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestConfigSingleton:
@@ -88,8 +89,7 @@ class TestConfigLoading:
 
         # Modify config file
         new_content = temp_config.read_text().replace(
-            "max_file_size_mb: 100",
-            "max_file_size_mb: 200"
+            "max_file_size_mb: 100", "max_file_size_mb: 200"
         )
         temp_config.write_text(new_content)
 
@@ -106,17 +106,17 @@ class TestConfigGet:
         from utils.config_manager import Config
 
         config = Config()
-        result = config.get('limits')
+        result = config.get("limits")
 
         assert isinstance(result, dict)
-        assert 'max_file_size_mb' in result
+        assert "max_file_size_mb" in result
 
     def test_get_nested_keys(self, temp_config, reset_config):
         """Should get value with nested keys."""
         from utils.config_manager import Config
 
         config = Config()
-        result = config.get('gpu', 'batch_size')
+        result = config.get("gpu", "batch_size")
 
         assert result == 2  # From temp_config fixture
 
@@ -125,16 +125,16 @@ class TestConfigGet:
         from utils.config_manager import Config
 
         config = Config()
-        result = config.get('nonexistent', 'key', default='fallback')
+        result = config.get("nonexistent", "key", default="fallback")
 
-        assert result == 'fallback'
+        assert result == "fallback"
 
     def test_get_returns_none_without_default(self, temp_config, reset_config):
         """Should return None when key not found and no default."""
         from utils.config_manager import Config
 
         config = Config()
-        result = config.get('nonexistent', 'key')
+        result = config.get("nonexistent", "key")
 
         assert result is None
 
@@ -143,7 +143,7 @@ class TestConfigGet:
         from utils.config_manager import Config
 
         config = Config()
-        result = config.get('enhancement', 'defaults', 'tile_size')
+        result = config.get("enhancement", "defaults", "tile_size")
 
         assert result == 128  # From temp_config fixture
 
@@ -293,10 +293,10 @@ class TestGetModelOptions:
         first_key = list(result.keys())[0]
         model_data = result[first_key]
 
-        assert 'model_name' in model_data
-        assert 'supports_denoise' in model_data
-        assert 'description' in model_data
-        assert isinstance(model_data['supports_denoise'], bool)
+        assert "model_name" in model_data
+        assert "supports_denoise" in model_data
+        assert "description" in model_data
+        assert isinstance(model_data["supports_denoise"], bool)
 
     def test_fallback_models_when_empty(self, reset_config, tmp_path):
         """Should return fallback models when config has none."""
@@ -354,7 +354,7 @@ gpu:
         config = Config()
 
         # Should return the value as-is (caller handles type checking)
-        result = config.get('limits', 'max_file_size_mb')
+        result = config.get("limits", "max_file_size_mb")
         assert result == "not a number"
 
     def test_empty_yaml_file(self, reset_config, tmp_path):

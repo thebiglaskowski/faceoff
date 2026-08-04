@@ -1,38 +1,45 @@
 """Image tab component for face swapping."""
 
 import gradio as gr
-from ui.helpers.gpu_utils import get_gpu_options
-from ui.helpers.face_detection import detect_faces_simple, detect_faces_for_mapping
+
+from ui.helpers.face_detection import detect_faces_for_mapping, detect_faces_simple
 from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
+from ui.helpers.gpu_utils import get_gpu_options
 from utils.constants import (
+    DEFAULT_HAT_MODEL,
+    DEFAULT_MODEL,
+    DEFAULT_OUTSCALE,
+    DEFAULT_PRE_PAD,
+    DEFAULT_SWINIR_MODEL,
+    DEFAULT_TILE_SIZE,
+    DEFAULT_USE_FP32,
+    HAT_MODEL_OPTIONS,
     MODEL_OPTIONS,
     SWINIR_MODEL_OPTIONS,
-    HAT_MODEL_OPTIONS,
-    DEFAULT_MODEL,
-    DEFAULT_SWINIR_MODEL,
-    DEFAULT_HAT_MODEL,
-    DEFAULT_TILE_SIZE,
-    DEFAULT_OUTSCALE,
-    DEFAULT_USE_FP32,
-    DEFAULT_PRE_PAD,
 )
 
 
 def create_image_tab():
     """Create the image face swapping tab."""
-    
+
     with gr.Tab("Image"):
         with gr.Row():
             with gr.Column():
                 source_img = gr.Image(type="pil", label="Source Image")
-                face_info_img = gr.Textbox(label="Face Detection Info", lines=4, interactive=False)
-                source_faces_gallery = gr.Gallery(label="Source Faces", columns=4, height="auto", visible=False)
+                face_info_img = gr.Textbox(
+                    label="Face Detection Info", lines=4, interactive=False
+                )
+                source_faces_gallery = gr.Gallery(
+                    label="Source Faces", columns=4, height="auto", visible=False
+                )
             with gr.Column():
                 target_img = gr.Image(type="pil", label="Target Image")
-                target_faces_gallery = gr.Gallery(label="Target Faces", columns=4, height="auto", visible=False)
+                target_faces_gallery = gr.Gallery(
+                    label="Target Faces", columns=4, height="auto", visible=False
+                )
             with gr.Column():
                 result_img = gr.Image(label="Swapped Result")
-        
+
         # Face mapping controls
         with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
             gr.Markdown("""
@@ -44,45 +51,47 @@ def create_image_tab():
             
             *Leave empty to use default behavior (first source face → all target faces)*
             """)
-            
-            detect_faces_btn = gr.Button("🔍 Detect Faces", variant="primary", size="sm")
-            
+
+            detect_faces_btn = gr.Button(
+                "🔍 Detect Faces", variant="primary", size="sm"
+            )
+
             face_mapping_status = gr.Textbox(
                 label="Mapping Status",
                 value="Upload images to detect faces",
-                interactive=False
+                interactive=False,
             )
-            
+
             with gr.Row():
                 mapping_source_idx = gr.Dropdown(
-                    label="Source Face Index",
-                    choices=[],
-                    interactive=True
+                    label="Source Face Index", choices=[], interactive=True
                 )
                 mapping_arrow = gr.Markdown("→")
                 mapping_target_idx = gr.Dropdown(
-                    label="Target Face Index",
-                    choices=[],
-                    interactive=True
+                    label="Target Face Index", choices=[], interactive=True
                 )
-            
+
             current_mappings = gr.Textbox(
                 label="Current Mappings",
                 value="No mappings",
                 interactive=False,
-                lines=3
+                lines=3,
             )
-            
+
             with gr.Row():
-                add_mapping_btn = gr.Button("➕ Add Mapping", size="sm", variant="secondary")
-                clear_mappings_btn = gr.Button("🗑️ Clear All Mappings", size="sm", variant="secondary")
-        
+                add_mapping_btn = gr.Button(
+                    "➕ Add Mapping", size="sm", variant="secondary"
+                )
+                clear_mappings_btn = gr.Button(
+                    "🗑️ Clear All Mappings", size="sm", variant="secondary"
+                )
+
         with gr.Row():
             enhance_toggle = gr.Checkbox(label="Enable Enhancement", value=False)
             restore_faces_toggle = gr.Checkbox(
                 label="Restore Faces",
                 value=False,
-                info="Enhance face quality after swapping"
+                info="Enhance face quality after swapping",
             )
 
         with gr.Row():
@@ -91,14 +100,14 @@ def create_image_tab():
                 value="RealESRGAN",
                 label="Enhancement Framework",
                 info="RealESRGAN (fast) or SwinIR/HAT (transformer-based SR)",
-                visible=False
+                visible=False,
             )
             restoration_model_selector = gr.Dropdown(
                 choices=["GFPGAN", "CodeFormer"],
                 value="GFPGAN",
                 label="Face Restoration Model",
                 info="GFPGAN (fast) or CodeFormer (better fidelity control)",
-                visible=False
+                visible=False,
             )
 
         with gr.Row(visible=False) as restoration_row:
@@ -108,15 +117,15 @@ def create_image_tab():
                 value=0.5,
                 step=0.1,
                 label="Restoration Strength",
-                info="0=original face, 1=fully restored"
+                info="0=original face, 1=fully restored",
             )
-        
+
         with gr.Row(visible=False) as model_row:
             model_selector = gr.Dropdown(
                 choices=list(MODEL_OPTIONS.keys()),
                 value=DEFAULT_MODEL,
                 label="Enhancement Model",
-                info="Select Real-ESRGAN model for enhancement"
+                info="Select Real-ESRGAN model for enhancement",
             )
             denoise_slider = gr.Slider(
                 minimum=0.0,
@@ -125,9 +134,9 @@ def create_image_tab():
                 step=0.1,
                 label="Denoise Strength",
                 info="Only works with 'realesr-general-x4v3' model",
-                visible=False
+                visible=False,
             )
-        
+
         with gr.Row(visible=False) as enhancement_options_row:
             tile_size_slider = gr.Slider(
                 minimum=128,
@@ -135,7 +144,7 @@ def create_image_tab():
                 value=DEFAULT_TILE_SIZE,
                 step=64,
                 label="Tile Size",
-                info="Lower = less VRAM usage, slower processing"
+                info="Lower = less VRAM usage, slower processing",
             )
             outscale_slider = gr.Slider(
                 minimum=2,
@@ -143,14 +152,14 @@ def create_image_tab():
                 value=DEFAULT_OUTSCALE,
                 step=1,
                 label="Upscale Factor",
-                info="2x or 4x upscaling"
+                info="2x or 4x upscaling",
             )
-        
+
         with gr.Row(visible=False) as enhancement_advanced_row:
             use_fp32_checkbox = gr.Checkbox(
                 label="High Precision (FP32)",
                 value=DEFAULT_USE_FP32,
-                info="Uses more VRAM but slightly better quality"
+                info="Uses more VRAM but slightly better quality",
             )
             pre_pad_slider = gr.Slider(
                 minimum=0,
@@ -158,9 +167,9 @@ def create_image_tab():
                 value=DEFAULT_PRE_PAD,
                 step=5,
                 label="Edge Padding",
-                info="Reduces edge artifacts (0-20)"
+                info="Reduces edge artifacts (0-20)",
             )
-        
+
         with gr.Accordion("⚙️ Advanced Settings", open=False):
             with gr.Row():
                 face_confidence = gr.Slider(
@@ -169,23 +178,23 @@ def create_image_tab():
                     value=0.5,
                     step=0.05,
                     label="Face Detection Confidence Threshold",
-                    info="Higher = stricter face detection (0.5 recommended)"
+                    info="Higher = stricter face detection (0.5 recommended)",
                 )
                 gpu_selection = gr.Dropdown(
                     choices=get_gpu_options(),
                     value=get_gpu_options()[0] if get_gpu_options() else None,
                     label="GPU Selection",
-                    info="Choose which GPU(s) to use for processing"
+                    info="Choose which GPU(s) to use for processing",
                 )
             with gr.Row():
                 tensorrt_fp16_checkbox = gr.Checkbox(
                     label="TensorRT FP16 Mode",
                     value=True,
-                    info="~30% faster inference, minimal quality impact (requires TensorRT)"
+                    info="~30% faster inference, minimal quality impact (requires TensorRT)",
                 )
-        
+
         run_image_btn = gr.Button("Run Image Swap", variant="primary")
-    
+
     # Return all components needed for event binding
     return {
         "source_img": source_img,

@@ -4,14 +4,16 @@ Face restoration using CodeFormer.
 This module provides CodeFormer integration as an alternative to GFPGAN
 for high-quality face restoration with controllable fidelity.
 """
-import cv2
+
 import gc
 import logging
-import numpy as np
 import os
-import torch
 from pathlib import Path
 from typing import List, Optional, Union
+
+import cv2
+import numpy as np
+import torch
 
 from utils.lru_cache import LRUModelCache
 
@@ -31,9 +33,13 @@ def _cleanup_codeformer(restorer):
 _codeformer_cache = LRUModelCache("CodeFormer", cleanup_fn=_cleanup_codeformer)
 
 # Model download URLs
-CODEFORMER_MODEL_URL = "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth"
+CODEFORMER_MODEL_URL = (
+    "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth"
+)
 DETECTION_MODEL_URL = "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/detection_Resnet50_Final.pth"
-PARSING_MODEL_URL = "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/parsing_parsenet.pth"
+PARSING_MODEL_URL = (
+    "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/parsing_parsenet.pth"
+)
 
 
 def _download_model(url: str, model_dir: Path, filename: str) -> Path:
@@ -48,6 +54,7 @@ def _download_model(url: str, model_dir: Path, filename: str) -> Path:
 
     try:
         import urllib.request
+
         urllib.request.urlretrieve(url, str(model_path))
         logger.info("Model downloaded: %s", model_path)
     except Exception as e:
@@ -66,10 +73,7 @@ class CodeFormerRestorer:
     """
 
     def __init__(
-        self,
-        device_id: int = 0,
-        upscale: int = 2,
-        model_dir: Optional[str] = None
+        self, device_id: int = 0, upscale: int = 2, model_dir: Optional[str] = None
     ):
         """
         Initialize CodeFormer restorer.
@@ -113,7 +117,10 @@ class CodeFormerRestorer:
 
             # Approach 1: Try direct import from codeformer package
             try:
-                from codeformer.basicsr.archs.codeformer_arch import CodeFormer as CodeFormerArch
+                from codeformer.basicsr.archs.codeformer_arch import (
+                    CodeFormer as CodeFormerArch,
+                )
+
                 logger.debug("Loaded CodeFormer from codeformer package")
             except ImportError:
                 pass
@@ -121,7 +128,10 @@ class CodeFormerRestorer:
             # Approach 2: Try from basicsr archs (if CodeFormer installed there)
             if CodeFormerArch is None:
                 try:
-                    from basicsr.archs.codeformer_arch import CodeFormer as CodeFormerArch
+                    from basicsr.archs.codeformer_arch import (
+                        CodeFormer as CodeFormerArch,
+                    )
+
                     logger.debug("Loaded CodeFormer from basicsr.archs")
                 except ImportError:
                     pass
@@ -130,11 +140,14 @@ class CodeFormerRestorer:
             if CodeFormerArch is None:
                 try:
                     from basicsr.utils.registry import ARCH_REGISTRY
+
                     # Try different registry names
-                    for name in ['CodeFormer', 'CodeFormer_basicsr', 'codeformer']:
+                    for name in ["CodeFormer", "CodeFormer_basicsr", "codeformer"]:
                         try:
                             CodeFormerArch = ARCH_REGISTRY.get(name)
-                            logger.debug("Loaded CodeFormer from registry as '%s'", name)
+                            logger.debug(
+                                "Loaded CodeFormer from registry as '%s'", name
+                            )
                             break
                         except KeyError:
                             continue
@@ -148,14 +161,12 @@ class CodeFormerRestorer:
                 )
 
             self._device = torch.device(
-                f'cuda:{self.device_id}' if torch.cuda.is_available() else 'cpu'
+                f"cuda:{self.device_id}" if torch.cuda.is_available() else "cpu"
             )
 
             # Download model if needed
             model_path = _download_model(
-                CODEFORMER_MODEL_URL,
-                self.model_dir,
-                "codeformer.pth"
+                CODEFORMER_MODEL_URL, self.model_dir, "codeformer.pth"
             )
 
             # Load CodeFormer model
@@ -164,13 +175,15 @@ class CodeFormerRestorer:
                 codebook_size=1024,
                 n_head=8,
                 n_layers=9,
-                connect_list=['32', '64', '128', '256']
+                connect_list=["32", "64", "128", "256"],
             ).to(self._device)
 
-            checkpoint = torch.load(str(model_path), map_location=self._device, weights_only=False)
+            checkpoint = torch.load(
+                str(model_path), map_location=self._device, weights_only=False
+            )
             self._restorer.load_state_dict(
-                checkpoint['params_ema'] if 'params_ema' in checkpoint else checkpoint,
-                strict=True
+                checkpoint["params_ema"] if "params_ema" in checkpoint else checkpoint,
+                strict=True,
             )
             self._restorer.eval()
 
@@ -179,10 +192,10 @@ class CodeFormerRestorer:
                 upscale_factor=self.upscale,
                 face_size=512,
                 crop_ratio=(1, 1),
-                det_model='retinaface_resnet50',
-                save_ext='png',
+                det_model="retinaface_resnet50",
+                save_ext="png",
                 use_parse=True,
-                device=self._device
+                device=self._device,
             )
 
             self._initialized = True
@@ -191,7 +204,8 @@ class CodeFormerRestorer:
         except ImportError as e:
             logger.error(
                 "CodeFormer dependencies not found. Install with: "
-                "pip install basicsr facexlib. Error: %s", e
+                "pip install basicsr facexlib. Error: %s",
+                e,
             )
             raise
         except Exception as e:
@@ -203,7 +217,7 @@ class CodeFormerRestorer:
         image: np.ndarray,
         fidelity_weight: float = 0.5,
         only_center_face: bool = False,
-        paste_back: bool = True
+        paste_back: bool = True,
     ) -> np.ndarray:
         """
         Restore faces in an image using CodeFormer.
@@ -235,9 +249,7 @@ class CodeFormerRestorer:
 
             # Detect faces
             num_det_faces = self._face_helper.get_face_landmarks_5(
-                only_center_face=only_center_face,
-                resize=640,
-                eye_dist_threshold=5
+                only_center_face=only_center_face, resize=640, eye_dist_threshold=5
             )
 
             if num_det_faces == 0:
@@ -253,34 +265,23 @@ class CodeFormerRestorer:
             for idx, cropped_face in enumerate(self._face_helper.cropped_faces):
                 # Prepare tensor
                 cropped_face_t = img2tensor(
-                    cropped_face / 255.,
-                    bgr2rgb=True,
-                    float32=True
+                    cropped_face / 255.0, bgr2rgb=True, float32=True
                 )
                 normalize(
-                    cropped_face_t,
-                    (0.5, 0.5, 0.5),
-                    (0.5, 0.5, 0.5),
-                    inplace=True
+                    cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True
                 )
                 cropped_face_t = cropped_face_t.unsqueeze(0).to(self._device)
 
                 # CodeFormer inference
                 with torch.no_grad():
                     output = self._restorer(
-                        cropped_face_t,
-                        w=fidelity_weight,
-                        adain=True
+                        cropped_face_t, w=fidelity_weight, adain=True
                     )[0]
 
                     # Convert back to image
-                    restored_face = tensor2img(
-                        output,
-                        rgb2bgr=True,
-                        min_max=(-1, 1)
-                    )
+                    restored_face = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
 
-                restored_face = restored_face.astype('uint8')
+                restored_face = restored_face.astype("uint8")
                 self._face_helper.add_restored_face(restored_face)
 
             # Paste faces back
@@ -293,7 +294,7 @@ class CodeFormerRestorer:
                     bg_img = cv2.resize(
                         image,
                         (image.shape[1] * self.upscale, image.shape[0] * self.upscale),
-                        interpolation=cv2.INTER_LANCZOS4
+                        interpolation=cv2.INTER_LANCZOS4,
                     )
                 else:
                     bg_img = None
@@ -311,9 +312,7 @@ class CodeFormerRestorer:
             return image
 
     def restore_faces_in_frame(
-        self,
-        frame: np.ndarray,
-        fidelity_weight: float = 0.5
+        self, frame: np.ndarray, fidelity_weight: float = 0.5
     ) -> np.ndarray:
         """
         Restore all faces in a video/GIF frame.
@@ -329,7 +328,7 @@ class CodeFormerRestorer:
             frame,
             fidelity_weight=fidelity_weight,
             only_center_face=False,
-            paste_back=True
+            paste_back=True,
         )
 
     def cleanup(self) -> None:
@@ -354,7 +353,9 @@ def clear_codeformer_cache() -> None:
     logger.info("CodeFormer cache cleared")
 
 
-def _get_codeformer_restorer(device_id: int = 0, upscale: int = 1) -> CodeFormerRestorer:
+def _get_codeformer_restorer(
+    device_id: int = 0, upscale: int = 1
+) -> CodeFormerRestorer:
     """
     Get or create a cached CodeFormer restorer instance.
 
@@ -371,7 +372,9 @@ def _get_codeformer_restorer(device_id: int = 0, upscale: int = 1) -> CodeFormer
     if cached is not None:
         return cached
 
-    logger.info("Creating CodeFormer restorer on GPU %d with upscale=%d", device_id, upscale)
+    logger.info(
+        "Creating CodeFormer restorer on GPU %d with upscale=%d", device_id, upscale
+    )
     restorer = CodeFormerRestorer(device_id=device_id, upscale=upscale)
     _codeformer_cache.put(cache_key, restorer)
 
@@ -382,7 +385,7 @@ def restore_faces_codeformer(
     image: np.ndarray,
     device_id: int = 0,
     fidelity_weight: float = 0.5,
-    upscale: int = 1
+    upscale: int = 1,
 ) -> np.ndarray:
     """
     Convenience function for CodeFormer face restoration.
@@ -403,9 +406,7 @@ def restore_faces_codeformer(
 
 
 def restore_frames_codeformer(
-    frames: List[np.ndarray],
-    device_id: int = 0,
-    fidelity_weight: float = 0.5
+    frames: List[np.ndarray], device_id: int = 0, fidelity_weight: float = 0.5
 ) -> List[np.ndarray]:
     """
     Restore faces in multiple frames using CodeFormer.

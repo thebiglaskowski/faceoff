@@ -10,42 +10,41 @@ import logging
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import Optional, List, Tuple, Any
+from typing import Any, List, Optional, Tuple
+
+import gradio as gr
 import numpy as np
 from PIL import Image
-import gradio as gr
 
 from processing.facade import FaceMappingManager
-from utils.validation import (
-    validate_file_size,
-    validate_image_resolution,
-    validate_video_duration,
-    validate_gif_frames,
-    validate_media_type,
-    validate_safe_path,
-    resolve_gradio_file_path,
-    is_animated_gif_image,
-)
+from processing.orchestrator import ProcessOptions, process_media
+from ui.helpers.face_mapping import add_face_mapping as helper_add_mapping
+from ui.helpers.face_mapping import clear_face_mappings as helper_clear_mappings
+from ui.helpers.gallery_utils import invalidate_gallery_for_new_file
+from utils.config_manager import config
 from utils.constants import (
+    DEFAULT_HAT_MODEL,
+    DEFAULT_MODEL,
+    DEFAULT_OUTSCALE,
+    DEFAULT_PRE_PAD,
+    DEFAULT_SWINIR_MODEL,
+    DEFAULT_TILE_SIZE,
+    DEFAULT_USE_FP32,
+    HAT_MODEL_OPTIONS,
     MODEL_OPTIONS,
     SWINIR_MODEL_OPTIONS,
-    HAT_MODEL_OPTIONS,
-    DEFAULT_MODEL,
-    DEFAULT_SWINIR_MODEL,
-    DEFAULT_HAT_MODEL,
-    DEFAULT_TILE_SIZE,
-    DEFAULT_OUTSCALE,
-    DEFAULT_USE_FP32,
-    DEFAULT_PRE_PAD,
 )
-from processing.orchestrator import process_media, ProcessOptions
 from utils.error_handler import ErrorHandler, FriendlyError
-from utils.config_manager import config
-from ui.helpers.face_mapping import (
-    add_face_mapping as helper_add_mapping,
-    clear_face_mappings as helper_clear_mappings,
+from utils.validation import (
+    is_animated_gif_image,
+    resolve_gradio_file_path,
+    validate_file_size,
+    validate_gif_frames,
+    validate_image_resolution,
+    validate_media_type,
+    validate_safe_path,
+    validate_video_duration,
 )
-from ui.helpers.gallery_utils import invalidate_gallery_for_new_file
 
 logger = logging.getLogger("FaceOff")
 
@@ -129,13 +128,17 @@ def _process_input(
                     "(not a single-frame preview from the Image tab)."
                 )
             if expected_media_type == "video":
-                raise gr.Error("Target is not a video file. Upload a video on the **Video** tab.")
+                raise gr.Error(
+                    "Target is not a video file. Upload a video on the **Video** tab."
+                )
             raise gr.Error(
                 f"Expected {expected_media_type} input but received {media_type}. "
                 "Check that you are on the correct tab."
             )
 
-        if isinstance(target_path, str) and not isinstance(target_image_path, Image.Image):
+        if isinstance(target_path, str) and not isinstance(
+            target_image_path, Image.Image
+        ):
             validate_safe_path(target_path)
         validate_file_size(target_path)
 
@@ -409,7 +412,9 @@ def add_face_mapping_image(
     target_idx: int,
     current_mappings_text: str,
 ) -> Tuple[Any, Any]:
-    return _add_face_mapping_for_tab("image", source_idx, target_idx, current_mappings_text)
+    return _add_face_mapping_for_tab(
+        "image", source_idx, target_idx, current_mappings_text
+    )
 
 
 def add_face_mapping_gif(
@@ -417,7 +422,9 @@ def add_face_mapping_gif(
     target_idx: int,
     current_mappings_text: str,
 ) -> Tuple[Any, Any]:
-    return _add_face_mapping_for_tab("gif", source_idx, target_idx, current_mappings_text)
+    return _add_face_mapping_for_tab(
+        "gif", source_idx, target_idx, current_mappings_text
+    )
 
 
 def add_face_mapping_video(
@@ -425,7 +432,9 @@ def add_face_mapping_video(
     target_idx: int,
     current_mappings_text: str,
 ) -> Tuple[Any, Any]:
-    return _add_face_mapping_for_tab("video", source_idx, target_idx, current_mappings_text)
+    return _add_face_mapping_for_tab(
+        "video", source_idx, target_idx, current_mappings_text
+    )
 
 
 def clear_face_mappings_image() -> Tuple[Any, Any]:

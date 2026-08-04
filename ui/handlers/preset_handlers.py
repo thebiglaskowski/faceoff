@@ -9,14 +9,19 @@ This module handles:
 """
 
 import logging
-import gradio as gr
-from typing import Tuple, List, Any, Optional
+from typing import Any, List, Optional, Tuple
 
-from utils.preset_manager import PresetManager, initialize_default_presets
+import gradio as gr
+
 from utils.constants import (
-    MODEL_OPTIONS, DEFAULT_MODEL, DEFAULT_TILE_SIZE,
-    DEFAULT_OUTSCALE, DEFAULT_USE_FP32, DEFAULT_PRE_PAD
+    DEFAULT_MODEL,
+    DEFAULT_OUTSCALE,
+    DEFAULT_PRE_PAD,
+    DEFAULT_TILE_SIZE,
+    DEFAULT_USE_FP32,
+    MODEL_OPTIONS,
 )
+from utils.preset_manager import PresetManager, initialize_default_presets
 
 logger = logging.getLogger("FaceOff")
 
@@ -36,7 +41,7 @@ def get_preset_manager() -> PresetManager:
 def get_preset_choices() -> List[str]:
     """Get list of available preset names for dropdown."""
     presets = get_preset_manager().list_presets()
-    return [p['name'] for p in presets]
+    return [p["name"] for p in presets]
 
 
 def get_default_preset() -> Optional[str]:
@@ -69,18 +74,20 @@ def load_preset_settings(preset_name: str) -> List[Any]:
         logger.info(f"Loaded preset: {preset_name}")
 
         # Get the model name from settings
-        model_name = settings.get('model') or settings.get('model_name', DEFAULT_MODEL)
+        model_name = settings.get("model") or settings.get("model_name", DEFAULT_MODEL)
         logger.debug(f"Preset model_name: {model_name}")
 
         return [
-            gr.update(value=settings.get('enhance', False)),
-            gr.update(value=settings.get('restore_faces') or settings.get('restore', False)),
+            gr.update(value=settings.get("enhance", False)),
+            gr.update(
+                value=settings.get("restore_faces") or settings.get("restore", False)
+            ),
             gr.update(value=model_name),
-            gr.update(value=settings.get('tile_size', DEFAULT_TILE_SIZE)),
-            gr.update(value=settings.get('outscale', DEFAULT_OUTSCALE)),
-            gr.update(value=settings.get('use_fp32', DEFAULT_USE_FP32)),
-            gr.update(value=settings.get('pre_pad', DEFAULT_PRE_PAD)),
-            gr.update(value=settings.get('restoration_weight', 0.5)),
+            gr.update(value=settings.get("tile_size", DEFAULT_TILE_SIZE)),
+            gr.update(value=settings.get("outscale", DEFAULT_OUTSCALE)),
+            gr.update(value=settings.get("use_fp32", DEFAULT_USE_FP32)),
+            gr.update(value=settings.get("pre_pad", DEFAULT_PRE_PAD)),
+            gr.update(value=settings.get("restoration_weight", 0.5)),
         ]
     except Exception as e:
         logger.error(f"Error loading preset: {e}")
@@ -113,14 +120,14 @@ def load_preset_all_tabs(preset_name: str) -> Tuple[Any, ...]:
         settings = get_preset_manager().load_preset(preset_name)
         logger.info(f"Loading preset for all tabs: {preset_name}")
 
-        enhance = settings.get('enhance', False)
-        restore_faces = settings.get('restore_faces') or settings.get('restore', False)
-        model_name = settings.get('model') or settings.get('model_name', DEFAULT_MODEL)
-        tile_size = settings.get('tile_size', DEFAULT_TILE_SIZE)
-        outscale = settings.get('outscale', DEFAULT_OUTSCALE)
-        use_fp32 = settings.get('use_fp32', DEFAULT_USE_FP32)
-        pre_pad = settings.get('pre_pad', DEFAULT_PRE_PAD)
-        restoration_weight = settings.get('restoration_weight', 0.5)
+        enhance = settings.get("enhance", False)
+        restore_faces = settings.get("restore_faces") or settings.get("restore", False)
+        model_name = settings.get("model") or settings.get("model_name", DEFAULT_MODEL)
+        tile_size = settings.get("tile_size", DEFAULT_TILE_SIZE)
+        outscale = settings.get("outscale", DEFAULT_OUTSCALE)
+        use_fp32 = settings.get("use_fp32", DEFAULT_USE_FP32)
+        pre_pad = settings.get("pre_pad", DEFAULT_PRE_PAD)
+        restoration_weight = settings.get("restoration_weight", 0.5)
 
         def make_value_updates():
             """Create fresh value update objects for each tab."""
@@ -138,30 +145,36 @@ def load_preset_all_tabs(preset_name: str) -> Tuple[Any, ...]:
         result = []
 
         # Image tab: visibility (4) + values (8) = 12
-        result.extend([
-            gr.update(visible=enhance),  # model_row
-            gr.update(visible=enhance),  # enhancement_options_row
-            gr.update(visible=enhance),  # enhancement_advanced_row
-            gr.update(visible=restore_faces),  # restoration_row
-        ])
+        result.extend(
+            [
+                gr.update(visible=enhance),  # model_row
+                gr.update(visible=enhance),  # enhancement_options_row
+                gr.update(visible=enhance),  # enhancement_advanced_row
+                gr.update(visible=restore_faces),  # restoration_row
+            ]
+        )
         result.extend(make_value_updates())
 
         # GIF tab: visibility (4) + values (8) = 12
-        result.extend([
-            gr.update(visible=enhance),
-            gr.update(visible=enhance),
-            gr.update(visible=enhance),
-            gr.update(visible=restore_faces),
-        ])
+        result.extend(
+            [
+                gr.update(visible=enhance),
+                gr.update(visible=enhance),
+                gr.update(visible=enhance),
+                gr.update(visible=restore_faces),
+            ]
+        )
         result.extend(make_value_updates())
 
         # Video tab: visibility (4) + values (8) = 12
-        result.extend([
-            gr.update(visible=enhance),
-            gr.update(visible=enhance),
-            gr.update(visible=enhance),
-            gr.update(visible=restore_faces),
-        ])
+        result.extend(
+            [
+                gr.update(visible=enhance),
+                gr.update(visible=enhance),
+                gr.update(visible=enhance),
+                gr.update(visible=restore_faces),
+            ]
+        )
         result.extend(make_value_updates())
 
         # Status message (1)
@@ -183,7 +196,7 @@ def save_current_preset(
     outscale: int,
     use_fp32: bool,
     pre_pad: int,
-    restoration_weight: float
+    restoration_weight: float,
 ) -> Tuple[Any, Any]:
     """
     Save current settings as a new preset.
@@ -201,26 +214,28 @@ def save_current_preset(
         model_name = model_display_name
         for display_name, model_info in MODEL_OPTIONS.items():
             if display_name == model_display_name:
-                model_name = model_info.get('model_name', model_display_name)
+                model_name = model_info.get("model_name", model_display_name)
                 break
 
         settings = {
-            'enhance': enhance,
-            'restore_faces': restore,
-            'model_name': model_name,
-            'tile_size': tile_size,
-            'outscale': outscale,
-            'use_fp32': use_fp32,
-            'pre_pad': pre_pad,
-            'restoration_weight': restoration_weight,
+            "enhance": enhance,
+            "restore_faces": restore,
+            "model_name": model_name,
+            "tile_size": tile_size,
+            "outscale": outscale,
+            "use_fp32": use_fp32,
+            "pre_pad": pre_pad,
+            "restoration_weight": restoration_weight,
         }
 
-        get_preset_manager().save_preset(preset_name, settings, description="Custom user preset")
+        get_preset_manager().save_preset(
+            preset_name, settings, description="Custom user preset"
+        )
         logger.info(f"Saved preset: {preset_name}")
 
         return (
             gr.update(value=f"Saved preset: {preset_name}"),
-            gr.update(choices=get_preset_choices(), value=preset_name)
+            gr.update(choices=get_preset_choices(), value=preset_name),
         )
     except Exception as e:
         logger.error(f"Error saving preset: {e}")
@@ -244,7 +259,9 @@ def delete_selected_preset(preset_name: str) -> Tuple[Any, Any]:
         new_choices = get_preset_choices()
         return (
             gr.update(value=f"Deleted preset: {preset_name}"),
-            gr.update(choices=new_choices, value=new_choices[0] if new_choices else None)
+            gr.update(
+                choices=new_choices, value=new_choices[0] if new_choices else None
+            ),
         )
     except Exception as e:
         logger.error(f"Error deleting preset: {e}")
@@ -258,12 +275,12 @@ def get_preset_info_text(preset_name: str) -> str:
 
     try:
         info = get_preset_manager().get_preset_info(preset_name)
-        description = info.get('description', 'No description')
-        created = info.get('created', 'Unknown')
-        settings = info.get('settings', {})
+        description = info.get("description", "No description")
+        created = info.get("created", "Unknown")
+        settings = info.get("settings", {})
 
-        model_name = settings.get('model') or settings.get('model_name', 'N/A')
-        restore_faces = settings.get('restore_faces') or settings.get('restore', False)
+        model_name = settings.get("model") or settings.get("model_name", "N/A")
+        restore_faces = settings.get("restore_faces") or settings.get("restore", False)
 
         info_text = f"**{preset_name}**\n\n"
         info_text += f"{description}\n\n"

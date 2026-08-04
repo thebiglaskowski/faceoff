@@ -1,4 +1,5 @@
 """In-memory enhancement with multi-GPU sharding and batched model reuse."""
+
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -93,7 +94,9 @@ class InMemoryEnhancer:
             else "Swin2SR_RealWorld_x4"
         )
 
-    def _enhance_bgr_batch(self, bgr_frames: List[np.ndarray], gpu_id: int) -> List[np.ndarray]:
+    def _enhance_bgr_batch(
+        self, bgr_frames: List[np.ndarray], gpu_id: int
+    ) -> List[np.ndarray]:
         from processing.enhancement import enhance_image
         from processing.hat_enhancement import enhance_image_batch_hat
         from processing.swinir_enhancement import enhance_image_swinir
@@ -107,7 +110,9 @@ class InMemoryEnhancer:
                 batch_size=max(1, config.batch_size),
                 clear_cache=False,
             )
-            return [r if r is not None else bgr_frames[i] for i, r in enumerate(results)]
+            return [
+                r if r is not None else bgr_frames[i] for i, r in enumerate(results)
+            ]
 
         if self.enhancement_model == "SwinIR":
             out = []
@@ -165,9 +170,7 @@ class InMemoryEnhancer:
             if torch.cuda.is_available():
                 torch.cuda.set_device(gpu_id)
                 torch.cuda.synchronize(gpu_id)
-            subset_bgr = [
-                cv2.cvtColor(frames[i], cv2.COLOR_RGB2BGR) for i in indices
-            ]
+            subset_bgr = [cv2.cvtColor(frames[i], cv2.COLOR_RGB2BGR) for i in indices]
             enhanced = self._enhance_bgr_batch(subset_bgr, gpu_id)
             if torch.cuda.is_available():
                 torch.cuda.synchronize(gpu_id)
@@ -189,7 +192,10 @@ class InMemoryEnhancer:
             for fut in futures:
                 fut.result()
 
-        return [results[i] if results[i] is not None else frames[i] for i in range(len(frames))]
+        return [
+            results[i] if results[i] is not None else frames[i]
+            for i in range(len(frames))
+        ]
 
     def enhance_rgb_image(self, frame: np.ndarray) -> np.ndarray:
         return self.enhance_rgb_frames([frame])[0]
@@ -238,6 +244,7 @@ class InMemoryEnhancer:
         original_size: Optional[Tuple[int, int]],
     ) -> None:
         import torch.nn.functional as F
+
         from processing.hat_enhancement import (
             HAT_UPSCALE,
             _apply_hat_model,
@@ -278,10 +285,7 @@ class InMemoryEnhancer:
                         with torch.no_grad():
                             output = model(img.float())
                         out = (
-                            output.squeeze(0)
-                            .float()
-                            .permute(1, 2, 0)
-                            .clamp(0, 1)
+                            output.squeeze(0).float().permute(1, 2, 0).clamp(0, 1)
                             * 255.0
                         )
                         out = out[: h * HAT_UPSCALE, : w * HAT_UPSCALE]
@@ -371,9 +375,14 @@ class InMemoryEnhancer:
                 rgb_out.append(original)
                 continue
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            if maintain_dimensions and original_size and rgb.shape[:2] != (
-                original_size[1],
-                original_size[0],
+            if (
+                maintain_dimensions
+                and original_size
+                and rgb.shape[:2]
+                != (
+                    original_size[1],
+                    original_size[0],
+                )
             ):
                 ow, oh = original_size
                 rgb = cv2.resize(rgb, (ow, oh), interpolation=cv2.INTER_LANCZOS4)

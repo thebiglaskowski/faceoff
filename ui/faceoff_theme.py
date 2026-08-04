@@ -7,7 +7,12 @@ GRADIO_THEME = gr.themes.Soft(
     primary_hue="violet",
     secondary_hue="cyan",
     neutral_hue="slate",
-    font=[gr.themes.GoogleFont("Space Grotesk"), "ui-sans-serif", "system-ui", "sans-serif"],
+    font=[
+        gr.themes.GoogleFont("Space Grotesk"),
+        "ui-sans-serif",
+        "system-ui",
+        "sans-serif",
+    ],
     font_mono=[gr.themes.GoogleFont("JetBrains Mono"), "ui-monospace", "monospace"],
 )
 

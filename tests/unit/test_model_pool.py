@@ -8,17 +8,18 @@ Tests cover:
 - Resource cleanup
 """
 
-import numpy as np
-import pytest
 import threading
 import time
-from unittest.mock import MagicMock, patch, PropertyMock
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from unittest.mock import MagicMock, PropertyMock, patch
 
+import numpy as np
+import pytest
 
 # =============================================================================
 # Test Fixtures
 # =============================================================================
+
 
 @pytest.fixture(autouse=True)
 def reset_model_pool():
@@ -40,13 +41,21 @@ def reset_model_pool():
 @pytest.fixture
 def mock_gpu_dependencies():
     """Mock all GPU-related dependencies for model pool testing."""
-    with patch('core.model_pool.torch') as mock_torch, \
-         patch('core.model_pool.ort') as mock_ort, \
-         patch('core.model_pool.FaceAnalysis') as mock_face_analysis, \
-         patch('core.model_pool.is_tensorrt_runtime_available', return_value=False), \
-         patch('core.model_pool.build_face_analysis_providers', return_value=[('CUDAExecutionProvider', {}), 'CPUExecutionProvider']), \
-         patch('core.model_pool.build_swapper_providers', return_value=[('CUDAExecutionProvider', {}), 'CPUExecutionProvider']), \
-         patch('core.model_pool.config') as mock_config:
+    with (
+        patch("core.model_pool.torch") as mock_torch,
+        patch("core.model_pool.ort") as mock_ort,
+        patch("core.model_pool.FaceAnalysis") as mock_face_analysis,
+        patch("core.model_pool.is_tensorrt_runtime_available", return_value=False),
+        patch(
+            "core.model_pool.build_face_analysis_providers",
+            return_value=[("CUDAExecutionProvider", {}), "CPUExecutionProvider"],
+        ),
+        patch(
+            "core.model_pool.build_swapper_providers",
+            return_value=[("CUDAExecutionProvider", {}), "CPUExecutionProvider"],
+        ),
+        patch("core.model_pool.config") as mock_config,
+    ):
 
         # Configure mock torch.cuda
         mock_torch.cuda.is_available.return_value = True
@@ -75,16 +84,17 @@ def mock_gpu_dependencies():
         mock_ort.GraphOptimizationLevel.ORT_ENABLE_ALL = 99
 
         yield {
-            'torch': mock_torch,
-            'ort': mock_ort,
-            'face_analysis': mock_face_analysis,
-            'config': mock_config,
+            "torch": mock_torch,
+            "ort": mock_ort,
+            "face_analysis": mock_face_analysis,
+            "config": mock_config,
         }
 
 
 # =============================================================================
 # ModelPool Singleton Tests
 # =============================================================================
+
 
 class TestModelPoolSingleton:
     """Tests for ModelPool singleton pattern."""
@@ -134,10 +144,11 @@ class TestModelPoolSingleton:
 # ModelPool Instance Management Tests
 # =============================================================================
 
+
 class TestModelPoolInstanceManagement:
     """Tests for model instance management."""
 
-    @patch('core.model_pool.GPUModelInstance')
+    @patch("core.model_pool.GPUModelInstance")
     def test_get_instance_creates_new(self, mock_gpu_instance, mock_gpu_dependencies):
         """Test get_instance creates instance on first access."""
         from core.model_pool import get_model_pool
@@ -153,8 +164,10 @@ class TestModelPoolInstanceManagement:
         assert instance is mock_instance
         mock_gpu_instance.assert_called_once()
 
-    @patch('core.model_pool.GPUModelInstance')
-    def test_get_instance_returns_cached(self, mock_gpu_instance, mock_gpu_dependencies):
+    @patch("core.model_pool.GPUModelInstance")
+    def test_get_instance_returns_cached(
+        self, mock_gpu_instance, mock_gpu_dependencies
+    ):
         """Test get_instance returns cached instance on subsequent calls."""
         from core.model_pool import get_model_pool
 
@@ -171,7 +184,7 @@ class TestModelPoolInstanceManagement:
         # Should only create once
         assert mock_gpu_instance.call_count == 1
 
-    @patch('core.model_pool.GPUModelInstance')
+    @patch("core.model_pool.GPUModelInstance")
     def test_get_instance_recreates_after_vram_release(
         self, mock_gpu_instance, mock_gpu_dependencies
     ):
@@ -197,8 +210,10 @@ class TestModelPoolInstanceManagement:
         stale.cleanup.assert_called_once()
         assert mock_gpu_instance.call_count == 2
 
-    @patch('core.model_pool.GPUModelInstance')
-    def test_get_instances_multiple_gpus(self, mock_gpu_instance, mock_gpu_dependencies):
+    @patch("core.model_pool.GPUModelInstance")
+    def test_get_instances_multiple_gpus(
+        self, mock_gpu_instance, mock_gpu_dependencies
+    ):
         """Test get_instances creates instances for multiple GPUs."""
         from core.model_pool import get_model_pool
 
@@ -215,17 +230,19 @@ class TestModelPoolInstanceManagement:
         assert result[0] is instances[0]
         assert result[1] is instances[1]
 
-    @patch('core.model_pool.GPUModelInstance')
+    @patch("core.model_pool.GPUModelInstance")
     def test_get_instances_multi_gpu_tensorrt_primary_only(
         self, mock_gpu_instance, mock_gpu_dependencies
     ):
         """Multi-GPU uses TensorRT on primary GPU only to avoid duplicate engine builds."""
         from core.model_pool import get_model_pool
 
-        mock_gpu_instance.side_effect = lambda device_id, **kwargs: MagicMock(device_id=device_id)
+        mock_gpu_instance.side_effect = lambda device_id, **kwargs: MagicMock(
+            device_id=device_id
+        )
         mock_gpu_dependencies["config"].tensorrt_enabled = True
 
-        with patch('core.model_pool.is_tensorrt_runtime_available', return_value=True):
+        with patch("core.model_pool.is_tensorrt_runtime_available", return_value=True):
             pool = get_model_pool()
             pool.set_model_path("test.onnx")
             pool.get_instances([0, 1])
@@ -233,7 +250,7 @@ class TestModelPoolInstanceManagement:
         assert mock_gpu_instance.call_args_list[0].kwargs["use_tensorrt"] is True
         assert mock_gpu_instance.call_args_list[1].kwargs["use_tensorrt"] is False
 
-    @patch('core.model_pool.GPUModelInstance')
+    @patch("core.model_pool.GPUModelInstance")
     def test_is_gpu_initialized(self, mock_gpu_instance, mock_gpu_dependencies):
         """Test is_gpu_initialized returns correct state."""
         from core.model_pool import get_model_pool
@@ -255,11 +272,14 @@ class TestModelPoolInstanceManagement:
 # Concurrent Access Tests
 # =============================================================================
 
+
 class TestModelPoolConcurrency:
     """Tests for concurrent access patterns."""
 
-    @patch('core.model_pool.GPUModelInstance')
-    def test_concurrent_get_instance_same_gpu(self, mock_gpu_instance, mock_gpu_dependencies):
+    @patch("core.model_pool.GPUModelInstance")
+    def test_concurrent_get_instance_same_gpu(
+        self, mock_gpu_instance, mock_gpu_dependencies
+    ):
         """Test concurrent get_instance for same GPU returns same instance."""
         from core.model_pool import get_model_pool
 
@@ -292,8 +312,10 @@ class TestModelPoolConcurrency:
         # Should only create once due to locking
         assert mock_gpu_instance.call_count == 1
 
-    @patch('core.model_pool.GPUModelInstance')
-    def test_concurrent_get_instance_different_gpus(self, mock_gpu_instance, mock_gpu_dependencies):
+    @patch("core.model_pool.GPUModelInstance")
+    def test_concurrent_get_instance_different_gpus(
+        self, mock_gpu_instance, mock_gpu_dependencies
+    ):
         """Test concurrent get_instance for different GPUs."""
         from core.model_pool import get_model_pool
 
@@ -333,10 +355,11 @@ class TestModelPoolConcurrency:
 # Resource Cleanup Tests
 # =============================================================================
 
+
 class TestModelPoolCleanup:
     """Tests for resource cleanup."""
 
-    @patch('core.model_pool.GPUModelInstance')
+    @patch("core.model_pool.GPUModelInstance")
     def test_cleanup_single_gpu(self, mock_gpu_instance, mock_gpu_dependencies):
         """Test cleanup releases single GPU instance."""
         from core.model_pool import get_model_pool
@@ -355,7 +378,7 @@ class TestModelPoolCleanup:
         assert not pool.is_gpu_initialized(0)
         mock_instance.cleanup.assert_called_once()
 
-    @patch('core.model_pool.GPUModelInstance')
+    @patch("core.model_pool.GPUModelInstance")
     def test_cleanup_all_gpus(self, mock_gpu_instance, mock_gpu_dependencies):
         """Test cleanup releases all GPU instances."""
         from core.model_pool import get_model_pool
@@ -385,11 +408,13 @@ class TestModelPoolCleanup:
         instances[0].cleanup.assert_called_once()
         instances[1].cleanup.assert_called_once()
 
-    @patch('core.model_pool.GPUModelInstance')
-    def test_cleanup_model_pool_function(self, mock_gpu_instance, mock_gpu_dependencies):
+    @patch("core.model_pool.GPUModelInstance")
+    def test_cleanup_model_pool_function(
+        self, mock_gpu_instance, mock_gpu_dependencies
+    ):
         """Test cleanup_model_pool module function."""
-        from core.model_pool import get_model_pool, cleanup_model_pool
         import core.model_pool as mp_module
+        from core.model_pool import cleanup_model_pool, get_model_pool
 
         mock_instance = MagicMock()
         mock_gpu_instance.return_value = mock_instance
@@ -407,6 +432,7 @@ class TestModelPoolCleanup:
 # GPUModelInstance Locking Tests
 # =============================================================================
 
+
 class TestGPUModelInstanceLocking:
     """Tests for GPUModelInstance thread-safety."""
 
@@ -414,13 +440,11 @@ class TestGPUModelInstanceLocking:
         """Test acquire provides exclusive access."""
         from core.model_pool import GPUModelInstance
 
-        with patch('insightface.model_zoo.get_model') as mock_get_model:
+        with patch("insightface.model_zoo.get_model") as mock_get_model:
             mock_get_model.return_value = MagicMock()
 
             instance = GPUModelInstance(
-                device_id=0,
-                model_path="test.onnx",
-                use_tensorrt=False
+                device_id=0, model_path="test.onnx", use_tensorrt=False
             )
 
             acquired = threading.Event()
@@ -464,15 +488,13 @@ class TestGPUModelInstanceLocking:
         """Test swap_face method is thread-safe."""
         from core.model_pool import GPUModelInstance
 
-        with patch('insightface.model_zoo.get_model') as mock_get_model:
+        with patch("insightface.model_zoo.get_model") as mock_get_model:
             mock_swapper = MagicMock()
             mock_swapper.get.return_value = "swapped_frame"
             mock_get_model.return_value = mock_swapper
 
             instance = GPUModelInstance(
-                device_id=0,
-                model_path="test.onnx",
-                use_tensorrt=False
+                device_id=0, model_path="test.onnx", use_tensorrt=False
             )
 
             results = []
@@ -481,9 +503,7 @@ class TestGPUModelInstanceLocking:
             def do_swap():
                 try:
                     result = instance.swap_face(
-                        frame="frame",
-                        target_face="target",
-                        source_face="source"
+                        frame="frame", target_face="target", source_face="source"
                     )
                     results.append(result)
                 except Exception as e:
@@ -503,13 +523,11 @@ class TestGPUModelInstanceLocking:
         """Test get_faces method is thread-safe."""
         from core.model_pool import GPUModelInstance
 
-        with patch('insightface.model_zoo.get_model') as mock_get_model:
+        with patch("insightface.model_zoo.get_model") as mock_get_model:
             mock_get_model.return_value = MagicMock()
 
             instance = GPUModelInstance(
-                device_id=0,
-                model_path="test.onnx",
-                use_tensorrt=False
+                device_id=0, model_path="test.onnx", use_tensorrt=False
             )
 
             # Configure face_app.get to return mock faces
@@ -543,21 +561,25 @@ class TestSwapFaceBatchGpuPaste:
     def test_numpy_pred_bgr_slice_copied_before_torch_from_numpy(self, mock_gpu):
         """RGB->BGR view has negative strides; must copy before torch.from_numpy."""
         import torch
+
         from core.model_pool import GPUModelInstance
 
-        with patch("core.model_pool.torch") as mock_torch, patch(
-            "core.model_pool.ort"
-        ) as mock_ort, patch("core.model_pool.FaceAnalysis") as mock_face_analysis, patch(
-            "core.model_pool.is_tensorrt_runtime_available", return_value=False
-        ), patch(
-            "core.model_pool.build_face_analysis_providers",
-            return_value=[("CUDAExecutionProvider", {}), "CPUExecutionProvider"],
-        ), patch(
-            "core.model_pool.build_swapper_providers",
-            return_value=[("CUDAExecutionProvider", {}), "CPUExecutionProvider"],
-        ), patch("core.model_pool.config") as mock_config, patch(
-            "insightface.model_zoo.get_model"
-        ) as mock_get_model:
+        with (
+            patch("core.model_pool.torch") as mock_torch,
+            patch("core.model_pool.ort") as mock_ort,
+            patch("core.model_pool.FaceAnalysis") as mock_face_analysis,
+            patch("core.model_pool.is_tensorrt_runtime_available", return_value=False),
+            patch(
+                "core.model_pool.build_face_analysis_providers",
+                return_value=[("CUDAExecutionProvider", {}), "CPUExecutionProvider"],
+            ),
+            patch(
+                "core.model_pool.build_swapper_providers",
+                return_value=[("CUDAExecutionProvider", {}), "CPUExecutionProvider"],
+            ),
+            patch("core.model_pool.config") as mock_config,
+            patch("insightface.model_zoo.get_model") as mock_get_model,
+        ):
             mock_torch.Tensor = torch.Tensor
             mock_torch.from_numpy = torch.from_numpy
             mock_torch.cuda.is_available.return_value = True
@@ -594,11 +616,13 @@ class TestSwapFaceBatchGpuPaste:
             aimg = np.zeros((128, 128, 3), dtype=np.uint8)
             M = np.eye(2, 3, dtype=np.float32)
 
-            with patch(
-                "insightface.utils.face_align.norm_crop2", return_value=(aimg, M)
-            ), patch("core.face_paste_gpu.paste_swapped_face_gpu") as mock_paste, patch(
-                "utils.config_manager.config"
-            ) as cfg:
+            with (
+                patch(
+                    "insightface.utils.face_align.norm_crop2", return_value=(aimg, M)
+                ),
+                patch("core.face_paste_gpu.paste_swapped_face_gpu") as mock_paste,
+                patch("utils.config_manager.config") as cfg,
+            ):
                 cfg.gpu_paste_on_gpu = True
                 mock_paste.return_value = torch.zeros(64, 64, 3)
 

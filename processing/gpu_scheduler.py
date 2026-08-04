@@ -1,6 +1,7 @@
 """
 VRAM-aware frame assignment for multi-GPU video/GIF processing.
 """
+
 import logging
 from typing import Dict, List
 
@@ -48,14 +49,15 @@ def assign_frames_to_gpus(
     if frame_weights and len(frame_weights) == num_frames:
         total_cost = sum(frame_weights) or float(num_frames)
         target_counts = [
-            max(1, int(round(num_frames * (vw / total_vram))))
-            for vw in vram_weights
+            max(1, int(round(num_frames * (vw / total_vram)))) for vw in vram_weights
         ]
         # Weighted round-robin using cumulative cost
         assignments: Dict[int, List[int]] = {d: [] for d in device_ids}
         gpu_loads = [0.0] * len(device_ids)
         for idx, cost in enumerate(frame_weights):
-            gpu_idx = min(range(len(device_ids)), key=lambda i: gpu_loads[i] / vram_weights[i])
+            gpu_idx = min(
+                range(len(device_ids)), key=lambda i: gpu_loads[i] / vram_weights[i]
+            )
             assignments[device_ids[gpu_idx]].append(idx)
             gpu_loads[gpu_idx] += cost
         return assignments

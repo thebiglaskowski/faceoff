@@ -9,6 +9,7 @@ Download URLs (HAT-Base arch — 96 embed_dim, 20.8M params):
   HAT-Base (4x): https://huggingface.co/Acly/hat/resolve/main/HAT_SRx4_ImageNet-pretrain.pth
   HAT (4x) GAN:  https://huggingface.co/Acly/hat/resolve/main/Real_HAT_GAN_sharper.pth
 """
+
 import gc
 import logging
 import threading
@@ -29,6 +30,7 @@ logger = logging.getLogger("FaceOff")
 # =============================================================================
 # HAT Model Definitions (auto-registered via basicsr ARCH_REGISTRY)
 # =============================================================================
+
 
 # Pre-configure the arch scan so that hat_arch.py registers HAT with
 # basicsr before any model-loading code runs.
@@ -120,6 +122,7 @@ def _set_cuda_device(gpu_id: int) -> None:
     if torch.cuda.is_available():
         torch.cuda.set_device(gpu_id)
 
+
 # Back-compat aliases used by padding helpers/tests
 HAT_UPSCALE = _OFFICIAL_HAT_ARCH["upscale"]
 HAT_IMG_RANGE = _OFFICIAL_HAT_ARCH["img_range"]
@@ -139,6 +142,7 @@ HAT_UPSAMPLER = _OFFICIAL_HAT_ARCH["upsampler"]
 # =============================================================================
 # HAT Model Loading
 # =============================================================================
+
 
 def _hat_arch_for_model(model_name: str) -> dict:
     """Return architecture kwargs for a registered HAT model variant."""
@@ -226,8 +230,8 @@ def _load_hat_model_impl(
         checkpoint_path = Path(resolved_path)
         logger.info("Loading HAT from local path: %s", checkpoint_path)
     elif resolved_path and resolved_path.startswith("http"):
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         cache_dir = Path.home() / ".cache" / "faceoff_models" / "hat"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -330,6 +334,7 @@ def clear_hat_cache() -> None:
 # Core Inference
 # =============================================================================
 
+
 def _pad_to_window_size(
     image: np.ndarray,
     window_size: int = HAT_WINDOW_SIZE,
@@ -415,7 +420,13 @@ def _apply_hat_model(
 
     if _should_use_tiled_inference(h, w, tile_size, gpu_id, force_tiled=force_tiled):
         return _enhance_image_tiled(
-            image_rgb, model, device, mean, img_range, tile_size, window_size=window_size
+            image_rgb,
+            model,
+            device,
+            mean,
+            img_range,
+            tile_size,
+            window_size=window_size,
         )
 
     # Direct inference (small images or tile_size=0)
@@ -547,6 +558,7 @@ def _enhance_image_tiled(
 # =============================================================================
 # Single Image Enhancement
 # =============================================================================
+
 
 def enhance_image_hat(
     img: np.ndarray,

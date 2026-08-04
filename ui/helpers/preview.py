@@ -2,6 +2,7 @@
 Preview utilities for UI.
 Helper functions for displaying file previews.
 """
+
 import logging
 import subprocess
 from pathlib import Path
@@ -36,8 +37,17 @@ def _extract_first_frame_png(video_path: str, output_path: Path) -> bool:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
         [
-            "ffmpeg", "-y", "-ss", "0", "-i", video_path,
-            "-frames:v", "1", "-q:v", "2", str(output_path),
+            "ffmpeg",
+            "-y",
+            "-ss",
+            "0",
+            "-i",
+            video_path,
+            "-frames:v",
+            "1",
+            "-q:v",
+            "2",
+            str(output_path),
         ],
         capture_output=True,
         text=True,
@@ -59,8 +69,8 @@ def validate_target_video_upload(target_file) -> Tuple[str, str, Any]:
     Uses gr.File for upload so Gradio never needs to decode the video in-browser
     (avoids "Video not playable" on HEVC / phone / download codecs).
     """
-    from ui.helpers.face_mapping import clear_face_mappings as helper_clear_mappings
     from ui.handlers.processing_handlers import get_face_mapping_manager
+    from ui.helpers.face_mapping import clear_face_mappings as helper_clear_mappings
     from utils.temp_manager import get_temp_manager
 
     _, mappings_text = helper_clear_mappings(get_face_mapping_manager("video"))
@@ -71,9 +81,9 @@ def validate_target_video_upload(target_file) -> Tuple[str, str, Any]:
 
     from utils.validation import (
         resolve_gradio_file_path,
-        validate_safe_path,
         validate_file_size,
         validate_media_type,
+        validate_safe_path,
         validate_video_duration,
     )
 

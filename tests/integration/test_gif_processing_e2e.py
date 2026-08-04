@@ -9,10 +9,11 @@ These tests verify the full GIF processing workflow including:
 - GIF reassembly
 """
 
-import pytest
-import numpy as np
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pytest
 from PIL import Image
 
 
@@ -34,7 +35,7 @@ def multi_frame_gif(tmp_path):
         save_all=True,
         append_images=frames[1:],
         duration=100,  # 100ms per frame
-        loop=0
+        loop=0,
     )
     return gif_path
 
@@ -54,6 +55,7 @@ def mock_gif_processor():
     # Mock swap
     def mock_swap(frame, target, source):
         return frame.copy()
+
     processor.swap_face.side_effect = mock_swap
 
     return processor
@@ -81,15 +83,15 @@ class TestGIFProcessingE2E:
     @pytest.mark.integration
     def test_gif_frame_processing_order(self, multi_frame_gif, mock_gif_processor):
         """Test frames are processed in correct order."""
-        from PIL import Image
         import numpy as np
+        from PIL import Image
 
         frames = []
         with Image.open(multi_frame_gif) as gif:
             for i in range(10):
                 try:
                     gif.seek(i)
-                    frame = np.array(gif.convert('RGB'))
+                    frame = np.array(gif.convert("RGB"))
                     frames.append(frame)
                 except EOFError:
                     break
@@ -141,7 +143,7 @@ class TestGIFProcessingE2E:
         # Create processed frames
         processed_frames = []
         for i in range(5):
-            frame = Image.new('RGB', (100, 100), color=(i * 50, 100, 100))
+            frame = Image.new("RGB", (100, 100), color=(i * 50, 100, 100))
             processed_frames.append(frame)
 
         output_path = tmp_path / "output.gif"
@@ -152,14 +154,14 @@ class TestGIFProcessingE2E:
             save_all=True,
             append_images=processed_frames[1:],
             duration=100,
-            loop=0
+            loop=0,
         )
 
         assert output_path.exists(), "Output GIF should be created"
 
         # Verify it's a valid GIF
         with Image.open(output_path) as out_gif:
-            assert out_gif.format == 'GIF'
+            assert out_gif.format == "GIF"
             # Count frames
             frame_count = 0
             try:
@@ -181,7 +183,7 @@ class TestGIFProcessingE2E:
             for i in range(10):
                 try:
                     gif.seek(i)
-                    duration = gif.info.get('duration', 100)
+                    duration = gif.info.get("duration", 100)
                     original_durations.append(duration)
                 except EOFError:
                     break
@@ -213,6 +215,7 @@ class TestGIFWithStreamingPipeline:
 
         # Configure one frame to fail
         call_count = [0]
+
         def swap_with_error(frame, target, source):
             call_count[0] += 1
             if call_count[0] == 3:
@@ -245,16 +248,12 @@ class TestGIFMemoryManagement:
         # Create a GIF with many frames
         frames = []
         for i in range(100):  # Many frames
-            img = Image.new('RGB', (200, 200), color=(i % 255, 100, 100))
+            img = Image.new("RGB", (200, 200), color=(i % 255, 100, 100))
             frames.append(img)
 
         gif_path = tmp_path / "large.gif"
         frames[0].save(
-            gif_path,
-            save_all=True,
-            append_images=frames[1:],
-            duration=50,
-            loop=0
+            gif_path, save_all=True, append_images=frames[1:], duration=50, loop=0
         )
 
         # Validation should check frame count
@@ -276,7 +275,7 @@ class TestGIFMemoryManagement:
         # Process in batches
         batches_processed = 0
         for i in range(0, total_frames, batch_size):
-            batch = frames[i:i + batch_size]
+            batch = frames[i : i + batch_size]
             for frame in batch:
                 mock_gif_processor.swap_face(frame, MagicMock(), MagicMock())
             batches_processed += 1

@@ -75,7 +75,9 @@ class ChunkFrameBuffer:
         if frame.device.type != "cuda":
             raise ValueError("update_frame_gpu requires a CUDA tensor")
         if frame.shape != batch[index].shape:
-            raise ValueError(f"Frame shape mismatch: {frame.shape} vs {batch[index].shape}")
+            raise ValueError(
+                f"Frame shape mismatch: {frame.shape} vs {batch[index].shape}"
+            )
         batch[index].copy_(frame)
 
     def has_gpu_batch(self) -> bool:

@@ -35,10 +35,12 @@ class TestMediaProcessorRebind:
         mock_gpu = _fresh_gpu()
         mock_gpu_rebound = _fresh_gpu()
 
-        with patch("core.media_processor.config") as mock_config, patch(
-            "core.media_processor.get_model_pool"
-        ) as mock_get_pool, patch(
-            "core.media_processor.is_tensorrt_runtime_available", return_value=False
+        with (
+            patch("core.media_processor.config") as mock_config,
+            patch("core.media_processor.get_model_pool") as mock_get_pool,
+            patch(
+                "core.media_processor.is_tensorrt_runtime_available", return_value=False
+            ),
         ):
             mock_config.inswapper_model_path = str(inswapper)
             mock_config.buffalo_model_path = str(buffalo)

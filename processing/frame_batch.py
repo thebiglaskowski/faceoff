@@ -1,6 +1,7 @@
 """
 Unified batched face-swap processing for streaming and legacy paths.
 """
+
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -16,7 +17,8 @@ from core.media_processor import MediaProcessor
 from core.model_pool import GPUModelInstance
 from processing.gpu_scheduler import assign_frames_to_gpus, frame_pixel_weights
 from processing.resolution_adaptive import ResolutionAdaptiveProcessor
-from processing.workload_profile import WorkloadProfile, flag as profile_flag
+from processing.workload_profile import WorkloadProfile
+from processing.workload_profile import flag as profile_flag
 from utils.config_manager import config
 
 logger = logging.getLogger("FaceOff")
@@ -291,9 +293,10 @@ def process_chunk_multi_gpu(
     swap_gpu = gpu_instances[0] if gpu_instances else None
     # GPU paste writes into a single shared ChunkFrameBuffer on the primary GPU.
     # Secondary GPUs cannot update that buffer, so multi-GPU jobs must use CPU paste.
-    gpu_paste = _gpu_paste_enabled(frame_buffer, face_mappings, swap_gpu, profile) and len(
-        device_ids
-    ) == 1
+    gpu_paste = (
+        _gpu_paste_enabled(frame_buffer, face_mappings, swap_gpu, profile)
+        and len(device_ids) == 1
+    )
     if gpu_paste and frame_buffer is not None:
         try:
             frame_buffer.upload()

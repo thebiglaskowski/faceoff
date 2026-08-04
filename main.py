@@ -13,12 +13,12 @@ import sys
 os.environ.setdefault("MPLBACKEND", "Agg")
 from contextlib import suppress
 from pathlib import Path
+from types import ModuleType
 
 # Compatibility shim: torchvision >=0.18 removed torchvision.transforms.functional_tensor.
 # Older basicsr (1.4.2), still pulled by gfpgan/realesrgan, imports rgb_to_grayscale
 # from that module.  Create a fake module so the old import path still works.
 import torch
-from types import ModuleType
 from torchvision.transforms.functional import rgb_to_grayscale
 
 _mod = ModuleType("torchvision.transforms.functional_tensor")
@@ -50,11 +50,11 @@ setup_logging()
 setup_nvidia_library_path()
 preload_nvidia_libraries()
 
-from utils.tensorrt_utils import is_tensorrt_available
-from utils.model_cache import get_cache_info
 from processing.model_preloader import preload_models
 from ui.app import create_app
 from ui.faceoff_theme import CUSTOM_CSS, GRADIO_THEME
+from utils.model_cache import get_cache_info
+from utils.tensorrt_utils import is_tensorrt_available
 
 logger = logging.getLogger("FaceOff")
 

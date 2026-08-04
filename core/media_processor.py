@@ -2,24 +2,25 @@
 Core media processing class for face detection and swapping.
 """
 
-import cv2
-from insightface.utils import face_align
 import io
 import logging
-import numpy as np
 import sys
 import threading
 import time
-from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional
+
+import cv2
+import numpy as np
+from insightface.utils import face_align
 
 from core.face_paste import ensure_rgb_image, paste_swapped_face
 from core.model_pool import get_model_pool
 from utils.config_manager import config
-from utils.model_optimizer import optimize_onnx_model
 from utils.error_handler import ErrorHandler, FriendlyError
+from utils.model_optimizer import optimize_onnx_model
 from utils.onnx_providers import is_tensorrt_runtime_available
 
 logger = logging.getLogger("FaceOff")
@@ -264,4 +265,3 @@ class MediaProcessor:
             return str(resolved_path)
         except Exception as e:
             raise FileProcessingError("Failed to write image") from e
-
