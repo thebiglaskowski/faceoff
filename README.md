@@ -6,12 +6,12 @@
 
 High-performance face swapping with multi-GPU ONNX inference, chunked streaming, and optional super-resolution. Everything runs on your machine — no cloud, no accounts, no uploads.
 
-![Python](https://img.shields.io/badge/python-3.10--3.12-3776ab?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/python-3.12-3776ab?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-22863a?logo=opensourceinitiative&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20WSL2%20%7C%20Windows-lightgrey?logo=linux&logoColor=white)
 ![CUDA](https://img.shields.io/badge/CUDA-multi--GPU-76b900?logo=nvidia&logoColor=white)
 ![UI](https://img.shields.io/badge/UI-Gradio-ff7c00?logo=gradio&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-316%2B-blue?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-352-blue?logo=pytest&logoColor=white)
 
 [Quick Start](#quick-start) · [Features](#features) · [Usage](#usage) · [Performance](#performance) · [Troubleshooting](#troubleshooting)
 
@@ -104,7 +104,7 @@ Read the write-up at [thebiglaskowski.com/blog/face-swapping-with-ai](https://th
 
 | Requirement | Notes |
 |-------------|-------|
-| **Python 3.12** | Recommended. 3.10–3.11 supported. 3.13 not compatible. |
+| **Python 3.12** | Required — 3.12 only. 3.11 and older pull a CUDA 12 ONNX Runtime build; 3.13 lacks NumPy 1.26 wheels. |
 | **NVIDIA GPU + drivers** | CUDA execution provider required for production use |
 | **FFmpeg** | On `PATH` — video/GIF decode and encode |
 | **uv** | Dependency manager ([install](https://github.com/astral-sh/uv)) |
@@ -162,10 +162,12 @@ The UI opens at **<http://127.0.0.1:7860/>**. `config.yaml` is created with defa
 <details>
 <summary><b>Python 3.12 on any platform</b></summary>
 
-`basicsr` and `insightface` may need extra steps. The repo includes a **torchvision compatibility shim** in `main.py` for GFPGAN/RealESRGAN. If `uv sync` fails on these packages, drop to Python 3.11:
+`basicsr` and `insightface` may need extra steps. The repo includes a **torchvision compatibility shim** in `main.py` for GFPGAN/RealESRGAN.
+
+Python 3.12 is the only supported version — falling back to an older interpreter is not an option, because 3.11 and below resolve `onnxruntime-gpu` to a CUDA 12 build that no longer matches the CUDA 13 stack PyTorch installs. If `uv sync` fails building `insightface`, install C++ build tools (see the Windows section) rather than changing interpreter.
 
 ```bash
-uv venv --python 3.11 .venv
+uv venv --python 3.12 .venv
 uv sync
 ```
 
