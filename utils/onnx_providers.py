@@ -19,6 +19,9 @@ ProviderEntry = Union[str, Tuple[str, dict]]
 
 _tensorrt_compile_lock = threading.Lock()
 
+# Set once the NVIDIA wheel libs have been put on LD_LIBRARY_PATH and dlopen'd.
+_nvidia_libraries_ready = False
+
 
 @contextmanager
 def tensorrt_compile_guard() -> Iterator[None]:
@@ -136,15 +139,37 @@ def _is_ort_tensorrt_provider_loadable() -> bool:
         return False
 
 
+def _ensure_nvidia_libraries_ready() -> None:
+    """Idempotently apply the NVIDIA lib setup the TensorRT EP depends on.
+
+    ORT's TensorRT EP silently declines to initialize unless libnvinfer/cuDNN are
+    already in the global symbol namespace. Callers used to be responsible for
+    running setup_nvidia_library_path() + preload_nvidia_libraries() first, an
+    unenforced ordering contract: any caller that probed too early got False,
+    and because the probe is lru_cached that answer stuck for the whole process,
+    downgrading every later session to CUDA with only an INFO-level log.
+    """
+    global _nvidia_libraries_ready
+    if _nvidia_libraries_ready:
+        return
+    _nvidia_libraries_ready = True
+    setup_nvidia_library_path()
+    preload_nvidia_libraries()
+
+
 @lru_cache(maxsize=1)
 def is_tensorrt_runtime_available() -> bool:
     """Return True only when TensorRT libs and ORT's TensorRT EP both load."""
+    _ensure_nvidia_libraries_ready()
     if _try_load_tensorrt_library() is None:
         logger.info("TensorRT runtime libraries not found; CUDA-only inference")
         return False
     if not _is_ort_tensorrt_provider_loadable():
-        logger.info(
-            "TensorRT present but ONNX Runtime TensorRT EP unavailable; CUDA-only inference"
+        # WARNING, not INFO: TensorRT is installed but its EP will not load, so
+        # this is a silent performance regression rather than a config choice.
+        logger.warning(
+            "TensorRT present but ONNX Runtime TensorRT EP unavailable; "
+            "falling back to CUDA-only inference"
         )
         return False
     return True
@@ -155,6 +180,7 @@ def setup_nvidia_library_path() -> None:
     Prepend NVIDIA pip package lib dirs to LD_LIBRARY_PATH.
 
     cuDNN must come first to avoid SUBLIBRARY_VERSION_MISMATCH from mixed loads.
+    Idempotent — repeated calls will not re-prepend an existing entry.
     """
     import os
 
@@ -164,10 +190,12 @@ def setup_nvidia_library_path() -> None:
         site / "tensorrt_libs",
     ]
     for lib_dir in ordered:
-        if lib_dir.is_dir():
-            os.environ["LD_LIBRARY_PATH"] = (
-                str(lib_dir) + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
-            )
+        if not lib_dir.is_dir():
+            continue
+        current = os.environ.get("LD_LIBRARY_PATH", "")
+        if str(lib_dir) in current.split(os.pathsep):
+            continue
+        os.environ["LD_LIBRARY_PATH"] = str(lib_dir) + os.pathsep + current
 
 
 def _cdll_global(path: Path) -> None:
