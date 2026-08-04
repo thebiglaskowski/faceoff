@@ -12,6 +12,12 @@ dependencies = [
     # Deep Learning & GPU
     "torch>=2.6.0",
     "torchvision>=0.21.0",
+    # WARNING: insightface depends on CPU `onnxruntime`, which ships the *same*
+    # onnxruntime/capi/*.so paths as onnxruntime-gpu. Whichever lands last wins,
+    # so a sync can silently leave you with CPU-only providers — face swapping
+    # still runs, just far slower. If get_available_providers() lacks
+    # CUDAExecutionProvider, repair with:
+    #     uv sync --reinstall-package onnxruntime-gpu
     "onnxruntime-gpu>=1.23.0",
     "onnx>=1.19.0",
     "onnxoptimizer>=0.3.13",
