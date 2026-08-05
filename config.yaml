@@ -302,7 +302,10 @@ ui:
   server_name: "127.0.0.1"
   server_port: 7860
   share: false # Create public Gradio link
-  theme: "default" # Gradio theme
+  # UI theme: "soft" = original restrained purple/pink look
+  #           "neon" = cyber/glass redesign
+  # Unknown values fall back to "soft" with a warning.
+  theme: "soft"
 
   # Gradio queue settings (prevents request overload)
   queue_max_size: 20 # Maximum pending requests in queue

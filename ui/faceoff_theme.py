@@ -1,9 +1,20 @@
-"""FaceOff cyber/neon glass theme for Gradio (imported by app.py and main.py)."""
+"""Gradio themes for FaceOff.
+
+Two themes ship: "soft" (the original restrained purple/pink look) and "neon"
+(the cyber/glass redesign). Pick one with `ui.theme` in config.yaml; call
+get_theme() rather than importing a specific theme so the setting is honoured.
+"""
 
 import gradio as gr
 
+from utils.config_manager import config
+
+# ---------------------------------------------------------------------------
+# neon — cyber/glass redesign
+# ---------------------------------------------------------------------------
+
 # Base off Soft so spacing/radius stay sane, then we override hard in CSS.
-GRADIO_THEME = gr.themes.Soft(
+NEON_THEME = gr.themes.Soft(
     primary_hue="violet",
     secondary_hue="cyan",
     neutral_hue="slate",
@@ -16,7 +27,7 @@ GRADIO_THEME = gr.themes.Soft(
     font_mono=[gr.themes.GoogleFont("JetBrains Mono"), "ui-monospace", "monospace"],
 )
 
-CUSTOM_CSS = """
+NEON_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Unbounded:wght@600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 @keyframes fo-eq      { 0%,100% { transform: scaleY(.4); } 50% { transform: scaleY(1); } }
@@ -453,7 +464,7 @@ input[type="range"]::-webkit-slider-thumb { background: var(--fo-cyan) !importan
 }
 """
 
-FACEOFF_HEADER_HTML = """
+NEON_HEADER_HTML = """
 <div style="display:flex;flex-direction:column;align-items:center;gap:16px;margin-bottom:34px;">
   <div style="display:flex;align-items:center;gap:18px;">
     <div style="position:relative;width:58px;height:58px;border-radius:17px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(14px);box-shadow:0 8px 30px rgba(139,92,246,.35),inset 0 1px 0 rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;gap:5px;">
@@ -470,3 +481,100 @@ FACEOFF_HEADER_HTML = """
   <div class="header-subtitle" style="font-size:15px;color:#9396b0;letter-spacing:.01em;margin-bottom:0 !important;">AI Face Swapper — advanced face swapping with enhancement options</div>
 </div>
 """
+
+# ---------------------------------------------------------------------------
+# soft — the original look, restored verbatim from 7d71513^:ui/app.py
+# ---------------------------------------------------------------------------
+
+SOFT_THEME = gr.themes.Soft()
+
+SOFT_CSS = """
+:root {
+    --primary-color: #7C3AED;
+    --secondary-color: #EC4899;
+    --success-color: #10B981;
+}
+
+.gradio-container {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.header-text {
+    color: #7C3AED !important;
+    font-weight: 800;
+    font-size: 2.5em;
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.header-subtitle {
+    text-align: center;
+    font-size: 1.1em;
+    color: #6B7280;
+    margin-bottom: 2rem;
+}
+
+@media (prefers-color-scheme: dark) {
+    .header-text {
+        color: #A78BFA !important;
+    }
+    .header-subtitle {
+        color: #9CA3AF !important;
+    }
+}
+
+.primary-btn {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: 600 !important;
+    transition: transform 0.2s !important;
+}
+
+.primary-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(124, 58, 237, 0.3) !important;
+}
+
+.face-swap-box {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(236, 72, 153, 0.1));
+    border-left: 4px solid var(--primary-color);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin: 1rem 0;
+}
+"""
+
+SOFT_HEADER_HTML = (
+    '<h1 class="header-text">👤 FaceOff</h1>'
+    '<div class="header-subtitle">AI Face Swapper - Advanced face swapping '
+    "with enhancement options</div>"
+)
+
+# ---------------------------------------------------------------------------
+# selection
+# ---------------------------------------------------------------------------
+
+_THEMES = {
+    "soft": (SOFT_THEME, SOFT_CSS, SOFT_HEADER_HTML),
+    "neon": (NEON_THEME, NEON_CSS, NEON_HEADER_HTML),
+}
+
+
+def get_theme(name: str | None = None):
+    """Return (theme, css, header_html) for `name`, defaulting to config.ui_theme.
+
+    Unknown names fall back to "soft" with a warning rather than raising — a
+    typo in config.yaml should not stop the app from starting.
+    """
+    import logging
+
+    requested = (name or config.ui_theme or "soft").strip().lower()
+    if requested not in _THEMES:
+        logging.getLogger("FaceOff").warning(
+            "Unknown ui.theme %r; falling back to 'soft'. Valid: %s",
+            requested,
+            ", ".join(sorted(_THEMES)),
+        )
+        requested = "soft"
+    return _THEMES[requested]

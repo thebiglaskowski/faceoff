@@ -32,7 +32,7 @@ from ui.components.gif_tab import create_gif_tab
 from ui.components.image_tab import create_image_tab
 from ui.components.terminal_tab import create_terminal_tab
 from ui.components.video_tab import create_video_tab
-from ui.faceoff_theme import CUSTOM_CSS, FACEOFF_HEADER_HTML, GRADIO_THEME
+from ui.faceoff_theme import get_theme
 
 # Handler modules (extracted for cleaner architecture)
 from ui.handlers.preset_handlers import (
@@ -286,7 +286,8 @@ def create_app():
     """
 
     with gr.Blocks(title="FaceOff - Face Swapper") as demo:
-        gr.HTML(FACEOFF_HEADER_HTML)
+        _, _, header_html = get_theme()
+        gr.HTML(header_html)
 
         with gr.Tabs():
             # Create Image Tab

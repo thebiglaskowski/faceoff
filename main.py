@@ -52,11 +52,14 @@ preload_nvidia_libraries()
 
 from processing.model_preloader import preload_models
 from ui.app import create_app
-from ui.faceoff_theme import CUSTOM_CSS, GRADIO_THEME
+from ui.faceoff_theme import get_theme
 from utils.model_cache import get_cache_info
 from utils.tensorrt_utils import is_tensorrt_available
 
 logger = logging.getLogger("FaceOff")
+
+# Selected by ui.theme in config.yaml ("soft" or "neon").
+GRADIO_THEME, CUSTOM_CSS, _ = get_theme()
 
 _tensorrt_ok = is_tensorrt_available()
 

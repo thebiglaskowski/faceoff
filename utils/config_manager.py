@@ -500,7 +500,8 @@ class Config:
 
     @property
     def ui_theme(self) -> str:
-        return self.get("ui", "theme", default="default")
+        """UI theme name — "soft" or "neon". See ui/faceoff_theme.py."""
+        return self.get("ui", "theme", default="soft")
 
     @property
     def theme(self) -> str:
