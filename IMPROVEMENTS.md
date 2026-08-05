@@ -280,6 +280,66 @@ print(f"VRAM: {stats['utilization_pct']:.1f}% ({stats['allocated_mb']:.0f}/{stat
 4. **Batch size auto-tuning** — automatically find optimal batch size per GPU
 5. **Cache cleanup scheduler** — auto-delete stale TensorRT/HAT cache files
 6. **ReSwapper quality mode** — diffusion-based swapper (slow; deferred)
+7. **Spandrel migration** — replace the abandoned `basicsr` lineage (see below)
+
+---
+
+## Spandrel Migration (researched 2026-08-05, not scheduled)
+
+The face-restoration and upscaling stack is built on packages that are **abandoned
+upstream** — every one is already at its final published version:
+
+| package | version | last release |
+|---------|---------|--------------|
+| lpips | 0.1.4 | Aug 2021 |
+| basicsr | 1.4.2 | Aug 2022 |
+| gfpgan | 1.3.8 | Sep 2022 |
+| realesrgan | 0.3.0 | Sep 2022 |
+| codeformer-pip | 0.0.4 | Mar 2023 |
+| facexlib | 0.3.0 | Apr 2023 |
+
+`basicsr` is the root; the rest build on it. `codeformer-pip` vendors its own copy,
+so that 2022 code exists twice in the venv. The face *swapping* path (insightface,
+torch, transformers) is current — only restoration/upscaling is frozen.
+
+**Cost today:** three shims in `main.py` — a fake
+`torchvision.transforms.functional_tensor` module, a process-wide `torch.load`
+`weights_only=False` monkeypatch (a deliberate security relaxation), and reliance on
+setuptools still vendoring `_distutils` for basicsr's `LooseVersion` import.
+
+**Target:** [Spandrel](https://github.com/chaiNNer-org/spandrel) (0.4.2, Feb 2026,
+actively maintained) supports every architecture used here — RRDBNet,
+SRVGGNetCompact, GFPGAN 1.2–1.4, CodeFormer, RestoreFormer, HAT, SwinIR, Swin2SR,
+SCUNet, DAT. Precedent: stable-diffusion-webui
+[PR #14425](https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/14425)
+adopted it specifically to delete vendored basicsr architectures.
+
+**Caveat — this is not a drop-in.** Spandrel supplies *networks*, not *pipelines*.
+`RealESRGANer` also provides tiling/padding; `GFPGANer` provides detect → align →
+restore → paste via facexlib's `FaceRestoreHelper` (used directly in
+`processing/codeformer_restoration.py`). Neither has a Spandrel equivalent. We are
+well positioned because tiled inference (`hat_enhancement.py`), face detection
+(insightface) and paste (`core/face_paste*.py`) already exist — but facexlib is a
+genuine holdout that would need replacing with insightface-landmark-based
+crop/align/paste.
+
+**Also note:** `spandrel-extra-arches` — which holds CodeFormer — is itself stale
+(0.2.0, Sep 2024), and that split exists because those architectures carry
+non-commercial licenses. Relevant to this project's MIT license and `NOTICE`.
+
+**Trigger:** a torch/torchvision release that breaks a `main.py` shim in a way a
+further shim cannot paper over. Nothing is broken today.
+
+**Approach:** incremental, one model at a time. Start with Real-ESRGAN (simplest
+wrapper) or the locally vendored `processing/hat_models/hat_arch.py` (deletes code
+we maintain ourselves). Leave GFPGAN and CodeFormer last — they are the ones
+entangled with facexlib.
+
+**Models vs packages:** the algorithms have aged better than the packaging.
+CodeFormer still benchmarks competitively (NTIRE 2026 real-world face restoration
+challenge). Newer options — CodeFormer++, DiffBIR, ResShift, DiffFace, VQFRv2,
+GPEN, RestoreFormer++ — are mostly diffusion-based and far slower per image, a poor
+fit for per-frame video. No urgency to change models, only packaging.
 
 ---
 
