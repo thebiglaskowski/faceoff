@@ -122,10 +122,28 @@ class ProgressTracker:
 
 
 class NullProgressBar:
-    """Null object pattern for progress bar when disabled."""
+    """Null object pattern for progress bar when disabled.
+
+    Must mirror every tqdm attribute the pipeline touches. This stub is only
+    selected when _should_show() is False, which happens whenever there is no
+    TTY — nohup, systemd, Docker without -t, or stdout redirected to a log. A
+    developer running in a terminal never exercises it, so any method missing
+    here fails exclusively for headless users, mid-job. tests/unit/test_progress.py
+    greps the source for progress-bar calls and asserts each one exists.
+    """
+
+    def __init__(self):
+        # tqdm exposes these as real attributes; streaming_media assigns to them
+        # when it collapses the bar to complete.
+        self.n = 0
+        self.total = 0
 
     def update(self, n: int = 1):
         """No-op update."""
+        pass
+
+    def refresh(self):
+        """No-op refresh."""
         pass
 
     def set_description(self, desc: str):
