@@ -90,6 +90,31 @@ def _try_load_tensorrt_library() -> str | None:
     return None
 
 
+def _tensorrt_options(device_id: int, fp16: bool) -> dict:
+    """TensorRT EP options for a device, with per-GPU engine and timing caches.
+
+    The timing cache is separate from the engine cache: it stores kernel tactic
+    timings so a rebuild skips re-benchmarking. Both live under gpu_<id>/ because
+    tactic timings are architecture-specific — sharing them between unlike GPUs
+    (Turing vs Ampere) would select tactics tuned for the wrong device.
+    trt_force_timing_cache is deliberately left off so TensorRT discards a cache
+    that does not match the current device instead of trusting it.
+    """
+    cache = Path(config.tensorrt_cache_dir) / f"gpu_{device_id}"
+    cache.mkdir(parents=True, exist_ok=True)
+    options = {
+        "device_id": device_id,
+        "trt_max_workspace_size": config.tensorrt_workspace_mb * 1024 * 1024,
+        "trt_fp16_enable": fp16,
+        "trt_engine_cache_enable": True,
+        "trt_engine_cache_path": str(cache),
+    }
+    if config.tensorrt_timing_cache_enabled:
+        options["trt_timing_cache_enable"] = True
+        options["trt_timing_cache_path"] = str(cache)
+    return options
+
+
 def _is_ort_tensorrt_provider_loadable() -> bool:
     """Probe ORT TensorRT EP with a real session (provider .so cannot be dlopen'd alone)."""
     det_model = Path(config.buffalo_model_path) / "det_10g.onnx"
@@ -106,19 +131,8 @@ def _is_ort_tensorrt_provider_loadable() -> bool:
         logger.warning("onnxruntime not importable for TensorRT probe: %s", exc)
         return False
 
-    cache = Path(config.tensorrt_cache_dir) / "gpu_0"
-    cache.mkdir(parents=True, exist_ok=True)
     probe_providers: List[ProviderEntry] = [
-        (
-            "TensorrtExecutionProvider",
-            {
-                "device_id": 0,
-                "trt_max_workspace_size": config.tensorrt_workspace_mb * 1024 * 1024,
-                "trt_fp16_enable": config.tensorrt_fp16,
-                "trt_engine_cache_enable": True,
-                "trt_engine_cache_path": str(cache),
-            },
-        ),
+        ("TensorrtExecutionProvider", _tensorrt_options(0, config.tensorrt_fp16)),
         ("CUDAExecutionProvider", _cuda_options(0)),
         "CPUExecutionProvider",
     ]
@@ -276,21 +290,8 @@ def build_face_analysis_providers(
 
     providers: List[ProviderEntry] = []
     if use_tensorrt and is_tensorrt_runtime_available():
-        cache = Path(config.tensorrt_cache_dir) / f"gpu_{device_id}"
-        cache.mkdir(parents=True, exist_ok=True)
         providers.append(
-            (
-                "TensorrtExecutionProvider",
-                {
-                    "device_id": device_id,
-                    "trt_max_workspace_size": config.tensorrt_workspace_mb
-                    * 1024
-                    * 1024,
-                    "trt_fp16_enable": tensorrt_fp16,
-                    "trt_engine_cache_enable": True,
-                    "trt_engine_cache_path": str(cache),
-                },
-            )
+            ("TensorrtExecutionProvider", _tensorrt_options(device_id, tensorrt_fp16))
         )
     providers.append(("CUDAExecutionProvider", _cuda_options(device_id)))
     providers.append("CPUExecutionProvider")

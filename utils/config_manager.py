@@ -386,6 +386,10 @@ class Config:
         return self.get("model_cache", "tensorrt_cache_enabled", default=True)
 
     @property
+    def tensorrt_timing_cache_enabled(self) -> bool:
+        return self.get("model_cache", "tensorrt_timing_cache_enabled", default=True)
+
+    @property
     def preload_on_startup(self) -> bool:
         return self.get("model_cache", "preload_on_startup", default=False)
 

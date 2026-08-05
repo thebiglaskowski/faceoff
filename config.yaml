@@ -228,6 +228,12 @@ model_cache:
   # TensorRT engine caching
   tensorrt_cache_dir: "cache/tensorrt"
   tensorrt_cache_enabled: true # Persist TRT engines per GPU (gpu_0, gpu_1, …)
+  # Kernel-timing cache — separate from the engine cache. Stores tactic timings
+  # so a rebuild skips re-benchmarking every kernel. Helps most on the first run
+  # after a model/config change. Written per GPU alongside the engine cache,
+  # because timings are architecture-specific and must not be shared between
+  # unlike GPUs (e.g. Turing vs Ampere).
+  tensorrt_timing_cache_enabled: true
 
   # Model preloading — warms all CUDA GPUs sequentially at startup (TRT compile lock safe)
   preload_on_startup: true # Eliminates first-request delay on multi-GPU jobs
