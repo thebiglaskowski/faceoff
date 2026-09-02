@@ -21,6 +21,7 @@ from pathlib import Path
 
 import gradio as gr
 
+from processing.model_manager import get_model_status
 from ui.components.gallery_tab import (
     create_gallery_tab,
     refresh_gallery,
@@ -289,6 +290,14 @@ def create_app():
     with gr.Blocks(title="FaceOff - Face Swapper") as demo:
         _, _, header_html = get_theme()
         gr.HTML(header_html)
+
+        _missing = [r[0] for r in get_model_status() if "Missing" in r[2]]
+        if _missing:
+            gr.Markdown(
+                f"⚠️ **Models missing:** {', '.join(_missing)} — open the "
+                "**🧩 Models** tab below to download them, or run "
+                "`python scripts/download_models.py`."
+            )
 
         with gr.Tabs():
             # Create Image Tab
