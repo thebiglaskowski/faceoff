@@ -85,7 +85,11 @@ class MediaProcessor:
         }
         missing = [name for name, path in required_paths.items() if not path.exists()]
         if missing:
-            raise FileNotFoundError(f"Missing critical resources: {', '.join(missing)}")
+            raise FileNotFoundError(
+                f"Missing critical resources: {', '.join(missing)}. "
+                "Model weights are not stored in this repo — fetch them with: "
+                "python scripts/download_models.py"
+            )
 
     def _optimize_models(self) -> None:
         try:

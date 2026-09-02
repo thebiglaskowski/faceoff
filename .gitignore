@@ -53,17 +53,20 @@ coverage.xml
 # --- Generated dc-runtime bundle (rebuild locally; not wired into app) ---
 ui/support.js
 
-# --- Model weights (large files) ---
-# (Commit ONLY if under 100MB or tracked via git-lfs)
+# --- Model weights (large files — NEVER commit; users fetch via
+# scripts/download_models.py so GitHub bandwidth stays at zero) ---
 models/**/*.pth
 models/**/*.pt
 models/**/*.onnx
+models/**/*.zip
+models/buffalo_l/
 
 # GFPGAN weights (large model files)
 gfpgan/
 
-# But keep your **main ONNX swapper** (if under 100MB) by explicitly negating
-!inswapper_128.onnx
+# Main ONNX swapper (~530 MB) — fetched by scripts/download_models.py
+inswapper_128.onnx
+inswapper_128_optimized.onnx
 
 # --- External dependencies (now using pip packages) ---
 external/Real-ESRGAN/
@@ -78,7 +81,6 @@ Thumbs.db
 node_modules/
 dist/
 build/
-inswapper_128_optimized.onnx
 
 # --- Internal docs (kept local, not published to GitHub) ---
 AGENTS.md

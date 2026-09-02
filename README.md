@@ -126,10 +126,12 @@ uv sync
 # Smoke-test the GPU stack (optional but recommended)
 uv run python scripts/verify_gpu_stack.py
 
-# Download models (manual):
-#   inswapper_128.onnx → project root
+# Download models (not stored in this repo — fetched from upstream):
+uv run python scripts/download_models.py
+#   inswapper_128.onnx → project root (from Hugging Face)
+#   buffalo_l → models/buffalo_l/ (from the InsightFace release)
+# Manual fallback:
 #     https://huggingface.co/thebiglaskowski/inswapper_128.onnx
-#   buffalo_l → models/buffalo_l/
 #     https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
 
 uv run python main.py
