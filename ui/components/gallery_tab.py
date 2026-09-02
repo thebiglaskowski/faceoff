@@ -1,5 +1,6 @@
 """Gallery tab component for viewing processed media."""
 
+import logging
 import os
 from pathlib import Path
 
@@ -8,10 +9,13 @@ import gradio as gr
 from ui.helpers.gallery_utils import (
     clear_gallery_cache,
     count_media_files,
+    delete_file,
     get_gif_files,
     get_image_files,
     get_video_files,
 )
+
+logger = logging.getLogger("FaceOff")
 
 
 def create_gallery_tab():
@@ -155,6 +159,187 @@ def update_gallery(media_type: str, limit: str = "24", force_refresh: bool = Fal
         count_text += f"\n\n_Showing {max_files} most recent {media_type.lower()}_"
 
     return gr.update(value=files, selected_index=None), gr.update(value=count_text)
+
+
+def show_delete_controls(evt: gr.SelectData, media_type_display: str):
+    """Show delete controls and processing settings when a gallery item is selected."""
+    from utils.output_metadata import format_settings_detail, load_output_metadata
+
+    logger.info(
+        "Gallery selection event - index: %s, value type: %s",
+        evt.index,
+        type(evt.value),
+    )
+
+    if evt.index is None:
+        return (
+            gr.update(visible=False),
+            gr.update(visible=False),
+            "",
+            gr.update(value="", visible=False),
+        )
+
+    selected_filename = None
+    file_path = None
+
+    if isinstance(evt.value, dict):
+        caption = evt.value.get("caption", "")
+        if caption:
+            selected_filename = caption.split("\n")[0].strip()
+        file_path = (
+            evt.value.get("image", {}).get("path")
+            if isinstance(evt.value.get("image"), dict)
+            else evt.value.get("image")
+        )
+    elif isinstance(evt.value, str):
+        file_path = evt.value
+        selected_filename = Path(evt.value).name
+
+    if not selected_filename and file_path:
+        selected_filename = Path(str(file_path)).name
+
+    if selected_filename:
+        media_type_map = {"Images": "image", "GIFs": "gif", "Videos": "video"}
+        internal_type = media_type_map.get(media_type_display, "image")
+        if not file_path:
+            file_path = str(Path("outputs") / internal_type / selected_filename)
+
+        metadata = load_output_metadata(file_path)
+        settings_md = format_settings_detail(metadata, file_path)
+
+        return (
+            gr.update(value=selected_filename, visible=True),
+            gr.update(visible=True),
+            "",
+            gr.update(value=settings_md, visible=True),
+        )
+
+    logger.warning("Could not extract filename from gallery selection")
+    return (
+        gr.update(visible=False),
+        gr.update(visible=False),
+        "",
+        gr.update(value="", visible=False),
+    )
+
+
+def delete_and_refresh(file_path: str, media_type_display: str, limit: str = "24"):
+    """Delete selected file and refresh the gallery."""
+    logger.info(
+        f"Delete triggered - file_path: '{file_path}', media_type: '{media_type_display}'"
+    )
+
+    if not file_path:
+        logger.warning("No file path provided for deletion")
+        return (
+            "❌ No file selected",  # delete_status
+            gr.update(),  # gallery (no change)
+            gr.update(),  # file_count_text (no change)
+            gr.update(visible=False),  # delete_btn (hide)
+            gr.update(visible=False),  # selected_file_display (hide)
+            gr.update(value="", visible=False),  # processing_settings_display (hide)
+        )
+
+    # Map display name to internal type
+    media_type_map = {"Images": "image", "GIFs": "gif", "Videos": "video"}
+    media_type = media_type_map.get(media_type_display, "image")
+    logger.info(f"Mapped media type: {media_type}")
+
+    # Reconstruct the full path from filename
+    output_base = Path("outputs")
+    full_file_path = str(output_base / media_type / file_path)
+    logger.info(f"Reconstructed full path: {full_file_path}")
+
+    # Delete the file
+    _, message = delete_file(full_file_path, media_type)
+    logger.info(f"Delete result: {message}")
+
+    # Refresh the gallery (returns tuple of gr.update() objects)
+    gallery_update, count_text_update = update_gallery(media_type_display, limit)
+
+    # Return updates
+    return (
+        message,  # delete_status (plain string for Markdown)
+        gallery_update,  # gallery
+        count_text_update,  # file_count_text
+        gr.update(visible=False),  # delete_btn (hide after delete)
+        gr.update(visible=False),  # selected_file_display (hide after delete)
+        gr.update(
+            value="", visible=False
+        ),  # processing_settings_display (hide after delete)
+    )
+
+
+def wire_gallery_tab(gallery_components):
+    """Bind all Gallery tab events (moved out of ui/app.py)."""
+    # Update gallery when media type changes
+    gallery_components["media_type_radio"].change(
+        fn=update_gallery,
+        inputs=[
+            gallery_components["media_type_radio"],
+            gallery_components["limit_selector"],
+        ],
+        outputs=[
+            gallery_components["gallery"],
+            gallery_components["file_count_text"],
+        ],
+    )
+
+    # Limit selector change
+    gallery_components["limit_selector"].change(
+        fn=update_gallery,
+        inputs=[
+            gallery_components["media_type_radio"],
+            gallery_components["limit_selector"],
+        ],
+        outputs=[
+            gallery_components["gallery"],
+            gallery_components["file_count_text"],
+        ],
+    )
+
+    # Refresh gallery button (clears cache and reloads)
+    gallery_components["refresh_btn"].click(
+        fn=refresh_gallery,
+        inputs=[
+            gallery_components["media_type_radio"],
+            gallery_components["limit_selector"],
+        ],
+        outputs=[
+            gallery_components["gallery"],
+            gallery_components["file_count_text"],
+        ],
+    )
+
+    # Gallery selection handler (show delete button when file selected)
+    gallery_components["gallery"].select(
+        fn=show_delete_controls,
+        inputs=[gallery_components["media_type_radio"]],
+        outputs=[
+            gallery_components["selected_file_display"],
+            gallery_components["delete_btn"],
+            gallery_components["delete_status"],
+            gallery_components["processing_settings_display"],
+        ],
+    )
+
+    # Delete button handler
+    gallery_components["delete_btn"].click(
+        fn=delete_and_refresh,
+        inputs=[
+            gallery_components["selected_file_display"],
+            gallery_components["media_type_radio"],
+            gallery_components["limit_selector"],
+        ],
+        outputs=[
+            gallery_components["delete_status"],
+            gallery_components["gallery"],
+            gallery_components["file_count_text"],
+            gallery_components["delete_btn"],
+            gallery_components["selected_file_display"],
+            gallery_components["processing_settings_display"],
+        ],
+    )
 
 
 def refresh_gallery(media_type: str, limit: str = "24"):

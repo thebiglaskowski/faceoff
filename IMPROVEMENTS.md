@@ -352,6 +352,29 @@ fit for per-frame video. No urgency to change models, only packaging.
 
 ---
 
+## Planned: Python 3.13 / NumPy 2 migration
+
+**Why:** the project is pinned to Python 3.12 with `numpy<2.0` because
+`numpy 1.26.4` ships no cp313 wheels and `onnxruntime-gpu` resolves to a
+CUDA 12 build on ≤3.11 (see the load-bearing comments in
+`pyproject.toml`). When 3.12 nears EOL, migrate in this order:
+
+1. Lift `numpy` to `>=2.0` first — audit `basicsr` / `facexlib` /
+   `insightface` for NumPy 2 incompatibilities (these are the packages
+   most likely to break; they are also why `uv.lock` exists, so test
+   with a scratch lock before committing).
+2. Re-verify the `onnxruntime-gpu` CUDA build resolved on 3.13 matches
+   the torch CUDA wheels (today: cu13 from torch's wheels on 3.12).
+   If it regresses to cu12, the `nvidia-*-cu12` pins must come back —
+   see the removed-pins comment in `pyproject.toml`.
+3. Re-run the full unit suite **plus** `pytest tests/ --gpu` on a
+   CUDA machine; the `@pytest.mark.gpu` gate means CI alone cannot
+   catch provider/stack regressions.
+4. Keep `requires-python` upper bound in sync (`<3.14` when 3.13 is
+   proven) so `uv sync` fails loudly instead of resolving a broken mix.
+
+---
+
 ## Conclusion
 
 **Status:** All 4 improvements successfully implemented and tested ✅

@@ -2,6 +2,18 @@
 
 import gradio as gr
 
+from ui.handlers.processing_handlers import (
+    add_face_mapping_image,
+    clear_face_mappings_image,
+    process_image,
+)
+from ui.helpers.controls import (
+    refresh_gallery_images,
+    toggle_denoise_slider,
+    toggle_enhancement_controls,
+    toggle_restoration_controls,
+    update_model_choices,
+)
 from ui.helpers.face_detection import detect_faces_for_mapping, detect_faces_simple
 from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
 from ui.helpers.gpu_utils import get_gpu_options
@@ -230,3 +242,133 @@ def create_image_tab():
         "tensorrt_fp16_checkbox": tensorrt_fp16_checkbox,
         "run_image_btn": run_image_btn,
     }
+
+
+def wire_image_tab(img_components, gallery_components):
+    """Bind all Image tab events (moved out of ui/app.py)."""
+    # Enhancement controls visibility
+    img_components["enhance_toggle"].change(
+        toggle_enhancement_controls,
+        inputs=[img_components["enhance_toggle"]],
+        outputs=[
+            img_components["model_row"],
+            img_components["enhancement_options_row"],
+            img_components["enhancement_advanced_row"],
+            img_components["enhancement_model_selector"],
+        ],
+    )
+
+    # Update model selector choices when enhancement framework changes
+    img_components["enhancement_model_selector"].change(
+        update_model_choices,
+        inputs=[img_components["enhancement_model_selector"]],
+        outputs=[img_components["model_selector"]],
+    )
+
+    img_components["restore_faces_toggle"].change(
+        toggle_restoration_controls,
+        inputs=[img_components["restore_faces_toggle"]],
+        outputs=[
+            img_components["restoration_row"],
+            img_components["restoration_model_selector"],
+        ],
+    )
+
+    img_components["model_selector"].change(
+        toggle_denoise_slider,
+        inputs=[img_components["model_selector"]],
+        outputs=[img_components["denoise_slider"]],
+    )
+
+    # Image face detection on upload
+    img_components["source_img"].change(
+        detect_faces_simple,
+        inputs=[img_components["source_img"], img_components["face_confidence"]],
+        outputs=[img_components["face_info_img"]],
+    )
+    img_components["face_confidence"].change(
+        detect_faces_simple,
+        inputs=[img_components["source_img"], img_components["face_confidence"]],
+        outputs=[img_components["face_info_img"]],
+    )
+
+    # Image face mapping
+    img_components["detect_faces_btn"].click(
+        detect_faces_for_mapping,
+        inputs=[
+            img_components["source_img"],
+            img_components["target_img"],
+            img_components["face_confidence"],
+        ],
+        outputs=[
+            img_components["source_faces_gallery"],
+            img_components["target_faces_gallery"],
+            img_components["face_mapping_status"],
+            img_components["mapping_source_idx"],
+            img_components["mapping_target_idx"],
+            img_components["source_faces_gallery"],
+            img_components["target_faces_gallery"],
+        ],
+    )
+
+    img_components["target_img"].change(
+        clear_face_mappings_image,
+        outputs=[
+            img_components["face_mapping_status"],
+            img_components["current_mappings"],
+        ],
+    )
+
+    img_components["add_mapping_btn"].click(
+        add_face_mapping_image,
+        inputs=[
+            img_components["mapping_source_idx"],
+            img_components["mapping_target_idx"],
+            img_components["current_mappings"],
+        ],
+        outputs=[
+            img_components["face_mapping_status"],
+            img_components["current_mappings"],
+        ],
+    )
+
+    img_components["clear_mappings_btn"].click(
+        clear_face_mappings_image,
+        outputs=[
+            img_components["face_mapping_status"],
+            img_components["current_mappings"],
+        ],
+    )
+
+    # Image processing button with auto-refresh of gallery
+    img_components["run_image_btn"].click(
+        process_image,
+        inputs=[
+            img_components["source_img"],
+            img_components["target_img"],
+            img_components["enhance_toggle"],
+            img_components["face_confidence"],
+            img_components["gpu_selection"],
+            img_components["model_selector"],
+            img_components["denoise_slider"],
+            img_components["tile_size_slider"],
+            img_components["outscale_slider"],
+            img_components["use_fp32_checkbox"],
+            img_components["pre_pad_slider"],
+            img_components["restore_faces_toggle"],
+            img_components["restoration_weight_slider"],
+            img_components["tensorrt_fp16_checkbox"],
+            img_components["enhancement_model_selector"],
+            img_components["restoration_model_selector"],
+        ],
+        outputs=[img_components["result_img"]],
+        show_progress="full",
+    ).then(
+        # Auto-refresh gallery after processing completes
+        refresh_gallery_images,
+        inputs=[img_components["result_img"]],
+        outputs=[
+            gallery_components["gallery"],
+            gallery_components["file_count_text"],
+        ],
+    )

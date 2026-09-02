@@ -2,6 +2,18 @@
 
 import gradio as gr
 
+from ui.handlers.processing_handlers import (
+    add_face_mapping_gif,
+    clear_face_mappings_gif,
+    process_gif,
+)
+from ui.helpers.controls import (
+    refresh_gallery_gifs,
+    toggle_denoise_slider,
+    toggle_enhancement_controls,
+    toggle_restoration_controls,
+    update_model_choices,
+)
 from ui.helpers.face_detection import detect_faces_simple, detect_faces_with_thumbnails
 from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
 from ui.helpers.gpu_utils import get_gpu_options
@@ -234,3 +246,143 @@ def create_gif_tab():
         "tensorrt_fp16_checkbox_gif": tensorrt_fp16_checkbox_gif,
         "run_gif_btn": run_gif_btn,
     }
+
+
+def wire_gif_tab(gif_components, gallery_components):
+    """Bind all GIF tab events (moved out of ui/app.py)."""
+    gif_components["enhance_toggle_gif"].change(
+        toggle_enhancement_controls,
+        inputs=[gif_components["enhance_toggle_gif"]],
+        outputs=[
+            gif_components["model_row_gif"],
+            gif_components["enhancement_options_row_gif"],
+            gif_components["enhancement_advanced_row_gif"],
+            gif_components["enhancement_model_selector_gif"],
+        ],
+    )
+
+    # Update model selector choices when enhancement framework changes
+    gif_components["enhancement_model_selector_gif"].change(
+        update_model_choices,
+        inputs=[gif_components["enhancement_model_selector_gif"]],
+        outputs=[gif_components["model_selector_gif"]],
+    )
+
+    gif_components["restore_faces_toggle_gif"].change(
+        toggle_restoration_controls,
+        inputs=[gif_components["restore_faces_toggle_gif"]],
+        outputs=[
+            gif_components["restoration_row_gif"],
+            gif_components["restoration_model_selector_gif"],
+        ],
+    )
+
+    gif_components["model_selector_gif"].change(
+        toggle_denoise_slider,
+        inputs=[gif_components["model_selector_gif"]],
+        outputs=[gif_components["denoise_slider_gif"]],
+    )
+
+    # GIF face detection
+    gif_components["source_gif"].change(
+        detect_faces_simple,
+        inputs=[
+            gif_components["source_gif"],
+            gif_components["face_confidence_gif"],
+        ],
+        outputs=[gif_components["face_info_gif"]],
+    )
+    gif_components["face_confidence_gif"].change(
+        detect_faces_simple,
+        inputs=[
+            gif_components["source_gif"],
+            gif_components["face_confidence_gif"],
+        ],
+        outputs=[gif_components["face_info_gif"]],
+    )
+
+    # GIF preview (clear stale mappings when target GIF changes)
+    gif_components["target_gif_file"].change(
+        show_gif_preview,
+        inputs=[gif_components["target_gif_file"]],
+        outputs=[gif_components["target_gif_preview"]],
+    ).then(
+        clear_face_mappings_gif,
+        outputs=[
+            gif_components["face_mapping_status_gif"],
+            gif_components["current_mappings_gif"],
+        ],
+    )
+
+    # GIF face mapping
+    gif_components["detect_faces_btn_gif"].click(
+        detect_faces_with_thumbnails,
+        inputs=[
+            gif_components["source_gif"],
+            gif_components["target_gif_file"],
+            gif_components["face_confidence_gif"],
+        ],
+        outputs=[
+            gif_components["source_faces_gallery_gif"],
+            gif_components["target_faces_gallery_gif"],
+            gif_components["face_mapping_status_gif"],
+            gif_components["mapping_source_idx_gif"],
+            gif_components["mapping_target_idx_gif"],
+            gif_components["source_faces_gallery_gif"],
+            gif_components["target_faces_gallery_gif"],
+        ],
+    )
+
+    gif_components["add_mapping_btn_gif"].click(
+        add_face_mapping_gif,
+        inputs=[
+            gif_components["mapping_source_idx_gif"],
+            gif_components["mapping_target_idx_gif"],
+            gif_components["current_mappings_gif"],
+        ],
+        outputs=[
+            gif_components["face_mapping_status_gif"],
+            gif_components["current_mappings_gif"],
+        ],
+    )
+
+    gif_components["clear_mappings_btn_gif"].click(
+        clear_face_mappings_gif,
+        outputs=[
+            gif_components["face_mapping_status_gif"],
+            gif_components["current_mappings_gif"],
+        ],
+    )
+
+    # GIF processing button with auto-refresh of gallery
+    gif_components["run_gif_btn"].click(
+        process_gif,
+        inputs=[
+            gif_components["source_gif"],
+            gif_components["target_gif_file"],
+            gif_components["enhance_toggle_gif"],
+            gif_components["face_confidence_gif"],
+            gif_components["gpu_selection_gif"],
+            gif_components["model_selector_gif"],
+            gif_components["denoise_slider_gif"],
+            gif_components["tile_size_slider_gif"],
+            gif_components["outscale_slider_gif"],
+            gif_components["use_fp32_checkbox_gif"],
+            gif_components["pre_pad_slider_gif"],
+            gif_components["restore_faces_toggle_gif"],
+            gif_components["restoration_weight_slider_gif"],
+            gif_components["tensorrt_fp16_checkbox_gif"],
+            gif_components["enhancement_model_selector_gif"],
+            gif_components["restoration_model_selector_gif"],
+        ],
+        outputs=[gif_components["result_gif"]],
+        show_progress="full",
+    ).then(
+        # Auto-refresh gallery after processing completes
+        refresh_gallery_gifs,
+        inputs=[gif_components["result_gif"]],
+        outputs=[
+            gallery_components["gallery"],
+            gallery_components["file_count_text"],
+        ],
+    )

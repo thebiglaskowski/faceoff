@@ -2,9 +2,22 @@
 
 import gradio as gr
 
+from ui.handlers.processing_handlers import (
+    add_face_mapping_video,
+    clear_face_mappings_video,
+    process_video,
+)
+from ui.helpers.controls import (
+    refresh_gallery_videos,
+    toggle_denoise_slider,
+    toggle_enhancement_controls,
+    toggle_restoration_controls,
+    update_model_choices,
+)
 from ui.helpers.face_detection import detect_faces_simple, detect_faces_with_thumbnails
 from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
 from ui.helpers.gpu_utils import get_gpu_options
+from ui.helpers.preview import validate_target_video_upload
 from utils.constants import (
     DEFAULT_HAT_MODEL,
     DEFAULT_MODEL,
@@ -244,3 +257,140 @@ def create_video_tab():
         "tensorrt_fp16_checkbox_vid": tensorrt_fp16_checkbox_vid,
         "run_video_btn": run_video_btn,
     }
+
+
+def wire_video_tab(vid_components, gallery_components):
+    """Bind all Video tab events (moved out of ui/app.py)."""
+    vid_components["enhance_toggle_vid"].change(
+        toggle_enhancement_controls,
+        inputs=[vid_components["enhance_toggle_vid"]],
+        outputs=[
+            vid_components["model_row_vid"],
+            vid_components["enhancement_options_row_vid"],
+            vid_components["enhancement_advanced_row_vid"],
+            vid_components["enhancement_model_selector_vid"],
+        ],
+    )
+
+    # Update model selector choices when enhancement framework changes
+    vid_components["enhancement_model_selector_vid"].change(
+        update_model_choices,
+        inputs=[vid_components["enhancement_model_selector_vid"]],
+        outputs=[vid_components["model_selector_vid"]],
+    )
+
+    vid_components["restore_faces_toggle_vid"].change(
+        toggle_restoration_controls,
+        inputs=[vid_components["restore_faces_toggle_vid"]],
+        outputs=[
+            vid_components["restoration_row_vid"],
+            vid_components["restoration_model_selector_vid"],
+        ],
+    )
+
+    vid_components["model_selector_vid"].change(
+        toggle_denoise_slider,
+        inputs=[vid_components["model_selector_vid"]],
+        outputs=[vid_components["denoise_slider_vid"]],
+    )
+
+    # Video face detection
+    vid_components["source_vid"].change(
+        detect_faces_simple,
+        inputs=[
+            vid_components["source_vid"],
+            vid_components["face_confidence_video"],
+        ],
+        outputs=[vid_components["face_info_vid"]],
+    )
+    vid_components["face_confidence_video"].change(
+        detect_faces_simple,
+        inputs=[
+            vid_components["source_vid"],
+            vid_components["face_confidence_video"],
+        ],
+        outputs=[vid_components["face_info_vid"]],
+    )
+
+    vid_components["target_vid"].change(
+        validate_target_video_upload,
+        inputs=[vid_components["target_vid"]],
+        outputs=[
+            vid_components["face_mapping_status_vid"],
+            vid_components["current_mappings_vid"],
+            vid_components["target_vid_preview"],
+        ],
+    )
+
+    # Video face mapping
+    vid_components["detect_faces_btn_vid"].click(
+        detect_faces_with_thumbnails,
+        inputs=[
+            vid_components["source_vid"],
+            vid_components["target_vid"],
+            vid_components["face_confidence_video"],
+        ],
+        outputs=[
+            vid_components["source_faces_gallery_vid"],
+            vid_components["target_faces_gallery_vid"],
+            vid_components["face_mapping_status_vid"],
+            vid_components["mapping_source_idx_vid"],
+            vid_components["mapping_target_idx_vid"],
+            vid_components["source_faces_gallery_vid"],
+            vid_components["target_faces_gallery_vid"],
+        ],
+    )
+
+    vid_components["add_mapping_btn_vid"].click(
+        add_face_mapping_video,
+        inputs=[
+            vid_components["mapping_source_idx_vid"],
+            vid_components["mapping_target_idx_vid"],
+            vid_components["current_mappings_vid"],
+        ],
+        outputs=[
+            vid_components["face_mapping_status_vid"],
+            vid_components["current_mappings_vid"],
+        ],
+    )
+
+    vid_components["clear_mappings_btn_vid"].click(
+        clear_face_mappings_video,
+        outputs=[
+            vid_components["face_mapping_status_vid"],
+            vid_components["current_mappings_vid"],
+        ],
+    )
+
+    # Video processing button with auto-refresh of gallery
+    vid_components["run_video_btn"].click(
+        process_video,
+        inputs=[
+            vid_components["source_vid"],
+            vid_components["target_vid"],
+            vid_components["enhance_toggle_vid"],
+            vid_components["face_confidence_video"],
+            vid_components["gpu_selection_video"],
+            vid_components["model_selector_vid"],
+            vid_components["denoise_slider_vid"],
+            vid_components["tile_size_slider_vid"],
+            vid_components["outscale_slider_vid"],
+            vid_components["use_fp32_checkbox_vid"],
+            vid_components["pre_pad_slider_vid"],
+            vid_components["restore_faces_toggle_vid"],
+            vid_components["restoration_weight_slider_vid"],
+            vid_components["tensorrt_fp16_checkbox_vid"],
+            vid_components["enhancement_model_selector_vid"],
+            vid_components["restoration_model_selector_vid"],
+        ],
+        outputs=[vid_components["result_vid"]],
+        show_progress="full",
+    ).then(
+        # Auto-refresh gallery after processing completes
+        refresh_gallery_videos,
+        inputs=[vid_components["result_vid"]],
+        outputs=[
+            gallery_components["gallery"],
+            gallery_components["file_count_text"],
+        ],
+    )
