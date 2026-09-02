@@ -420,7 +420,6 @@ requires-dist = [
     { name = "facexlib", specifier = ">=0.3.0" },
     { name = "fastapi", specifier = ">=0.121.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "gdown", specifier = ">=5.0.0" },
     { name = "gfpgan", specifier = ">=1.3.8" },
     { name = "gradio", specifier = ">=5.49.0" },
     { name = "imageio", specifier = ">=2.33.0,<2.35.0" },

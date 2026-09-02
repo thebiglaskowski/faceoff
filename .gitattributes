@@ -1,2 +1,6 @@
-*.onnx filter=lfs diff=lfs merge=lfs -text
-*.pth filter=lfs diff=lfs merge=lfs -text
+# Git LFS is intentionally unused in this repo.
+#
+# Model weights (*.onnx / *.pth) are NOT stored here — users fetch them
+# from upstream via scripts/download_models.py (see README Quick Start).
+# Do not re-add LFS filters: every LFS-tracked blob burns the owner's
+# GitHub bandwidth on each clone.
