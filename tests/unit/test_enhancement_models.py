@@ -372,6 +372,7 @@ class TestHAT:
         assert get_hat_scale("InvalidModel") == 4  # Default
 
     @pytest.mark.unit
+    @pytest.mark.gpu
     def test_hat_cache_clear(self, mock_gpu):
         """Test that HAT cache can be cleared."""
         from processing.hat_enhancement import _hat_cache, clear_hat_cache
@@ -380,6 +381,7 @@ class TestHAT:
         assert len(_hat_cache) == 0
 
     @pytest.mark.unit
+    @pytest.mark.gpu
     def test_get_hat_model_serializes_concurrent_loads(self, mock_gpu):
         """Concurrent _get_hat_model calls must not double-load the same GPU."""
         import threading

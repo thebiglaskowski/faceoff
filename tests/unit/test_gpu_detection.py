@@ -7,6 +7,7 @@ import pytest
 
 
 class TestGpuDetection:
+    @pytest.mark.gpu
     def test_downscale_frame_gpu(self, mock_gpu):
         import torch
 
@@ -18,6 +19,7 @@ class TestGpuDetection:
         assert scaled.shape[1] == 200
         assert factor == pytest.approx(0.5, rel=0.05)
 
+    @pytest.mark.gpu
     def test_detect_faces_from_gpu_uses_instance(self, mock_gpu):
         import torch
 

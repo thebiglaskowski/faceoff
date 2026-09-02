@@ -7,6 +7,7 @@ import pytest
 
 
 class TestChunkFrameBuffer:
+    @pytest.mark.gpu
     def test_upload_creates_gpu_batch(self, mock_gpu):
         import torch
 
@@ -22,6 +23,7 @@ class TestChunkFrameBuffer:
         assert batch.device.type == "cuda"
         assert buf.frame_numpy(0) is frames[0]
 
+    @pytest.mark.gpu
     def test_replace_from_numpy_clears_gpu_cache(self, mock_gpu):
         from core.gpu_frame import ChunkFrameBuffer
 
@@ -33,6 +35,7 @@ class TestChunkFrameBuffer:
         assert buf._gpu_batch is None
         assert buf.frames is new_frames
 
+    @pytest.mark.gpu
     def test_update_frame_gpu_and_download_all(self, mock_gpu):
         import torch
 
@@ -54,6 +57,7 @@ class TestChunkFrameBuffer:
 
 
 class TestSwapperIoBinding:
+    @pytest.mark.gpu
     def test_run_swapper_batch_falls_back_to_numpy(self, mock_gpu):
         from core.model_pool import GPUModelInstance
 

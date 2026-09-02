@@ -412,6 +412,7 @@ class TestEdgeCases:
 class TestRefreshAndEnhancementPrep:
     """Tests for staged memory refresh helpers."""
 
+    @pytest.mark.gpu
     def test_refresh_gpu_memory_calls_empty_cache(
         self, mock_gpu, temp_config, reset_config
     ):
@@ -449,6 +450,7 @@ class TestRefreshAndEnhancementPrep:
             ]
             assert select_enhancement_gpu(0, [0, 1]) == 1
 
+    @pytest.mark.gpu
     def test_prepare_for_enhancement_releases_swap_models(
         self, mock_gpu, temp_config, reset_config
     ):

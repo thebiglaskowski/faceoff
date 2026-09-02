@@ -1,9 +1,11 @@
 """Tests for pinned frame pools."""
 
 import numpy as np
+import pytest
 
 
 class TestPinnedFramePool:
+    @pytest.mark.gpu
     def test_borrow_reuses_buffer(self):
         from utils.pinned_pool import PinnedFramePool
 

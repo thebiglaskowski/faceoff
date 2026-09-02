@@ -7,6 +7,7 @@ import pytest
 
 
 class TestGpuPasteWiring:
+    @pytest.mark.gpu
     def test_process_frames_batch_downloads_chunk_when_gpu_paste(self, mock_gpu):
         import torch
 
