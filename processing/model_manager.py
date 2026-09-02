@@ -11,10 +11,19 @@ from __future__ import annotations
 import logging
 import subprocess
 import sys
+import threading
+import time
+from collections import deque
 from pathlib import Path
-from typing import List
+from typing import Iterator, List
 
 logger = logging.getLogger("FaceOff")
+
+# Set by the UI Cancel button; checked by stream_model_download.
+_cancel_download = threading.Event()
+
+# Hard cap for one download run (matches the old blocking timeout).
+DOWNLOAD_TIMEOUT_SEC = 3600
 
 # UI dropdown label -> --models value for scripts/download_models.py
 AVAILABLE_DOWNLOADS = {
@@ -104,6 +113,77 @@ def run_model_download(selection: str, force: bool = False) -> str:
     )
     logger.info("Model download finished with code %d", proc.returncode)
     return f"{status}\n\n{tail}" if tail else status
+
+
+def request_download_cancel() -> None:
+    """Signal a running stream_model_download to stop (UI Cancel button)."""
+    _cancel_download.set()
+
+
+def _download_cmd(selection: str, force: bool) -> List[str]:
+    models_arg = AVAILABLE_DOWNLOADS.get(selection, "all")
+    script = Path(__file__).resolve().parent.parent / "scripts" / "download_models.py"
+    # -u: unbuffered child stdout so progress lines stream live.
+    cmd = [sys.executable, "-u", str(script), "--models", models_arg]
+    if force:
+        cmd.append("--force")
+    return cmd
+
+
+def stream_model_download(selection: str, force: bool = False) -> Iterator[str]:
+    """Yield the download log live; last yield carries the final status.
+
+    Generator wired to the Gradio download button. Honors
+    request_download_cancel() and DOWNLOAD_TIMEOUT_SEC.
+    """
+    _cancel_download.clear()
+    cmd = _download_cmd(selection, force)
+    logger.info("Model download started: %s", " ".join(cmd))
+    tail: deque[str] = deque(maxlen=LOG_TAIL_LINES)
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except Exception as exc:
+        yield f"❌ Could not launch download script: {exc}"
+        return
+
+    start = time.monotonic()
+    try:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            tail.append(line.rstrip())
+            if _cancel_download.is_set():
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                logger.info("Model download cancelled by user")
+                yield "⛔ Download cancelled by user.\n\n" + "\n".join(tail)
+                return
+            if time.monotonic() - start > DOWNLOAD_TIMEOUT_SEC:
+                proc.kill()
+                yield "❌ Download timed out after 1 hour.\n\n" + "\n".join(tail)
+                return
+            yield "\n".join(tail)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait()
+    code = proc.returncode
+    logger.info("Model download finished with code %d", code)
+    status = (
+        "✅ Download finished."
+        if code == 0
+        else f"❌ Download script exited with code {code}."
+    )
+    body = "\n".join(tail)
+    yield f"{status}\n\n{body}" if body else status
 
 
 def get_trt_cache_text() -> str:

@@ -7,15 +7,19 @@ from processing.model_manager import (
     clear_trt_cache,
     get_model_status,
     get_trt_cache_text,
-    run_model_download,
+    request_download_cancel,
+    stream_model_download,
     verify_models,
 )
 
 
-def _download_and_refresh(selection: str, force: bool):
-    """Run the download, then refresh status table + cache text."""
-    log = run_model_download(selection, force)
-    return log, get_model_status(), get_trt_cache_text()
+def _stream_and_refresh(selection: str, force: bool):
+    """Stream the download log live; refresh table + cache at the end."""
+    last = ""
+    for chunk in stream_model_download(selection, force):
+        last = chunk
+        yield last, gr.skip(), gr.skip()
+    yield last, get_model_status(), get_trt_cache_text()
 
 
 def create_models_tab() -> dict:
@@ -50,7 +54,9 @@ def create_models_tab() -> dict:
             force_checkbox = gr.Checkbox(
                 label="Force re-download", value=False, info="Even if files exist"
             )
-        download_btn = gr.Button("⬇️ Download", variant="primary")
+        with gr.Row():
+            download_btn = gr.Button("⬇️ Download", variant="primary")
+            cancel_btn = gr.Button("⛔ Cancel", variant="stop", size="sm", visible=True)
         download_log = gr.Textbox(
             label="Download log",
             value="",
@@ -73,10 +79,14 @@ def create_models_tab() -> dict:
             outputs=[verify_report],
         )
         download_btn.click(
-            _download_and_refresh,
+            _stream_and_refresh,
             inputs=[download_dropdown, force_checkbox],
             outputs=[download_log, model_table, cache_text],
             show_progress="full",
+        )
+        cancel_btn.click(
+            request_download_cancel,
+            outputs=[],
         )
         clear_cache_btn.click(
             lambda: (clear_trt_cache(), get_model_status()),
