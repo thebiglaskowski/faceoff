@@ -179,7 +179,7 @@ uv sync
 
 ## Usage
 
-The Gradio UI has tabs for **Image**, **GIF**, **Video**, **Gallery**, and **Terminal** (live log tail).
+The Gradio UI has tabs for **Image**, **GIF**, **Video**, **Gallery**, **Models** (weights, cache), and **Terminal** (live log tail).
 
 1. Upload a **source** face image and **target** media
 2. Map faces if multiple are detected
@@ -259,6 +259,7 @@ Full reference: [CONFIG_README.md](CONFIG_README.md)
 
 | Issue | What to try |
 |-------|-------------|
+| Missing models on startup | Models tab → Download, or run `scripts/download_models.py` |
 | CUDA OOM | Lower `gpu.batch_size`, use an x2 model, shorter clips |
 | TensorRT / `libnvinfer` errors | `uv sync`, run `scripts/verify_gpu_stack.py`, or disable `gpu.tensorrt_enabled` |
 | No faces detected | Better lighting, higher-res input, check `models/buffalo_l/`, lower `face_detection.confidence_threshold` |
@@ -301,6 +302,7 @@ faceoff/
 ├── ui/                          # Gradio app, tabs, handlers
 ├── utils/                       # config, video_io, memory, logging
 ├── tests/                       # 316+ pytest tests
+├── scripts/download_models.py   # Fetch weights from upstream (not in repo)
 └── scripts/verify_gpu_stack.py  # GPU smoke test
 ```
 
