@@ -25,13 +25,13 @@ _mod = ModuleType("torchvision.transforms.functional_tensor")
 _mod.rgb_to_grayscale = rgb_to_grayscale
 sys.modules["torchvision.transforms.functional_tensor"] = _mod
 
-# Patch torch.load for GFPGAN dependency chain.
-# WARNING: PyTorch 2.6+ defaults weights_only=True to prevent trojaned .pth files.
-# These packages omit the parameter, so we pass weights_only=False as a
-# compatibility shim. This is a conscious security relaxation for a
-# local-only desktop tool — all model files are user-supplied.
-_torch_load = torch.load
-torch.load = lambda *a, **k: _torch_load(*a, **{**k, "weights_only": False})
+# Scoped torch.load compat: PyTorch 2.6+ defaults weights_only=True, but the
+# basicsr/gfpgan dependency chain omits the parameter. The shim in
+# utils/legacy_torch.py relaxes deserialization ONLY for those legacy
+# packages; our own loads keep the secure default.
+from utils.legacy_torch import install_legacy_torch_load_shim
+
+install_legacy_torch_load_shim()
 
 # ---------------------------------------------------------------------------
 # Logging + NVIDIA libs — MUST run before any onnxruntime import.
