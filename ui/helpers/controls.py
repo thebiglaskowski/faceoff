@@ -43,6 +43,12 @@ def update_model_choices(enhancement_framework: str):
         choices = list(HAT_MODEL_OPTIONS.keys())
         default = DEFAULT_HAT_MODEL
         info = "Select HAT (Hybrid Attention Transformer) model for enhancement"
+    elif enhancement_framework == "OSEDiff":
+        from processing.osediff_enhancement import OSEDIFF_VARIANT
+
+        choices = [OSEDIFF_VARIANT]
+        default = OSEDIFF_VARIANT
+        info = "One-step diffusion cleanup — still images only, slow first load"
     else:
         choices = list(MODEL_OPTIONS.keys())
         default = DEFAULT_MODEL

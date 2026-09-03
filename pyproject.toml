@@ -43,6 +43,10 @@ dependencies = [
     "facexlib>=0.3.0",
     "transformers>=4.36.0",
     "codeformer-pip>=0.0.4",
+    # OSEDiff one-step diffusion restoration (image-only quality mode)
+    "diffusers>=0.32.0",
+    "accelerate>=0.34.0",
+    "peft>=0.12.0",
 
     # Performance / GPU acceleration
     # ORT 1.22+ TensorRT EP links against libnvinfer.so.10 — TRT 11 is incompatible

@@ -30,6 +30,7 @@ AVAILABLE_DOWNLOADS = {
     "All models (recommended)": "all",
     "inswapper_128.onnx (face swap)": "inswapper",
     "buffalo_l (face detection)": "buffalo_l",
+    "osediff (diffusion quality, ~5 GB)": "osediff",
 }
 
 # (display name, relative path, kind) for the status table.
