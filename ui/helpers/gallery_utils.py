@@ -179,6 +179,30 @@ def invalidate_gallery_for_new_file(media_type: str) -> None:
     logger.info(f"Gallery cache invalidated for new {media_type} file")
 
 
+def delete_all_files(media_type: str, output_dir: str = "outputs") -> Tuple[int, int]:
+    """
+    Delete every gallery file of one media type.
+
+    Reuses :func:`delete_file`, so outputs-tree confinement and metadata
+    sidecar cleanup apply to each file.
+
+    Returns:
+        Tuple of (deleted_count, failed_count).
+    """
+    clear_gallery_cache(media_type)
+    files = get_media_files(output_dir, media_type, max_files=100000)
+    deleted = 0
+    failed = 0
+    for file_path, _caption in files:
+        ok, _message = delete_file(file_path, media_type)
+        if ok:
+            deleted += 1
+        else:
+            failed += 1
+    logger.info(f"Cleared {deleted} {media_type} file(s) ({failed} failed)")
+    return deleted, failed
+
+
 def count_media_files(output_dir: str = "outputs") -> dict:
     """
     Count media files in each category.

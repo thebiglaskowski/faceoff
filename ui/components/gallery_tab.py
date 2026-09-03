@@ -9,6 +9,7 @@ import gradio as gr
 from ui.helpers.gallery_utils import (
     clear_gallery_cache,
     count_media_files,
+    delete_all_files,
     delete_file,
     get_gif_files,
     get_image_files,
@@ -16,6 +17,11 @@ from ui.helpers.gallery_utils import (
 )
 
 logger = logging.getLogger("FaceOff")
+
+CLEAR_ALL_LABEL = "🧹 Clear all"
+CONFIRM_CLEAR_LABEL = "⚠️ Click again to confirm"
+
+_MEDIA_TYPE_MAP = {"Images": "image", "GIFs": "gif", "Videos": "video"}
 
 
 def create_gallery_tab():
@@ -47,6 +53,10 @@ def create_gallery_tab():
                 "🔄 Refresh Gallery", variant="secondary", size="sm"
             )
 
+            # Bulk delete (two-step confirm)
+            clear_all_btn = gr.Button(CLEAR_ALL_LABEL, variant="stop", size="sm")
+            clear_armed = gr.State("")
+
         # File count display
         file_count_text = gr.Markdown(value=_get_count_text())
 
@@ -76,6 +86,8 @@ def create_gallery_tab():
 
         delete_status = gr.Markdown(value="", visible=False)
 
+        bulk_status = gr.Markdown(value="", visible=False)
+
         processing_settings_display = gr.Markdown(
             value="",
             label="Processing Settings",
@@ -90,6 +102,7 @@ def create_gallery_tab():
         - Adjust "Files to Show" for faster/slower loading
         - Files are sorted by newest first
         - Select a file to view full settings or delete it
+        - "Clear all" deletes every file of the shown type (click twice to confirm)
         """)
 
     return {
@@ -101,6 +114,9 @@ def create_gallery_tab():
         "selected_file_display": selected_file_display,
         "delete_btn": delete_btn,
         "delete_status": delete_status,
+        "clear_all_btn": clear_all_btn,
+        "clear_armed": clear_armed,
+        "bulk_status": bulk_status,
         "processing_settings_display": processing_settings_display,
     }
 
@@ -183,7 +199,7 @@ def show_delete_controls(evt: gr.SelectData, media_type_display: str):
         return (
             gr.update(visible=False),
             gr.update(visible=False),
-            "",
+            gr.update(value="", visible=False),
             gr.update(value="", visible=False),
         )
 
@@ -218,7 +234,7 @@ def show_delete_controls(evt: gr.SelectData, media_type_display: str):
         return (
             gr.update(value=selected_filename, visible=True),
             gr.update(visible=True),
-            "",
+            gr.update(value="", visible=False),
             gr.update(value=settings_md, visible=True),
         )
 
@@ -226,7 +242,7 @@ def show_delete_controls(evt: gr.SelectData, media_type_display: str):
     return (
         gr.update(visible=False),
         gr.update(visible=False),
-        "",
+        gr.update(value="", visible=False),
         gr.update(value="", visible=False),
     )
 
@@ -240,7 +256,7 @@ def delete_and_refresh(file_path: str, media_type_display: str, limit: str = "24
     if not file_path:
         logger.warning("No file path provided for deletion")
         return (
-            "❌ No file selected",  # delete_status
+            gr.update(value="❌ No file selected", visible=True),  # delete_status
             gr.update(),  # gallery (no change)
             gr.update(),  # file_count_text (no change)
             gr.update(visible=False),  # delete_btn (hide)
@@ -267,7 +283,7 @@ def delete_and_refresh(file_path: str, media_type_display: str, limit: str = "24
 
     # Return updates
     return (
-        message,  # delete_status (plain string for Markdown)
+        gr.update(value=message, visible=True),  # delete_status
         gallery_update,  # gallery
         count_text_update,  # file_count_text
         gr.update(visible=False),  # delete_btn (hide after delete)
@@ -275,6 +291,71 @@ def delete_and_refresh(file_path: str, media_type_display: str, limit: str = "24
         gr.update(
             value="", visible=False
         ),  # processing_settings_display (hide after delete)
+    )
+
+
+def disarm_clear_all():
+    """Reset the two-step clear-all confirm (label + armed state)."""
+    return gr.update(value=CLEAR_ALL_LABEL), ""
+
+
+def clear_all_media(media_type_display: str, limit: str = "24", armed_for: str = ""):
+    """Two-step bulk delete for the currently shown media type.
+
+    First click arms (no deletion); the confirming click must show the
+    same media type, otherwise it re-arms for the new type. Returns
+    (status, gallery_update, count_update, button_update, armed_state).
+    """
+
+    def _status(message: str):
+        return gr.update(value=message, visible=True)
+
+    internal_type = _MEDIA_TYPE_MAP.get(media_type_display)
+    if internal_type is None:
+        logger.warning("Clear-all with unknown media type: %r", media_type_display)
+        return (
+            _status(f"❌ Unknown media type: {media_type_display}"),
+            gr.update(),
+            gr.update(),
+            gr.update(value=CLEAR_ALL_LABEL),
+            "",
+        )
+
+    total = count_media_files().get(internal_type, 0)
+    if total == 0:
+        return (
+            _status(f"Nothing to delete — no {media_type_display.lower()} yet."),
+            gr.update(),
+            gr.update(),
+            gr.update(value=CLEAR_ALL_LABEL),
+            "",
+        )
+
+    if armed_for != media_type_display:
+        logger.info("Clear-all armed for %s (%d files)", internal_type, total)
+        return (
+            _status(
+                f"⚠️ Click again to permanently delete {total} "
+                f"{media_type_display.lower()} file(s)."
+            ),
+            gr.update(),
+            gr.update(),
+            gr.update(value=CONFIRM_CLEAR_LABEL),
+            media_type_display,
+        )
+
+    deleted, failed = delete_all_files(internal_type)
+    gallery_update, count_text_update = update_gallery(media_type_display, limit)
+    status = f"✅ Deleted {deleted} {media_type_display.lower()} file(s)."
+    if failed:
+        status += f" ({failed} could not be deleted — see Logs tab.)"
+    logger.info("Clear-all confirmed for %s: %s", internal_type, status)
+    return (
+        _status(status),
+        gallery_update,
+        count_text_update,
+        gr.update(value=CLEAR_ALL_LABEL),
+        "",
     )
 
 
@@ -346,6 +427,50 @@ def wire_gallery_tab(gallery_components):
             gallery_components["delete_btn"],
             gallery_components["selected_file_display"],
             gallery_components["processing_settings_display"],
+        ],
+    ).then(
+        # A single delete changes counts, so drop any pending clear-all arm
+        fn=disarm_clear_all,
+        outputs=[
+            gallery_components["clear_all_btn"],
+            gallery_components["clear_armed"],
+        ],
+    )
+
+    # Bulk delete (two-step confirm)
+    gallery_components["clear_all_btn"].click(
+        fn=clear_all_media,
+        inputs=[
+            gallery_components["media_type_radio"],
+            gallery_components["limit_selector"],
+            gallery_components["clear_armed"],
+        ],
+        outputs=[
+            gallery_components["bulk_status"],
+            gallery_components["gallery"],
+            gallery_components["file_count_text"],
+            gallery_components["clear_all_btn"],
+            gallery_components["clear_armed"],
+        ],
+    )
+
+    # Switching type/limit/refresh changes what "all" means — disarm
+    for _trigger, _evt in (
+        (gallery_components["media_type_radio"], "change"),
+        (gallery_components["limit_selector"], "change"),
+    ):
+        getattr(_trigger, _evt)(
+            fn=disarm_clear_all,
+            outputs=[
+                gallery_components["clear_all_btn"],
+                gallery_components["clear_armed"],
+            ],
+        )
+    gallery_components["refresh_btn"].click(
+        fn=disarm_clear_all,
+        outputs=[
+            gallery_components["clear_all_btn"],
+            gallery_components["clear_armed"],
         ],
     )
 
