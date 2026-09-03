@@ -35,23 +35,28 @@ def show_gif_preview(file):
 def _extract_first_frame_png(video_path: str, output_path: Path) -> bool:
     """Extract frame 0 as PNG for UI preview."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-ss",
-            "0",
-            "-i",
-            video_path,
-            "-frames:v",
-            "1",
-            "-q:v",
-            "2",
-            str(output_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                "0",
+                "-i",
+                video_path,
+                "-frames:v",
+                "1",
+                "-q:v",
+                "2",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("First-frame extract timed out for %s", video_path)
+        return False
     if result.returncode != 0:
         logger.warning(
             "First-frame extract failed for %s: %s",
