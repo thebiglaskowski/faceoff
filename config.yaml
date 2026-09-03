@@ -197,6 +197,13 @@ compression:
   min_image_size_mb: 5 # Only compress images larger than this
 
 # =============================================================================
+# GIF Output (palette quantization)
+# =============================================================================
+gif:
+  palette_colors: 256 # Shared global palette size (GIF format limit)
+  dither: false # Floyd-Steinberg dither reads as static grain on skin/gradients; one shared palette keeps frames stable without it
+
+# =============================================================================
 # Logging Configuration
 # =============================================================================
 logging:

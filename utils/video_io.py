@@ -562,6 +562,58 @@ class StreamingVideoWriter:
         return False
 
 
+def _gif_encode_options():
+    """Shared palette size + dither flag from config (safe defaults)."""
+    try:
+        from utils.config_manager import config
+
+        colors = int(config.get("gif", "palette_colors", default=256))
+        dither = bool(config.get("gif", "dither", default=False))
+    except Exception:
+        colors, dither = 256, False
+    return max(2, min(colors, 256)), dither
+
+
+def quantize_frames_global_palette(pil_frames, colors=256, dither=False):
+    """Quantize RGB(A) frames against ONE shared palette.
+
+    PIL's default GIF save quantizes every frame independently with
+    Floyd-Steinberg dithering, which reads as crawling static on skin
+    and gradients (and shimmers, since each frame picks a different
+    palette). A single palette built from first/middle/last frames with
+    dithering off removes both.
+    """
+    from PIL import Image
+
+    rgb = [f.convert("RGB") for f in pil_frames]
+    n = len(rgb)
+    thumbs = []
+    for i in sorted({0, n // 2, n - 1}):
+        thumb = rgb[i].copy()
+        thumb.thumbnail((160, 160))
+        thumbs.append(thumb)
+    strip_width = sum(t.width for t in thumbs)
+    strip_height = max(t.height for t in thumbs)
+    strip = Image.new("RGB", (strip_width, strip_height))
+    x = 0
+    for thumb in thumbs:
+        strip.paste(thumb, (x, 0))
+        x += thumb.width
+    palette_src = strip.quantize(
+        colors=colors, method=Image.MEDIANCUT, dither=Image.NONE
+    )
+    dither_mode = Image.FLOYDSTEINBERG if dither else Image.NONE
+    return [
+        f.quantize(
+            colors=colors,
+            method=Image.MEDIANCUT,
+            dither=dither_mode,
+            palette=palette_src,
+        )
+        for f in rgb
+    ]
+
+
 class StreamingGifWriter:
     """Write GIF frames via temp disk files — bounded RAM, variable durations."""
 
@@ -617,10 +669,14 @@ class StreamingGifWriter:
             ]
 
         try:
-            pil_frames[0].save(
+            colors, dither = _gif_encode_options()
+            quantized = quantize_frames_global_palette(
+                pil_frames, colors=colors, dither=dither
+            )
+            quantized[0].save(
                 str(self.output_path),
                 save_all=True,
-                append_images=pil_frames[1:],
+                append_images=quantized[1:],
                 loop=0,
                 duration=durations,
                 optimize=True,
@@ -1020,11 +1076,15 @@ def write_gif(
         pil_frames.append(pil_frame)
 
     try:
+        colors, dither = _gif_encode_options()
+        quantized = quantize_frames_global_palette(
+            pil_frames, colors=colors, dither=dither
+        )
         if durations and len(durations) == len(pil_frames):
-            pil_frames[0].save(
+            quantized[0].save(
                 str(output_path),
                 save_all=True,
-                append_images=pil_frames[1:],
+                append_images=quantized[1:],
                 loop=loop,
                 duration=durations,
                 optimize=True,
@@ -1036,10 +1096,10 @@ def write_gif(
             else:
                 frame_time = 100
 
-            pil_frames[0].save(
+            quantized[0].save(
                 str(output_path),
                 save_all=True,
-                append_images=pil_frames[1:],
+                append_images=quantized[1:],
                 loop=loop,
                 duration=frame_time,
                 optimize=True,
