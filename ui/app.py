@@ -259,6 +259,13 @@ def create_app():
         wire_gallery_tab(gallery_components)
 
         # GPU refresh handler
-        refresh_gpu_btn.click(fn=refresh_gpu_info, outputs=gpu_textboxes)
+        def _refresh_gpu_textboxes():
+            """Refresh GPU info, padded/truncated to the built textbox count."""
+            infos = list(refresh_gpu_info())
+            count = len(gpu_textboxes)
+            infos = (infos + ["No GPU info available"] * count)[:count]
+            return infos
+
+        refresh_gpu_btn.click(fn=_refresh_gpu_textboxes, outputs=gpu_textboxes)
 
     return demo
