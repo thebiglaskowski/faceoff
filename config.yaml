@@ -204,21 +204,6 @@ gif:
   dither: false # Floyd-Steinberg dither reads as static grain on skin/gradients; one shared palette keeps frames stable without it
 
 # =============================================================================
-# OSEDiff One-Step Diffusion Restoration (image-only quality mode)
-# =============================================================================
-osediff:
-  enabled: true # Offer OSEDiff as an image-tab enhancement framework
-  repo_id: "csguoh/OSEDiff" # Upstream weights repo (VERIFY on first run — correct if snapshot contains the LoRA + VAE files below)
-  lora_file: "osediff_lora.safetensors" # LoRA weights filename in repo (VERIFY)
-  vae_file: "vae-ft-mse-840000-ema-pruned.safetensors" # Fine-tuned VAE filename (VERIFY)
-  base_model: "stabilityai/stable-diffusion-2-1-base" # SD2.1 backbone from Hugging Face
-  local_dir: "models/osediff" # Snapshot destination (user-downloaded, never committed)
-  num_inference_steps: 1 # One step is the whole point; raising this is no longer OSEDiff
-  strength: 0.75 # Img2img denoise strength: lower = safer identity, higher = cleaner garbage
-  max_side_px: 1024 # Longer side is downscaled to this before inference (VRAM guard)
-  prompt: "clean, high-resolution, detailed photo" # Fixed positive prompt (DAPE tagging is a future upgrade)
-
-# =============================================================================
 # Logging Configuration
 # =============================================================================
 logging:

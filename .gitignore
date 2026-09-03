@@ -59,9 +59,7 @@ models/**/*.pth
 models/**/*.pt
 models/**/*.onnx
 models/**/*.zip
-models/**/*.safetensors
 models/buffalo_l/
-models/osediff/
 
 # GFPGAN weights (large model files)
 gfpgan/

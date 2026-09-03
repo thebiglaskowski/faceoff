@@ -168,10 +168,6 @@ def _process_input(
                 model_name = HAT_MODEL_OPTIONS[model_selection]["model_name"]
             else:
                 model_name = HAT_MODEL_OPTIONS[DEFAULT_HAT_MODEL]["model_name"]
-        elif enhancement_model == "OSEDiff":
-            from processing.osediff_enhancement import OSEDIFF_VARIANT
-
-            model_name = OSEDIFF_VARIANT
         else:
             if model_selection and model_selection in MODEL_OPTIONS:
                 model_name = MODEL_OPTIONS[model_selection]["model_name"]

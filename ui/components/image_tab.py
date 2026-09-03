@@ -108,10 +108,10 @@ def create_image_tab():
 
         with gr.Row():
             enhancement_model_selector = gr.Dropdown(
-                choices=["RealESRGAN", "SwinIR", "HAT", "OSEDiff"],
+                choices=["RealESRGAN", "SwinIR", "HAT"],
                 value="RealESRGAN",
                 label="Enhancement Framework",
-                info="RealESRGAN (fast), SwinIR/HAT (transformer SR), or OSEDiff (diffusion quality, stills only)",
+                info="RealESRGAN (fast) or SwinIR/HAT (transformer-based SR)",
                 visible=False,
             )
             restoration_model_selector = gr.Dropdown(

@@ -101,24 +101,6 @@ class InMemoryEnhancer:
         from processing.hat_enhancement import enhance_image_batch_hat
         from processing.swinir_enhancement import enhance_image_swinir
 
-        if self.enhancement_model == "OSEDiff":
-            from processing.osediff_enhancement import (
-                enhance_image_osediff,
-                warm_osediff_pipeline,
-            )
-
-            # Fail loudly on setup problems (missing deps/weights/pipeline).
-            # A silent full fallback is how "no visible difference" happens.
-            warm_osediff_pipeline(gpu_id)
-            out = []
-            for bgr in bgr_frames:
-                try:
-                    out.append(enhance_image_osediff(bgr, gpu_id=gpu_id))
-                except Exception as exc:
-                    logger.warning("OSEDiff frame failed, keeping original: %s", exc)
-                    out.append(bgr)
-            return out
-
         if self.enhancement_model == "HAT":
             results = enhance_image_batch_hat(
                 bgr_frames,

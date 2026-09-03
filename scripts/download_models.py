@@ -9,8 +9,6 @@ What it fetches (all from upstream, nothing from this repo):
 
 - ``inswapper_128.onnx`` (~530 MB) -> project root
 - ``buffalo_l`` face-analysis bundle (~330 MB) -> ``models/buffalo_l/``
-- ``osediff`` one-step diffusion weights (~5 GB, opt-in via
-  ``--models osediff`` only — never fetched by ``all``)
 
 GFPGAN / CodeFormer / Real-ESRGAN weights are handled separately: those
 libraries self-download their own weights on first use, so this script
@@ -42,10 +40,6 @@ BUFFALO_L_URL = (
     "https://github.com/deepinsight/insightface" "/releases/download/v0.7/buffalo_l.zip"
 )
 BUFFALO_L_MIN_BYTES = 200 * 1024 * 1024
-
-# OSEDiff weights live in a multi-file HF repo — fetched by snapshot, so no
-# direct URL or byte floor. VERIFY repo_id on first run.
-OSEDIFF_REPO_ID = "csguoh/OSEDiff"
 
 CHUNK_SIZE = 4 * 1024 * 1024
 
@@ -128,42 +122,13 @@ def fetch_buffalo_l(root: Path, url: str, force: bool = False) -> Path:
     return dest_dir
 
 
-def fetch_osediff(root: Path, repo_id: str, force: bool = False) -> Path:
-    """Snapshot OSEDiff LoRA + VAE weights into models/osediff/."""
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError as exc:
-        raise ValueError(
-            "huggingface_hub is required for OSEDiff weights (uv sync)"
-        ) from exc
-    dest_dir = root / "models" / "osediff"
-    marker_lora = dest_dir / "osediff_lora.safetensors"
-    marker_vae = dest_dir / "vae-ft-mse-840000-ema-pruned.safetensors"
-    if marker_lora.exists() and marker_vae.exists() and not force:
-        print("  models/osediff already present, skipping.")
-        return dest_dir
-    print(f"Downloading OSEDiff weights ({repo_id}) ...")
-    snapshot_download(
-        repo_id=repo_id,
-        local_dir=str(dest_dir),
-        allow_patterns=["*.safetensors"],
-    )
-    if not (marker_lora.exists() and marker_vae.exists()):
-        raise ValueError(
-            f"Snapshot finished but expected files are missing in {dest_dir}; "
-            "check osediff.repo_id / filenames in config.yaml."
-        )
-    print(f"  saved {dest_dir}/")
-    return dest_dir
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Download FaceOff model weights from upstream sources."
     )
     parser.add_argument(
         "--models",
-        choices=["all", "inswapper", "buffalo_l", "osediff"],
+        choices=["all", "inswapper", "buffalo_l"],
         default="all",
         help="Which weights to fetch (default: all).",
     )
@@ -180,11 +145,6 @@ def main(argv: list[str] | None = None) -> int:
         default=BUFFALO_L_URL,
         help="Override the buffalo_l download URL.",
     )
-    parser.add_argument(
-        "--osediff-repo",
-        default=OSEDIFF_REPO_ID,
-        help="Override the OSEDiff weights repo (opt-in only, never in 'all').",
-    )
     args = parser.parse_args(argv)
     root = _project_root()
 
@@ -193,8 +153,6 @@ def main(argv: list[str] | None = None) -> int:
             fetch_inswapper(root, args.inswapper_url, force=args.force)
         if args.models in ("all", "buffalo_l"):
             fetch_buffalo_l(root, args.buffalo_url, force=args.force)
-        if args.models == "osediff":
-            fetch_osediff(root, args.osediff_repo, force=args.force)
     except Exception as exc:  # noqa: BLE001 - report cleanly for CLI use
         print(f"\nERROR: {exc}", file=sys.stderr)
         print(
