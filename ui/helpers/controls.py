@@ -97,6 +97,23 @@ def swap_with_button_toggle(fn):
     return _run
 
 
+def fill_compare_view(target_value):
+    """Mirror the swap target into the compare-with-original view.
+
+    Gradio image/video components accept the same values the upload
+    widgets produce (PIL image, numpy array, or file path), so this is
+    a None-safe passthrough kept as a named step in the event chain.
+    """
+    if target_value is None:
+        return gr.skip()
+    return target_value
+
+
+def toggle_compare_view(show):
+    """Show or hide the compare-with-original component."""
+    return gr.update(visible=bool(show))
+
+
 def _refresh_gallery_for_type(media_type: str, limit: str = "24"):
     """
     Helper to refresh gallery for a specific media type.

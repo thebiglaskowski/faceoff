@@ -10,8 +10,10 @@ from ui.handlers.processing_handlers import (
 )
 from ui.helpers.controls import (
     JUMP_TO_GALLERY_JS,
+    fill_compare_view,
     refresh_gallery_images,
     swap_with_button_toggle,
+    toggle_compare_view,
     toggle_denoise_slider,
     toggle_enhancement_controls,
     toggle_restoration_controls,
@@ -60,6 +62,15 @@ def create_image_tab():
                 )
             with gr.Column():
                 result_img = gr.Image(label="Swapped Result")
+                compare_toggle = gr.Checkbox(
+                    label="Compare with original",
+                    value=False,
+                    info="Show the original target next to the result",
+                )
+                compare_img = gr.Image(
+                    label="Original Target (compare)",
+                    visible=False,
+                )
 
         # Face mapping controls
         with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
@@ -223,6 +234,8 @@ def create_image_tab():
         "source_img": source_img,
         "target_img": target_img,
         "result_img": result_img,
+        "compare_toggle": compare_toggle,
+        "compare_img": compare_img,
         "face_info_img": face_info_img,
         "source_faces_gallery": source_faces_gallery,
         "target_faces_gallery": target_faces_gallery,
@@ -290,6 +303,13 @@ def wire_image_tab(img_components, gallery_components):
         toggle_denoise_slider,
         inputs=[img_components["model_selector"]],
         outputs=[img_components["denoise_slider"]],
+    )
+
+    # Compare-with-original toggle
+    img_components["compare_toggle"].change(
+        toggle_compare_view,
+        inputs=[img_components["compare_toggle"]],
+        outputs=[img_components["compare_img"]],
     )
 
     # Image face detection on upload
@@ -416,6 +436,11 @@ def wire_image_tab(img_components, gallery_components):
         ],
         outputs=[img_components["result_img"], img_components["run_image_btn"]],
         show_progress="full",
+    ).then(
+        # Mirror the target for the compare-with-original view
+        fill_compare_view,
+        inputs=[img_components["target_img"]],
+        outputs=[img_components["compare_img"]],
     ).then(
         # Auto-refresh gallery and jump to it after processing completes
         refresh_gallery_images,

@@ -10,8 +10,10 @@ from ui.handlers.processing_handlers import (
 )
 from ui.helpers.controls import (
     JUMP_TO_GALLERY_JS,
+    fill_compare_view,
     refresh_gallery_videos,
     swap_with_button_toggle,
+    toggle_compare_view,
     toggle_denoise_slider,
     toggle_enhancement_controls,
     toggle_restoration_controls,
@@ -77,6 +79,15 @@ def create_video_tab():
                     label="Swapped Result",
                     format="mp4",
                     autoplay=True,
+                )
+                compare_toggle_vid = gr.Checkbox(
+                    label="Compare with original",
+                    value=False,
+                    info="Show the original target next to the result",
+                )
+                compare_vid = gr.Video(
+                    label="Original Target (compare)",
+                    visible=False,
                 )
 
         # Face mapping controls for Video
@@ -238,6 +249,8 @@ def create_video_tab():
         "target_vid": target_vid,
         "target_vid_preview": target_vid_preview,
         "result_vid": result_vid,
+        "compare_toggle_vid": compare_toggle_vid,
+        "compare_vid": compare_vid,
         "face_info_vid": face_info_vid,
         "source_faces_gallery_vid": source_faces_gallery_vid,
         "target_faces_gallery_vid": target_faces_gallery_vid,
@@ -304,6 +317,13 @@ def wire_video_tab(vid_components, gallery_components):
         toggle_denoise_slider,
         inputs=[vid_components["model_selector_vid"]],
         outputs=[vid_components["denoise_slider_vid"]],
+    )
+
+    # Compare-with-original toggle
+    vid_components["compare_toggle_vid"].change(
+        toggle_compare_view,
+        inputs=[vid_components["compare_toggle_vid"]],
+        outputs=[vid_components["compare_vid"]],
     )
 
     # Video face detection
@@ -438,6 +458,11 @@ def wire_video_tab(vid_components, gallery_components):
         ],
         outputs=[vid_components["result_vid"], vid_components["run_video_btn"]],
         show_progress="full",
+    ).then(
+        # Mirror the target for the compare-with-original view
+        fill_compare_view,
+        inputs=[vid_components["target_vid"]],
+        outputs=[vid_components["compare_vid"]],
     ).then(
         # Auto-refresh gallery and jump to it after processing completes
         refresh_gallery_videos,

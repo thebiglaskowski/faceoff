@@ -10,8 +10,10 @@ from ui.handlers.processing_handlers import (
 )
 from ui.helpers.controls import (
     JUMP_TO_GALLERY_JS,
+    fill_compare_view,
     refresh_gallery_gifs,
     swap_with_button_toggle,
+    toggle_compare_view,
     toggle_denoise_slider,
     toggle_enhancement_controls,
     toggle_restoration_controls,
@@ -67,6 +69,16 @@ def create_gif_tab():
                 )
             with gr.Column():
                 result_gif = gr.Image(label="Swapped Result", show_label=True)
+                compare_toggle_gif = gr.Checkbox(
+                    label="Compare with original",
+                    value=False,
+                    info="Show the original target next to the result",
+                )
+                compare_gif = gr.Image(
+                    label="Original Target (compare)",
+                    visible=False,
+                    show_label=True,
+                )
 
         # Face mapping controls for GIF
         with gr.Accordion("🎭 Face Mapping (Multi-Face Swap)", open=False):
@@ -227,6 +239,8 @@ def create_gif_tab():
         "target_gif_file": target_gif_file,
         "target_gif_preview": target_gif_preview,
         "result_gif": result_gif,
+        "compare_toggle_gif": compare_toggle_gif,
+        "compare_gif": compare_gif,
         "face_info_gif": face_info_gif,
         "source_faces_gallery_gif": source_faces_gallery_gif,
         "target_faces_gallery_gif": target_faces_gallery_gif,
@@ -293,6 +307,13 @@ def wire_gif_tab(gif_components, gallery_components):
         toggle_denoise_slider,
         inputs=[gif_components["model_selector_gif"]],
         outputs=[gif_components["denoise_slider_gif"]],
+    )
+
+    # Compare-with-original toggle
+    gif_components["compare_toggle_gif"].change(
+        toggle_compare_view,
+        inputs=[gif_components["compare_toggle_gif"]],
+        outputs=[gif_components["compare_gif"]],
     )
 
     # GIF face detection
@@ -430,6 +451,11 @@ def wire_gif_tab(gif_components, gallery_components):
         ],
         outputs=[gif_components["result_gif"], gif_components["run_gif_btn"]],
         show_progress="full",
+    ).then(
+        # Mirror the target for the compare-with-original view
+        fill_compare_view,
+        inputs=[gif_components["target_gif_file"]],
+        outputs=[gif_components["compare_gif"]],
     ).then(
         # Auto-refresh gallery and jump to it after processing completes
         refresh_gallery_gifs,
