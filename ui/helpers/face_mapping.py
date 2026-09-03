@@ -27,8 +27,14 @@ def add_face_mapping(
     if source_idx is None or target_idx is None:
         return "⚠️ Select both source and target faces", current_mappings_text
 
-    src_idx = int(source_idx.split()[-1])
-    tgt_idx = int(target_idx.split()[-1])
+    try:
+        src_idx = int(str(source_idx).split()[-1])
+        tgt_idx = int(str(target_idx).split()[-1])
+    except (ValueError, IndexError, AttributeError):
+        return (
+            "⚠️ Could not read face selection — re-run Detect Faces first",
+            current_mappings_text,
+        )
 
     face_mapping_manager.add(src_idx, tgt_idx)
 
