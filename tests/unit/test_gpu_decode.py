@@ -80,6 +80,7 @@ class TestOpenStreamingReader:
 
 
 class TestNvCodecFrameReader:
+    @pytest.mark.gpu
     def test_read_chunk_copies_frames(self):
         from utils.gpu_decode import NvCodecFrameReader
 
