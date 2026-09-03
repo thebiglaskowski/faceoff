@@ -213,8 +213,12 @@ def delete_file(file_path: str, media_type: str) -> Tuple[bool, str]:
         if not path.is_file():
             return False, f"❌ Not a file: {path.name}"
 
-        # Verify the file is in the correct media type folder
-        if media_type not in str(path.parent):
+        # Confine deletes to the outputs tree: resolve symlinks/.. and
+        # require the target to live under outputs/<media_type>/.
+        outputs_root = Path("outputs").resolve()
+        expected_dir = outputs_root / media_type
+        resolved = path.resolve()
+        if expected_dir not in resolved.parents:
             return False, f"❌ File type mismatch: {path.name}"
 
         path.unlink()
