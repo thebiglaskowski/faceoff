@@ -53,12 +53,24 @@ def _download_model(url: str, model_dir: Path, filename: str) -> Path:
     logger.info("Downloading CodeFormer model: %s", filename)
 
     try:
+        import shutil
         import urllib.request
 
-        urllib.request.urlretrieve(url, str(model_path))
+        # urlopen (not urlretrieve) so a stalled connection times out
+        # instead of hanging the worker forever.
+        req = urllib.request.Request(url, headers={"User-Agent": "FaceOff"})
+        with (
+            urllib.request.urlopen(req, timeout=300) as resp,
+            open(model_path, "wb") as fh,
+        ):
+            shutil.copyfileobj(resp, fh)
         logger.info("Model downloaded: %s", model_path)
     except Exception as e:
         logger.error("Failed to download model %s: %s", filename, e)
+        try:
+            model_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         raise
 
     return model_path

@@ -53,7 +53,10 @@ def _download(url: str, dest: Path, min_bytes: int) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": "FaceOff-model-setup"})
-    with urllib.request.urlopen(req) as resp, open(tmp, "wb") as fh:  # noqa: S310
+    with (
+        urllib.request.urlopen(req, timeout=300) as resp,
+        open(tmp, "wb") as fh,
+    ):  # noqa: S310
         total = int(resp.headers.get("Content-Length", 0) or 0)
         done = 0
         while True:

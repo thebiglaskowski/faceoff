@@ -55,11 +55,19 @@ class FaceRestorer:
             # Download model if it doesn't exist
             if not model_path.exists():
                 logger.info("Downloading GFPGAN v%s model...", self.model_version)
+                import shutil
                 import urllib.request
 
                 url = f"https://github.com/TencentARC/GFPGAN/releases/download/v{self.model_version}.0/{model_name}"
                 try:
-                    urllib.request.urlretrieve(url, model_path)
+                    # urlopen (not urlretrieve) so a stalled connection
+                    # times out instead of hanging the worker forever.
+                    req = urllib.request.Request(url, headers={"User-Agent": "FaceOff"})
+                    with (
+                        urllib.request.urlopen(req, timeout=300) as resp,
+                        open(model_path, "wb") as fh,
+                    ):
+                        shutil.copyfileobj(resp, fh)
                     logger.info("GFPGAN model downloaded to %s", model_path)
                 except Exception as download_error:
                     logger.error(
@@ -67,6 +75,10 @@ class FaceRestorer:
                         url,
                         download_error,
                     )
+                    try:
+                        Path(model_path).unlink(missing_ok=True)
+                    except OSError:
+                        pass
                     raise RuntimeError(
                         f"Could not download GFPGAN model. Please check your internet connection or manually download from {url} to {model_path}"
                     )
