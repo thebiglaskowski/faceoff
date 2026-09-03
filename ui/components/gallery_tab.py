@@ -131,7 +131,11 @@ def update_gallery(media_type: str, limit: str = "24", force_refresh: bool = Fal
     type_map = {"Images": "image", "GIFs": "gif", "Videos": "video"}
 
     internal_type = type_map.get(media_type, "image")
-    max_files = int(limit)
+    try:
+        max_files = int(limit)
+    except (TypeError, ValueError):
+        max_files = 24
+    max_files = max(1, max_files)
 
     # Force cache refresh when switching media types for responsive UX
     # This ensures users always see fresh data when toggling
@@ -155,7 +159,11 @@ def update_gallery(media_type: str, limit: str = "24", force_refresh: bool = Fal
 
     # Update count text with info about limiting
     count_text = _get_count_text()
-    if len(files) >= max_files:
+    if not files:
+        count_text += (
+            f"\n\n_No {media_type.lower()} yet — run a swap and it will show up here_"
+        )
+    elif len(files) >= max_files:
         count_text += f"\n\n_Showing {max_files} most recent {media_type.lower()}_"
 
     return gr.update(value=files, selected_index=None), gr.update(value=count_text)
