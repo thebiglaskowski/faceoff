@@ -7,8 +7,9 @@ with fallbacks to default values if config is missing or invalid.
 
 import logging
 import os
+import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -105,6 +106,45 @@ class Config:
         # Set the value
         current[keys[-1]] = value
         logger.debug(f"Config updated: {'.'.join(keys)} = {value}")
+
+    def write_values(
+        self,
+        scalars: Optional[Dict[tuple, Any]] = None,
+        pairs: Optional[Dict[tuple, tuple]] = None,
+        lists: Optional[Dict[tuple, list]] = None,
+    ) -> None:
+        """Persist leaf values to config.yaml, preserving comments.
+
+        Scalar lines are replaced in place (indentation and trailing
+        comments survive); the two non-scalar shapes the editor supports
+        — a ``[w, h]`` flow pair and 1-D string lists — get targeted
+        rewrites. The result is re-parsed and every change is verified
+        before the file is atomically replaced; any failure leaves the
+        original file untouched.
+
+        Raises:
+            ValueError: On unknown paths, type mismatches, or a failed
+                verification.
+        """
+        scalars = scalars or {}
+        pairs = pairs or {}
+        lists = lists or {}
+        if not (scalars or pairs or lists):
+            return
+        original = self._config_path.read_text(encoding="utf-8")
+        current_doc = yaml.safe_load(original) or {}
+        _validate_changes(current_doc, scalars, pairs, lists)
+        updated = _apply_to_text(original, scalars, pairs, lists)
+        _verify_changes(updated, scalars, pairs, lists)
+        tmp_path = self._config_path.with_suffix(".yaml.tmp")
+        tmp_path.write_text(updated, encoding="utf-8")
+        os.replace(tmp_path, self._config_path)
+        self._load_config()
+        logger.info(
+            "Config saved: %d value(s) written to %s",
+            len(scalars) + len(pairs) + len(lists),
+            self._config_path,
+        )
 
     # =============================================================================
     # Convenience properties for commonly accessed values
@@ -514,6 +554,249 @@ class Config:
     def theme(self) -> str:
         """Alias for ui_theme."""
         return self.ui_theme
+
+
+# =============================================================================
+# Comment-preserving YAML surgery for the Settings editor
+# =============================================================================
+
+_MAPPING_LINE = re.compile(r"^(\s*)([^#\s][^:]*):(.*)$")
+
+
+def _split_comment(text: str) -> Tuple[str, str]:
+    """Split a YAML line into (code, comment), honoring quotes."""
+    in_single = False
+    in_double = False
+    for idx, ch in enumerate(text):
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == "#" and not in_single and not in_double:
+            return text[:idx], text[idx:]
+    return text, ""
+
+
+def _section_stack(lines: List[str], upto: int) -> List[Tuple[int, str]]:
+    """Mapping-key stack (indent, key) describing the context of a line."""
+    stack: List[Tuple[int, str]] = []
+    for line in lines[:upto]:
+        match = _MAPPING_LINE.match(line)
+        if not match:
+            continue
+        indent = len(match.group(1))
+        key = match.group(2).strip()
+        code, _comment = _split_comment(match.group(3))
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        # A line with an empty value opens a nested block; a scalar or
+        # flow value is a leaf (pushed so its own line resolves, then
+        # popped by the next same-indent key). Block-style scalars
+        # (``key:`` with the value on the next line) resolve at query
+        # time, where the seeking line dedents out of them.
+        stack.append((indent, key))
+        if code.strip():
+            stack.pop()
+    return stack
+
+
+def _find_key_line(lines: List[str], path: Tuple[str, ...]) -> int:
+    """Return the index of the mapping line starting ``path``."""
+    for idx, line in enumerate(lines):
+        match = _MAPPING_LINE.match(line)
+        if not match:
+            continue
+        indent = len(match.group(1))
+        stack = _section_stack(lines, idx)
+        # The line itself dedents out of any deeper block above it.
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        full = [key for _, key in stack] + [match.group(2).strip()]
+        if full == list(path):
+            # Own indent must nest strictly deeper than its parent.
+            if len(stack) == len(path) - 1 and (not stack or stack[-1][0] < indent):
+                return idx
+    raise ValueError(f"Unknown config path: {'.'.join(path)}")
+
+
+def _format_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return repr(value)
+    if isinstance(value, str):
+        return '"{}"'.format(value.replace("\\", "\\\\").replace('"', '\\"'))
+    raise ValueError(f"Unsupported config value type: {type(value).__name__}")
+
+
+def _eol(line: str) -> str:
+    return "\n" if line.endswith("\n") else ""
+
+
+def _set_scalar_line(lines: List[str], idx: int, value: Any) -> None:
+    """Replace the scalar on a ``key: value`` line, keeping its comment."""
+    match = _MAPPING_LINE.match(lines[idx])
+    assert match is not None
+    eol = _eol(lines[idx])
+    code, comment = _split_comment(match.group(3))
+    if code.strip():
+        gap = code[len(code.rstrip()) :]
+        lines[idx] = (
+            f"{match.group(1)}{match.group(2)}: "
+            f"{_format_scalar(value)}{gap}{comment}{eol}"
+        )
+        return
+    # Block style: value lives on the next deeper-indented scalar line.
+    key_indent = len(match.group(1))
+    for nxt in range(idx + 1, len(lines)):
+        nline = lines[nxt]
+        if not nline.strip() or nline.strip().startswith("#"):
+            continue
+        nmatch = _MAPPING_LINE.match(nline)
+        nindent = len(nmatch.group(1)) if nmatch else key_indent + 1
+        if nindent <= key_indent:
+            break
+        ncode, ncomment = _split_comment(nline)
+        if ncode.strip().startswith("- ") or ncode.strip().endswith(":"):
+            break
+        pad = nline[: len(nline) - len(nline.lstrip())]
+        gap = ncode[len(ncode.rstrip()) :]
+        # nline carries its own newline inside ncomment; strip it so the
+        # explicit EOL below does not double it into a blank line.
+        ncomment = ncomment.rstrip("\n")
+        lines[nxt] = f"{pad}{_format_scalar(value)}{gap}{ncomment}{_eol(nline)}"
+        return
+    raise ValueError(f"No scalar value found for: {lines[idx].strip()}")
+
+
+def _set_flow_pair(lines: List[str], idx: int, pair: Tuple[Any, Any]) -> None:
+    match = _MAPPING_LINE.match(lines[idx])
+    assert match is not None
+    code, comment = _split_comment(match.group(3))
+    if not re.match(r"^\s*\[.*\]\s*$", code):
+        raise ValueError(f"Not a [w, h] pair line: {lines[idx].strip()}")
+    w, h = pair
+    lines[idx] = (
+        f"{match.group(1)}{match.group(2)}: [{w}, {h}]{comment}{_eol(lines[idx])}"
+    )
+
+
+def _set_str_list(lines: List[str], idx: int, items: List[str]) -> List[str]:
+    match = _MAPPING_LINE.match(lines[idx])
+    assert match is not None
+    key_indent = len(match.group(1))
+    end = idx + 1
+    item_indent: Optional[str] = None
+    while end < len(lines):
+        stripped = lines[end].strip()
+        if not stripped or stripped.startswith("#"):
+            break
+        indent = len(lines[end]) - len(lines[end].lstrip())
+        if indent <= key_indent or not stripped.startswith("- "):
+            break
+        if item_indent is None:
+            item_indent = lines[end][:indent]
+        end += 1
+    if item_indent is None:
+        raise ValueError(f"No list items found for: {lines[idx].strip()}")
+    new_block = [f"{item_indent}- {_format_scalar(v)}\n" for v in items]
+    return lines[: idx + 1] + new_block + lines[end:]
+
+
+def _lookup(doc: Any, path: Tuple[str, ...]) -> Tuple[bool, Any]:
+    value = doc
+    for key in path:
+        if not isinstance(value, dict) or key not in value:
+            return False, None
+        value = value[key]
+    return True, value
+
+
+def _validate_changes(
+    doc: Dict[str, Any],
+    scalars: Dict[tuple, Any],
+    pairs: Dict[tuple, tuple],
+    lists: Dict[tuple, list],
+) -> None:
+    for path, value in scalars.items():
+        found, current = _lookup(doc, path)
+        if not found:
+            raise ValueError(f"Unknown config path: {'.'.join(path)}")
+        if isinstance(current, bool) != isinstance(value, bool):
+            raise ValueError(f"Type mismatch for {'.'.join(path)}: bool required")
+        if isinstance(current, (int, float)) and not isinstance(value, (int, float)):
+            raise ValueError(f"Type mismatch for {'.'.join(path)}: number required")
+        if isinstance(current, str) and not isinstance(value, str):
+            raise ValueError(f"Type mismatch for {'.'.join(path)}: text required")
+        if isinstance(current, (dict, list)):
+            raise ValueError(f"Not a scalar option: {'.'.join(path)}")
+    for path, pair in pairs.items():
+        found, current = _lookup(doc, path)
+        if (
+            not found
+            or not isinstance(current, list)
+            or len(current) != 2
+            or not all(isinstance(v, (int, float)) for v in pair)
+        ):
+            raise ValueError(f"Not a [w, h] pair option: {'.'.join(path)}")
+    for path, items in lists.items():
+        found, current = _lookup(doc, path)
+        if (
+            not found
+            or not isinstance(current, list)
+            or not all(isinstance(v, str) for v in current)
+            or not items
+            or not all(isinstance(v, str) and v.strip() for v in items)
+        ):
+            raise ValueError(f"Not a text-list option: {'.'.join(path)}")
+
+
+def _apply_to_text(
+    text: str,
+    scalars: Dict[tuple, Any],
+    pairs: Dict[tuple, tuple],
+    lists: Dict[tuple, list],
+) -> str:
+    lines = text.splitlines(keepends=True)
+    for path, value in scalars.items():
+        _set_scalar_line(lines, _find_key_line(lines, path), value)
+    for path, pair in pairs.items():
+        _set_flow_pair(lines, _find_key_line(lines, path), pair)
+    # Rewrite list blocks last (they shift line indexes); longest path
+    # first so nested blocks never invalidate a pending sibling index.
+    for path in sorted(lists, key=len, reverse=True):
+        lines = _set_str_list(lines, _find_key_line(lines, path), lists[path])
+    return "".join(lines)
+
+
+def _verify_changes(
+    text: str,
+    scalars: Dict[tuple, Any],
+    pairs: Dict[tuple, tuple],
+    lists: Dict[tuple, list],
+) -> None:
+    try:
+        doc = yaml.safe_load(text) or {}
+    except Exception as exc:
+        raise ValueError(f"Saved config would not parse: {exc}") from exc
+
+    def _number(value: Any) -> Any:
+        return float(value) if isinstance(value, float) else value
+
+    for path, value in scalars.items():
+        found, current = _lookup(doc, path)
+        if not found or _number(current) != _number(value):
+            raise ValueError(f"Write verification failed: {'.'.join(path)}")
+    for path, pair in pairs.items():
+        found, current = _lookup(doc, path)
+        if not found or list(current) != [_number(v) for v in pair]:
+            raise ValueError(f"Write verification failed: {'.'.join(path)}")
+    for path, items in lists.items():
+        found, current = _lookup(doc, path)
+        if not found or list(current) != list(items):
+            raise ValueError(f"Write verification failed: {'.'.join(path)}")
 
 
 # Global config instance

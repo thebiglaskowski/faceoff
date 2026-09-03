@@ -28,6 +28,7 @@ from ui.components.gallery_tab import create_gallery_tab, wire_gallery_tab
 from ui.components.gif_tab import create_gif_tab, wire_gif_tab
 from ui.components.image_tab import create_image_tab, wire_image_tab
 from ui.components.models_tab import create_models_tab
+from ui.components.settings_tab import create_settings_tab, wire_settings_tab
 from ui.components.terminal_tab import create_terminal_tab
 from ui.components.video_tab import create_video_tab, wire_video_tab
 from ui.faceoff_theme import get_theme
@@ -93,6 +94,9 @@ def create_app():
 
             # Live application logs
             create_terminal_tab()
+
+            # Full-options config editor
+            settings_components = create_settings_tab()
 
         # Preset Management Section (at bottom, collapsible)
         gr.Markdown("---")
@@ -257,6 +261,7 @@ def create_app():
         )
 
         wire_gallery_tab(gallery_components)
+        wire_settings_tab(settings_components)
 
         # GPU refresh handler
         def _refresh_gpu_textboxes():
