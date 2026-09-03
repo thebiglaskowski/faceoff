@@ -15,7 +15,13 @@ from ui.helpers.controls import (
     update_model_choices,
 )
 from ui.helpers.face_detection import detect_faces_for_mapping, detect_faces_simple
-from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
+from ui.helpers.face_mapping import (
+    add_face_mapping,
+    auto_map_single_pair,
+    clear_face_mappings,
+    pick_target_and_map,
+    select_mapping_index,
+)
 from ui.helpers.gpu_utils import get_gpu_options
 from utils.constants import (
     DEFAULT_HAT_MODEL,
@@ -308,6 +314,38 @@ def wire_image_tab(img_components, gallery_components):
             img_components["mapping_target_idx"],
             img_components["source_faces_gallery"],
             img_components["target_faces_gallery"],
+        ],
+    ).then(
+        # One face each side: mapping is unambiguous, create it directly.
+        lambda s, t, c: auto_map_single_pair(s, t, c, add_face_mapping_image),
+        inputs=[
+            img_components["source_faces_gallery"],
+            img_components["target_faces_gallery"],
+            img_components["current_mappings"],
+        ],
+        outputs=[
+            img_components["face_mapping_status"],
+            img_components["current_mappings"],
+        ],
+    )
+
+    # Click a thumbnail to choose it; clicking a target maps immediately.
+    img_components["source_faces_gallery"].select(
+        lambda evt: select_mapping_index(evt, "Source Face"),
+        outputs=[img_components["mapping_source_idx"]],
+    )
+    img_components["target_faces_gallery"].select(
+        lambda evt, src, cur: pick_target_and_map(
+            evt, src, cur, add_face_mapping_image, "Target Face"
+        ),
+        inputs=[
+            img_components["mapping_source_idx"],
+            img_components["current_mappings"],
+        ],
+        outputs=[
+            img_components["mapping_target_idx"],
+            img_components["face_mapping_status"],
+            img_components["current_mappings"],
         ],
     )
 

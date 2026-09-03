@@ -48,3 +48,74 @@ def test_clear_mapping_resets_display():
     status, text = mod.clear_face_mappings(manager)
     manager.clear.assert_called_once()
     assert text == "No mappings"
+
+
+def _select(index):
+    from unittest.mock import MagicMock
+
+    evt = MagicMock()
+    evt.index = index
+    return evt
+
+
+def test_click_thumbnail_selects_dropdown_value():
+    import gradio as gr
+
+    mod = _helper()
+    out = mod.select_mapping_index(_select(2), "Source Face")
+    assert out["value"] == "Source Face 2"
+    assert mod.select_mapping_index(_select(None), "Source Face") == gr.skip()
+
+
+def test_click_target_maps_immediately():
+    mod = _helper()
+    calls = []
+
+    def fake_add(s, t, c):
+        calls.append((s, t, c))
+        return "Added mapping: 0 → 1", "0 → 1"
+
+    tgt, st, mp = mod.pick_target_and_map(
+        _select(1), "Source Face 0", "cur", fake_add, "Target Face"
+    )
+    assert calls == [(0, 1, "cur")]
+    assert tgt["value"] == "Target Face 1"
+    assert mp == "0 → 1"
+
+
+def test_click_target_without_source_warns():
+    mod = _helper()
+
+    def fake_add(s, t, c):  # pragma: no cover - must not run
+        raise AssertionError("must not add without a source")
+
+    _, status, current = mod.pick_target_and_map(
+        _select(1), None, "cur", fake_add, "Target Face"
+    )
+    assert "source face first" in status
+    assert current == "cur"
+
+
+def test_auto_map_single_pair_only():
+    mod = _helper()
+    calls = []
+
+    def fake_add(s, t, c):
+        calls.append((s, t))
+        return "Added", "0 → 0"
+
+    status, mappings = mod.auto_map_single_pair(["a"], ["b"], "cur", fake_add)
+    assert calls == [(0, 0)]
+    assert mappings == "0 → 0"
+
+    import gradio as gr
+
+    assert mod.auto_map_single_pair(["a", "b"], ["c"], "cur", fake_add) == (
+        gr.skip(),
+        gr.skip(),
+    )
+    assert mod.auto_map_single_pair([], [], "cur", fake_add) == (
+        gr.skip(),
+        gr.skip(),
+    )
+    assert len(calls) == 1

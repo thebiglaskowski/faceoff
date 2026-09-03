@@ -15,7 +15,13 @@ from ui.helpers.controls import (
     update_model_choices,
 )
 from ui.helpers.face_detection import detect_faces_simple, detect_faces_with_thumbnails
-from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
+from ui.helpers.face_mapping import (
+    add_face_mapping,
+    auto_map_single_pair,
+    clear_face_mappings,
+    pick_target_and_map,
+    select_mapping_index,
+)
 from ui.helpers.gpu_utils import get_gpu_options
 from ui.helpers.preview import validate_target_video_upload
 from utils.constants import (
@@ -339,6 +345,18 @@ def wire_video_tab(vid_components, gallery_components):
             vid_components["source_faces_gallery_vid"],
             vid_components["target_faces_gallery_vid"],
         ],
+    ).then(
+        # One face each side: mapping is unambiguous, create it directly.
+        lambda s, t, c: auto_map_single_pair(s, t, c, add_face_mapping_video),
+        inputs=[
+            vid_components["source_faces_gallery_vid"],
+            vid_components["target_faces_gallery_vid"],
+            vid_components["current_mappings_vid"],
+        ],
+        outputs=[
+            vid_components["face_mapping_status_vid"],
+            vid_components["current_mappings_vid"],
+        ],
     )
 
     vid_components["add_mapping_btn_vid"].click(
@@ -357,6 +375,26 @@ def wire_video_tab(vid_components, gallery_components):
     vid_components["clear_mappings_btn_vid"].click(
         clear_face_mappings_video,
         outputs=[
+            vid_components["face_mapping_status_vid"],
+            vid_components["current_mappings_vid"],
+        ],
+    )
+
+    # Click a thumbnail to choose it; clicking a target maps immediately.
+    vid_components["source_faces_gallery_vid"].select(
+        lambda evt: select_mapping_index(evt, "Source Face"),
+        outputs=[vid_components["mapping_source_idx_vid"]],
+    )
+    vid_components["target_faces_gallery_vid"].select(
+        lambda evt, src, cur: pick_target_and_map(
+            evt, src, cur, add_face_mapping_video, "Target Face"
+        ),
+        inputs=[
+            vid_components["mapping_source_idx_vid"],
+            vid_components["current_mappings_vid"],
+        ],
+        outputs=[
+            vid_components["mapping_target_idx_vid"],
             vid_components["face_mapping_status_vid"],
             vid_components["current_mappings_vid"],
         ],

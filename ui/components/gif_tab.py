@@ -15,7 +15,13 @@ from ui.helpers.controls import (
     update_model_choices,
 )
 from ui.helpers.face_detection import detect_faces_simple, detect_faces_with_thumbnails
-from ui.helpers.face_mapping import add_face_mapping, clear_face_mappings
+from ui.helpers.face_mapping import (
+    add_face_mapping,
+    auto_map_single_pair,
+    clear_face_mappings,
+    pick_target_and_map,
+    select_mapping_index,
+)
 from ui.helpers.gpu_utils import get_gpu_options
 from ui.helpers.preview import show_gif_preview
 from utils.constants import (
@@ -331,6 +337,18 @@ def wire_gif_tab(gif_components, gallery_components):
             gif_components["source_faces_gallery_gif"],
             gif_components["target_faces_gallery_gif"],
         ],
+    ).then(
+        # One face each side: mapping is unambiguous, create it directly.
+        lambda s, t, c: auto_map_single_pair(s, t, c, add_face_mapping_gif),
+        inputs=[
+            gif_components["source_faces_gallery_gif"],
+            gif_components["target_faces_gallery_gif"],
+            gif_components["current_mappings_gif"],
+        ],
+        outputs=[
+            gif_components["face_mapping_status_gif"],
+            gif_components["current_mappings_gif"],
+        ],
     )
 
     gif_components["add_mapping_btn_gif"].click(
@@ -341,6 +359,26 @@ def wire_gif_tab(gif_components, gallery_components):
             gif_components["current_mappings_gif"],
         ],
         outputs=[
+            gif_components["face_mapping_status_gif"],
+            gif_components["current_mappings_gif"],
+        ],
+    )
+
+    # Click a thumbnail to choose it; clicking a target maps immediately.
+    gif_components["source_faces_gallery_gif"].select(
+        lambda evt: select_mapping_index(evt, "Source Face"),
+        outputs=[gif_components["mapping_source_idx_gif"]],
+    )
+    gif_components["target_faces_gallery_gif"].select(
+        lambda evt, src, cur: pick_target_and_map(
+            evt, src, cur, add_face_mapping_gif, "Target Face"
+        ),
+        inputs=[
+            gif_components["mapping_source_idx_gif"],
+            gif_components["current_mappings_gif"],
+        ],
+        outputs=[
+            gif_components["mapping_target_idx_gif"],
             gif_components["face_mapping_status_gif"],
             gif_components["current_mappings_gif"],
         ],
