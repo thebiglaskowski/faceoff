@@ -205,7 +205,7 @@ def create_image_tab():
                     info="~30% faster inference, minimal quality impact (requires TensorRT)",
                 )
 
-        run_image_btn = gr.Button("Run Image Swap", variant="primary")
+        run_image_btn = gr.Button("🔁 Swap Image", variant="primary")
 
     # Return all components needed for event binding
     return {

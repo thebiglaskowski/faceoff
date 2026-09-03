@@ -208,7 +208,7 @@ def create_gif_tab():
                     info="~30% faster inference, minimal quality impact (requires TensorRT)",
                 )
 
-        run_gif_btn = gr.Button("Run GIF Swap", variant="primary")
+        run_gif_btn = gr.Button("🔁 Swap GIF", variant="primary")
 
     # Return all components needed for event binding
     return {

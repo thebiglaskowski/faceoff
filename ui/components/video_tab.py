@@ -219,7 +219,7 @@ def create_video_tab():
                     info="~30% faster inference, minimal quality impact (requires TensorRT)",
                 )
 
-        run_video_btn = gr.Button("Run Video Swap", variant="primary")
+        run_video_btn = gr.Button("🔁 Swap Video", variant="primary")
 
     # Return all components needed for event binding
     return {
