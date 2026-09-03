@@ -66,6 +66,25 @@ def toggle_denoise_slider(model_choice):
     return gr.update(visible=supports_denoise)
 
 
+def swap_with_button_toggle(fn):
+    """Wrap a swap handler so the Swap button disables while it runs.
+
+    Yields (result, button_update) pairs: disabled first, re-enabled on
+    success or error. Errors propagate after re-enabling.
+    """
+
+    def _run(*args):
+        yield gr.skip(), gr.update(interactive=False)
+        try:
+            result = fn(*args)
+        except Exception:
+            yield gr.skip(), gr.update(interactive=True)
+            raise
+        yield result, gr.update(interactive=True)
+
+    return _run
+
+
 def _refresh_gallery_for_type(media_type: str, limit: str = "24"):
     """
     Helper to refresh gallery for a specific media type.

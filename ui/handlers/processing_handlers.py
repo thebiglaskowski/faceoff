@@ -17,6 +17,7 @@ import numpy as np
 from PIL import Image
 
 from processing.facade import FaceMappingManager
+from processing.job_control import JobCancelled, clear_job_cancel
 from processing.orchestrator import ProcessOptions, process_media
 from ui.helpers.face_mapping import add_face_mapping as helper_add_mapping
 from ui.helpers.face_mapping import clear_face_mappings as helper_clear_mappings
@@ -92,6 +93,8 @@ def _process_input(
     """
     logger.info("=" * 40)
     logger.info("Starting processing...")
+
+    clear_job_cancel()
 
     temp_target_path = None
     media_type = "unknown"
@@ -238,6 +241,10 @@ def _process_input(
     except FriendlyError as fe:
         logger.error("=" * 40)
         raise gr.Error(fe.format_message())
+    except JobCancelled:
+        logger.info("Swap cancelled by user — partial output discarded")
+        logger.error("=" * 40)
+        raise gr.Error("⛔ Swap cancelled. Partial output was discarded.")
     except gr.Error:
         raise
     except Exception as e:

@@ -2,6 +2,7 @@
 
 import gradio as gr
 
+from processing.job_control import request_job_cancel
 from ui.handlers.processing_handlers import (
     add_face_mapping_video,
     clear_face_mappings_video,
@@ -9,6 +10,7 @@ from ui.handlers.processing_handlers import (
 )
 from ui.helpers.controls import (
     refresh_gallery_videos,
+    swap_with_button_toggle,
     toggle_denoise_slider,
     toggle_enhancement_controls,
     toggle_restoration_controls,
@@ -225,7 +227,9 @@ def create_video_tab():
                     info="~30% faster inference, minimal quality impact (requires TensorRT)",
                 )
 
-        run_video_btn = gr.Button("🔁 Swap Video", variant="primary")
+        with gr.Row():
+            run_video_btn = gr.Button("🔁 Swap Video", variant="primary")
+            cancel_video_btn = gr.Button("⛔ Cancel", variant="stop", size="sm")
 
     # Return all components needed for event binding
     return {
@@ -262,6 +266,7 @@ def create_video_tab():
         "gpu_selection_video": gpu_selection_video,
         "tensorrt_fp16_checkbox_vid": tensorrt_fp16_checkbox_vid,
         "run_video_btn": run_video_btn,
+        "cancel_video_btn": cancel_video_btn,
     }
 
 
@@ -411,7 +416,7 @@ def wire_video_tab(vid_components, gallery_components):
 
     # Video processing button with auto-refresh of gallery
     vid_components["run_video_btn"].click(
-        process_video,
+        swap_with_button_toggle(process_video),
         inputs=[
             vid_components["source_vid"],
             vid_components["target_vid"],
@@ -430,7 +435,7 @@ def wire_video_tab(vid_components, gallery_components):
             vid_components["enhancement_model_selector_vid"],
             vid_components["restoration_model_selector_vid"],
         ],
-        outputs=[vid_components["result_vid"]],
+        outputs=[vid_components["result_vid"], vid_components["run_video_btn"]],
         show_progress="full",
     ).then(
         # Auto-refresh gallery after processing completes
@@ -440,4 +445,8 @@ def wire_video_tab(vid_components, gallery_components):
             gallery_components["gallery"],
             gallery_components["file_count_text"],
         ],
+    )
+    vid_components["cancel_video_btn"].click(
+        request_job_cancel,
+        outputs=[],
     )

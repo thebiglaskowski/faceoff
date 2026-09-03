@@ -2,6 +2,7 @@
 
 import gradio as gr
 
+from processing.job_control import request_job_cancel
 from ui.handlers.processing_handlers import (
     add_face_mapping_gif,
     clear_face_mappings_gif,
@@ -9,6 +10,7 @@ from ui.handlers.processing_handlers import (
 )
 from ui.helpers.controls import (
     refresh_gallery_gifs,
+    swap_with_button_toggle,
     toggle_denoise_slider,
     toggle_enhancement_controls,
     toggle_restoration_controls,
@@ -214,7 +216,9 @@ def create_gif_tab():
                     info="~30% faster inference, minimal quality impact (requires TensorRT)",
                 )
 
-        run_gif_btn = gr.Button("🔁 Swap GIF", variant="primary")
+        with gr.Row():
+            run_gif_btn = gr.Button("🔁 Swap GIF", variant="primary")
+            cancel_gif_btn = gr.Button("⛔ Cancel", variant="stop", size="sm")
 
     # Return all components needed for event binding
     return {
@@ -251,6 +255,7 @@ def create_gif_tab():
         "gpu_selection_gif": gpu_selection_gif,
         "tensorrt_fp16_checkbox_gif": tensorrt_fp16_checkbox_gif,
         "run_gif_btn": run_gif_btn,
+        "cancel_gif_btn": cancel_gif_btn,
     }
 
 
@@ -403,7 +408,7 @@ def wire_gif_tab(gif_components, gallery_components):
 
     # GIF processing button with auto-refresh of gallery
     gif_components["run_gif_btn"].click(
-        process_gif,
+        swap_with_button_toggle(process_gif),
         inputs=[
             gif_components["source_gif"],
             gif_components["target_gif_file"],
@@ -422,7 +427,7 @@ def wire_gif_tab(gif_components, gallery_components):
             gif_components["enhancement_model_selector_gif"],
             gif_components["restoration_model_selector_gif"],
         ],
-        outputs=[gif_components["result_gif"]],
+        outputs=[gif_components["result_gif"], gif_components["run_gif_btn"]],
         show_progress="full",
     ).then(
         # Auto-refresh gallery after processing completes
@@ -432,4 +437,8 @@ def wire_gif_tab(gif_components, gallery_components):
             gallery_components["gallery"],
             gallery_components["file_count_text"],
         ],
+    )
+    gif_components["cancel_gif_btn"].click(
+        request_job_cancel,
+        outputs=[],
     )

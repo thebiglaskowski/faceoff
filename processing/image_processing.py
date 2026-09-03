@@ -134,6 +134,9 @@ def process_image(
             progress.log("✅ Restoration complete")
 
         if enhance:
+            from processing.job_control import raise_if_cancelled
+
+            raise_if_cancelled()
             processor.release_gpu_models()
             prepare_for_enhancement(gpu_id, device_ids=device_ids)
             progress.set_stage("✨ Enhancement")

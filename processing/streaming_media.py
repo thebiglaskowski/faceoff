@@ -21,6 +21,7 @@ from core.media_processor import MediaProcessor
 from core.model_pool import get_model_pool
 from processing.frame_batch import process_chunk_multi_gpu, process_frames_batch
 from processing.in_memory_enhancement import InMemoryEnhancer
+from processing.job_control import JobCancelled, raise_if_cancelled
 from processing.resolution_adaptive import ResolutionAdaptiveProcessor
 from processing.restoration_session import RestorationSession
 from processing.workload_profile import (
@@ -514,6 +515,7 @@ def process_streaming(
                 ) as writer:
                     with progress.track(0, "Processing frames", "frame") as pbar:
                         while True:
+                            raise_if_cancelled()
                             chunk = reader.read_chunk(chunk_size)
                             if not chunk:
                                 break
@@ -551,6 +553,7 @@ def process_streaming(
                 ) as gif_writer:
                     with progress.track(0, "Processing GIF frames", "frame") as pbar:
                         while True:
+                            raise_if_cancelled()
                             chunk = reader.read_chunk(chunk_size)
                             if not chunk:
                                 break
@@ -572,6 +575,13 @@ def process_streaming(
                             pbar.refresh()
                     if gif_writer.frames_written == 0 or not gif_writer.finalize():
                         raise RuntimeError("Streaming GIF encode failed")
+    except JobCancelled:
+        # Discard the partial output so a cancelled job leaves no orphan.
+        try:
+            output_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     finally:
         if restoration_session:
             restoration_session.close()

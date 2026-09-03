@@ -13,6 +13,7 @@ from core.gpu_manager import GPUManager
 from core.media_processor import MediaProcessor
 from processing.gif_processing import process_gif
 from processing.image_processing import process_image
+from processing.job_control import JobCancelled
 from processing.video_processing import process_video
 from utils.compression import compress_media_file
 from utils.config_manager import config
@@ -265,6 +266,9 @@ def process_media(opts: ProcessOptions) -> Tuple[Optional[str], Optional[str]]:
 
     except FriendlyError:
         # Re-raise friendly errors as-is
+        raise
+    except JobCancelled:
+        # User cancel is an outcome, not an error — never "friendlify" it.
         raise
     except Exception as e:
         # Convert technical errors to friendly errors

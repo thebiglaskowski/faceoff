@@ -2,6 +2,7 @@
 
 import gradio as gr
 
+from processing.job_control import request_job_cancel
 from ui.handlers.processing_handlers import (
     add_face_mapping_image,
     clear_face_mappings_image,
@@ -9,6 +10,7 @@ from ui.handlers.processing_handlers import (
 )
 from ui.helpers.controls import (
     refresh_gallery_images,
+    swap_with_button_toggle,
     toggle_denoise_slider,
     toggle_enhancement_controls,
     toggle_restoration_controls,
@@ -211,7 +213,9 @@ def create_image_tab():
                     info="~30% faster inference, minimal quality impact (requires TensorRT)",
                 )
 
-        run_image_btn = gr.Button("🔁 Swap Image", variant="primary")
+        with gr.Row():
+            run_image_btn = gr.Button("🔁 Swap Image", variant="primary")
+            cancel_image_btn = gr.Button("⛔ Cancel", variant="stop", size="sm")
 
     # Return all components needed for event binding
     return {
@@ -247,6 +251,7 @@ def create_image_tab():
         "gpu_selection": gpu_selection,
         "tensorrt_fp16_checkbox": tensorrt_fp16_checkbox,
         "run_image_btn": run_image_btn,
+        "cancel_image_btn": cancel_image_btn,
     }
 
 
@@ -389,7 +394,7 @@ def wire_image_tab(img_components, gallery_components):
 
     # Image processing button with auto-refresh of gallery
     img_components["run_image_btn"].click(
-        process_image,
+        swap_with_button_toggle(process_image),
         inputs=[
             img_components["source_img"],
             img_components["target_img"],
@@ -408,7 +413,7 @@ def wire_image_tab(img_components, gallery_components):
             img_components["enhancement_model_selector"],
             img_components["restoration_model_selector"],
         ],
-        outputs=[img_components["result_img"]],
+        outputs=[img_components["result_img"], img_components["run_image_btn"]],
         show_progress="full",
     ).then(
         # Auto-refresh gallery after processing completes
@@ -418,4 +423,8 @@ def wire_image_tab(img_components, gallery_components):
             gallery_components["gallery"],
             gallery_components["file_count_text"],
         ],
+    )
+    img_components["cancel_image_btn"].click(
+        request_job_cancel,
+        outputs=[],
     )
