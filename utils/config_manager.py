@@ -90,10 +90,17 @@ class Config:
 
         # Navigate to the parent dict
         current = self._config
+        if not isinstance(current, dict):
+            raise ValueError("Config root is not a mapping; cannot update")
         for key in keys[:-1]:
             if key not in current:
                 current[key] = {}
             current = current[key]
+            if not isinstance(current, dict):
+                raise ValueError(
+                    f"Cannot update '{'.'.join(keys)}': '{key}' is a value, "
+                    "not a section"
+                )
 
         # Set the value
         current[keys[-1]] = value

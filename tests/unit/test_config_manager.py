@@ -370,3 +370,26 @@ gpu:
         # Should use all defaults
         assert config.max_file_size_mb == 500
         assert config.batch_size == 4
+
+
+class TestConfigUpdate:
+    def test_update_sets_nested_value(self, temp_config, reset_config):
+        from utils.config_manager import Config
+
+        config = Config()
+        config.update("gpu", "batch_size", value=16)
+        assert config.get("gpu", "batch_size") == 16
+
+    def test_update_creates_missing_sections(self, temp_config, reset_config):
+        from utils.config_manager import Config
+
+        config = Config()
+        config.update("brand", "new_section", "flag", value=True)
+        assert config.get("brand", "new_section", "flag") is True
+
+    def test_update_through_scalar_raises_clear_error(self, temp_config, reset_config):
+        from utils.config_manager import Config
+
+        config = Config()
+        with pytest.raises(ValueError, match="not a section"):
+            config.update("gpu", "batch_size", "deep", value=1)
