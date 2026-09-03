@@ -29,6 +29,18 @@ class TestGpuScheduler:
         assert weights[0] == 20000.0
         assert weights[1] == 2500.0
 
+    def test_empty_devices_raises_clear_error(self):
+        with pytest.raises(ValueError, match="at least one device"):
+            assign_frames_to_gpus(10, [])
+
+    def test_weighted_split_covers_all_frames(self):
+        with patch("processing.gpu_scheduler._gpu_free_vram_mb", return_value=1000.0):
+            result = assign_frames_to_gpus(
+                6, [0, 1], frame_weights=[10.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+            )
+        assert sum(len(v) for v in result.values()) == 6
+        assert set(i for indices in result.values() for i in indices) == set(range(6))
+
 
 class TestStreamingVideoIO:
     def test_ffmpeg_stderr_drain_starts_for_writer(self, tmp_path):

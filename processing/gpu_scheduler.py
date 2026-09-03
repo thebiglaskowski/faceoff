@@ -38,6 +38,8 @@ def assign_frames_to_gpus(
     Returns:
         Dict mapping device_id → list of frame indices (original order within chunk).
     """
+    if not device_ids:
+        raise ValueError("assign_frames_to_gpus requires at least one device")
     if num_frames <= 0:
         return {d: [] for d in device_ids}
     if len(device_ids) == 1:
@@ -47,10 +49,6 @@ def assign_frames_to_gpus(
     total_vram = sum(vram_weights)
 
     if frame_weights and len(frame_weights) == num_frames:
-        total_cost = sum(frame_weights) or float(num_frames)
-        target_counts = [
-            max(1, int(round(num_frames * (vw / total_vram)))) for vw in vram_weights
-        ]
         # Weighted round-robin using cumulative cost
         assignments: Dict[int, List[int]] = {d: [] for d in device_ids}
         gpu_loads = [0.0] * len(device_ids)
