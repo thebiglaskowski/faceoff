@@ -9,6 +9,7 @@ from ui.handlers.processing_handlers import (
     process_image,
 )
 from ui.helpers.controls import (
+    JUMP_TO_GALLERY_JS,
     refresh_gallery_images,
     swap_with_button_toggle,
     toggle_denoise_slider,
@@ -416,13 +417,14 @@ def wire_image_tab(img_components, gallery_components):
         outputs=[img_components["result_img"], img_components["run_image_btn"]],
         show_progress="full",
     ).then(
-        # Auto-refresh gallery after processing completes
+        # Auto-refresh gallery and jump to it after processing completes
         refresh_gallery_images,
         inputs=[img_components["result_img"]],
         outputs=[
             gallery_components["gallery"],
             gallery_components["file_count_text"],
         ],
+        js=JUMP_TO_GALLERY_JS,
     )
     img_components["cancel_image_btn"].click(
         request_job_cancel,

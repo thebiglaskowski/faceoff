@@ -9,6 +9,7 @@ from ui.handlers.processing_handlers import (
     process_gif,
 )
 from ui.helpers.controls import (
+    JUMP_TO_GALLERY_JS,
     refresh_gallery_gifs,
     swap_with_button_toggle,
     toggle_denoise_slider,
@@ -430,13 +431,14 @@ def wire_gif_tab(gif_components, gallery_components):
         outputs=[gif_components["result_gif"], gif_components["run_gif_btn"]],
         show_progress="full",
     ).then(
-        # Auto-refresh gallery after processing completes
+        # Auto-refresh gallery and jump to it after processing completes
         refresh_gallery_gifs,
         inputs=[gif_components["result_gif"]],
         outputs=[
             gallery_components["gallery"],
             gallery_components["file_count_text"],
         ],
+        js=JUMP_TO_GALLERY_JS,
     )
     gif_components["cancel_gif_btn"].click(
         request_job_cancel,

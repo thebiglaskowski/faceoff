@@ -9,6 +9,7 @@ from ui.handlers.processing_handlers import (
     process_video,
 )
 from ui.helpers.controls import (
+    JUMP_TO_GALLERY_JS,
     refresh_gallery_videos,
     swap_with_button_toggle,
     toggle_denoise_slider,
@@ -438,13 +439,14 @@ def wire_video_tab(vid_components, gallery_components):
         outputs=[vid_components["result_vid"], vid_components["run_video_btn"]],
         show_progress="full",
     ).then(
-        # Auto-refresh gallery after processing completes
+        # Auto-refresh gallery and jump to it after processing completes
         refresh_gallery_videos,
         inputs=[vid_components["result_vid"]],
         outputs=[
             gallery_components["gallery"],
             gallery_components["file_count_text"],
         ],
+        js=JUMP_TO_GALLERY_JS,
     )
     vid_components["cancel_video_btn"].click(
         request_job_cancel,

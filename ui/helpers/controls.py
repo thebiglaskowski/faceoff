@@ -66,6 +66,16 @@ def toggle_denoise_slider(model_choice):
     return gr.update(visible=supports_denoise)
 
 
+JUMP_TO_GALLERY_JS = """() => {
+  try {
+    const tabs = document.querySelectorAll('button[role="tab"]');
+    for (const t of tabs) {
+      if ((t.textContent || "").includes("Gallery")) { t.click(); break; }
+    }
+  } catch (e) {}
+}"""
+
+
 def swap_with_button_toggle(fn):
     """Wrap a swap handler so the Swap button disables while it runs.
 
