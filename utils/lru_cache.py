@@ -43,9 +43,11 @@ class LRUModelCache:
             cleanup_fn: Optional function to call when evicting items
         """
         self.name = name
-        self._max_size = max_size or config.get(
-            "model_cache_limits", "max_models_per_cache", default=5
-        )
+        if max_size is None:
+            max_size = config.get(
+                "model_cache_limits", "max_models_per_cache", default=5
+            )
+        self._max_size = max(1, max_size)
         self._cleanup_fn = cleanup_fn
         self._cache: OrderedDict = OrderedDict()
         self._lock = threading.Lock()
