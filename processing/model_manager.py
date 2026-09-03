@@ -83,38 +83,6 @@ def get_model_status() -> List[List[str]]:
     return rows
 
 
-def run_model_download(selection: str, force: bool = False) -> str:
-    """Run scripts/download_models.py, return the tailed log for the UI."""
-    models_arg = AVAILABLE_DOWNLOADS.get(selection, "all")
-    script = Path(__file__).resolve().parent.parent / "scripts" / "download_models.py"
-    cmd = [sys.executable, str(script), "--models", models_arg]
-    if force:
-        cmd.append("--force")
-    logger.info("Model download started: %s", " ".join(cmd))
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=3600,
-        )
-    except subprocess.TimeoutExpired:
-        return "❌ Download timed out after 1 hour. Check your connection and retry."
-    except Exception as exc:
-        return f"❌ Could not launch download script: {exc}"
-
-    output = (proc.stdout or "") + (proc.stderr or "")
-    lines = [ln for ln in output.strip().splitlines() if ln.strip()]
-    tail = "\n".join(lines[-LOG_TAIL_LINES:])
-    status = (
-        "✅ Download finished."
-        if proc.returncode == 0
-        else (f"❌ Download script exited with code {proc.returncode}.")
-    )
-    logger.info("Model download finished with code %d", proc.returncode)
-    return f"{status}\n\n{tail}" if tail else status
-
-
 def request_download_cancel() -> None:
     """Signal a running stream_model_download to stop (UI Cancel button)."""
     _cancel_download.set()

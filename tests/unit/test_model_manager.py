@@ -30,34 +30,18 @@ def test_status_reports_installed(monkeypatch, tmp_path):
     assert "Installed" in rows[1][2]
 
 
-def test_download_maps_selection_to_cli_flag():
+def test_stream_failure_reports_exit_code():
     mm = _load()
-    with patch.object(mm.subprocess, "run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="done", stderr="")
-        log = mm.run_model_download("inswapper_128.onnx (face swap)")
-        cmd = mock_run.call_args.args[0]
-        assert "--models" in cmd
-        assert cmd[cmd.index("--models") + 1] == "inswapper"
-        assert "finished" in log
+    from unittest.mock import MagicMock
 
-
-def test_download_failure_reports_exit_code():
-    mm = _load()
-    with patch.object(mm.subprocess, "run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="boom")
-        log = mm.run_model_download("All models (recommended)")
-        assert "code 1" in log
-        assert "boom" in log
-
-
-def test_download_timeout_is_clean():
-    mm = _load()
-    with patch.object(
-        mm.subprocess,
-        "run",
-        side_effect=mm.subprocess.TimeoutExpired(cmd="x", timeout=1),
-    ):
-        assert "timed out" in mm.run_model_download("All models (recommended)")
+    proc = MagicMock()
+    proc.stdout = iter(["boom\n"])
+    proc.poll.return_value = 1
+    proc.returncode = 1
+    with patch.object(mm.subprocess, "Popen", return_value=proc):
+        out = list(mm.stream_model_download("All models (recommended)"))
+    assert "code 1" in out[-1]
+    assert "boom" in out[-1]
 
 
 def test_verify_flags_missing(monkeypatch, tmp_path):
