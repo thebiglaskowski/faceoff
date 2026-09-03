@@ -7,14 +7,12 @@ import logging
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional
 
 import cv2
 import numpy as np
-from insightface.utils import face_align
 
 from core.face_paste import ensure_rgb_image, paste_swapped_face
 from core.model_pool import get_model_pool

@@ -13,8 +13,6 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-import numpy as np
-
 from core.gpu_manager import GPUManager
 from core.model_pool import get_model_pool
 from utils.config_manager import config

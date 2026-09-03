@@ -7,9 +7,8 @@ for high-quality face restoration with controllable fidelity.
 
 import gc
 import logging
-import os
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import cv2
 import numpy as np

@@ -13,9 +13,7 @@ Performance optimizations (in order of preference):
 
 import gc
 import logging
-import sys
-from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np

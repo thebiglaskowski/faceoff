@@ -5,7 +5,6 @@ from types import ModuleType
 
 import torch
 import torch.nn as nn
-import torch.utils.checkpoint as checkpoint
 
 # Compat shim: torchvision >=0.18 removed torchvision.transforms.functional_tensor.
 # Older basicsr (1.4.2), still pulled by gfpgan/realesrgan, imports rgb_to_grayscale

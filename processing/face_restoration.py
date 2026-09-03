@@ -8,9 +8,7 @@ face quality after swapping or for general face enhancement.
 import logging
 import warnings
 from pathlib import Path
-from typing import Optional, Union
 
-import cv2
 import numpy as np
 import torch
 
