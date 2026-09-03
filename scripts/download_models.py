@@ -37,8 +37,7 @@ INSWAPPER_SHA256 = None  # Fill in with the published checksum if desired.
 INSWAPPER_MIN_BYTES = 400 * 1024 * 1024
 
 BUFFALO_L_URL = (
-    "https://github.com/deepinsight/insightface"
-    "/releases/download/v0.7/buffalo_l.zip"
+    "https://github.com/deepinsight/insightface" "/releases/download/v0.7/buffalo_l.zip"
 )
 BUFFALO_L_MIN_BYTES = 200 * 1024 * 1024
 

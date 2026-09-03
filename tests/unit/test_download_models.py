@@ -81,8 +81,7 @@ def test_missing_model_error_points_at_download_script():
 
     with (
         patch("core.media_processor.config") as mock_config,
-        patch("core.media_processor.is_tensorrt_runtime_available",
-              return_value=False),
+        patch("core.media_processor.is_tensorrt_runtime_available", return_value=False),
     ):
         mock_config.inswapper_model_path = "/nonexistent/swap.onnx"
         mock_config.buffalo_model_path = "/nonexistent/buffalo_l"
