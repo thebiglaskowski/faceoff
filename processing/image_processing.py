@@ -5,7 +5,7 @@ Image processing with face swapping and enhancement.
 import logging
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 from PIL import Image
@@ -58,8 +58,18 @@ def process_image(
     restoration_weight: float = 0.5,
     enhancement_model: str = "RealESRGAN",
     restoration_model: str = "GFPGAN",
+    *,
+    stage_cb: Optional[Callable[[float, str], None]] = None,
 ) -> Tuple[Optional[str], None]:
     """Process a single image with face swapping (in-memory restore/enhance)."""
+
+    def _stage(frac: float, desc: str) -> None:
+        if stage_cb is not None:
+            try:
+                stage_cb(frac, desc)
+            except Exception as exc:
+                logger.debug("stage callback failed: %s", exc)
+
     if not device_ids:
         device_ids = [0]
     gpu_id = device_ids[0]
@@ -122,6 +132,7 @@ def process_image(
         swapped = processor.swap_face_batch(swapped, dst_faces, src_faces[0])
 
     progress.log("✅ Face swapping complete")
+    _stage(0.45, "Face swap complete — restoring…")
 
     restoration_session: Optional[RestorationSession] = None
     try:
@@ -132,6 +143,7 @@ def process_image(
             )
             swapped = restoration_session.restore_rgb_frame(swapped)
             progress.log("✅ Restoration complete")
+            _stage(0.55, "Restoration complete — enhancing…")
 
         if enhance:
             from processing.job_control import raise_if_cancelled
@@ -156,6 +168,7 @@ def process_image(
             )
             swapped = enhancer.enhance_rgb_image(swapped)
             progress.log("✅ Enhancement complete")
+            _stage(0.85, "Enhancement complete — saving…")
 
         timestamp = int(time.time() * 1000)
         output_path = output_dir / f"swapped_{timestamp}.png"

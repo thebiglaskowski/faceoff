@@ -5,7 +5,7 @@ Media processing orchestrator - unified entry point for all media types.
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
@@ -83,12 +83,16 @@ def parse_gpu_selection(gpu_selection: Optional[str]) -> List[int]:
     return device_ids
 
 
-def process_media(opts: ProcessOptions) -> Tuple[Optional[str], Optional[str]]:
+def process_media(
+    opts: ProcessOptions,
+    stage_cb: Optional[Callable[[float, str], None]] = None,
+) -> Tuple[Optional[str], Optional[str]]:
     """
     Process media with face swapping and optional enhancement.
 
     Args:
         opts: ProcessOptions dataclass with all processing parameters.
+        stage_cb: Optional (fraction, description) callback for UI progress.
 
     Returns:
         Tuple of (image_output_path, video_output_path)
@@ -193,6 +197,7 @@ def process_media(opts: ProcessOptions) -> Tuple[Optional[str], Optional[str]]:
                 opts.restoration_weight,
                 opts.enhancement_model,
                 opts.restoration_model,
+                stage_cb=stage_cb,
             )
         elif opts.media_type == "video":
             result_path, video_path = process_video(
@@ -214,6 +219,7 @@ def process_media(opts: ProcessOptions) -> Tuple[Optional[str], Optional[str]]:
                 opts.restoration_weight,
                 enhancement_model=opts.enhancement_model,
                 restoration_model=opts.restoration_model,
+                stage_cb=stage_cb,
             )
         elif opts.media_type == "gif":
             result_path, video_path = process_gif(
@@ -235,6 +241,7 @@ def process_media(opts: ProcessOptions) -> Tuple[Optional[str], Optional[str]]:
                 opts.restoration_weight,
                 enhancement_model=opts.enhancement_model,
                 restoration_model=opts.restoration_model,
+                stage_cb=stage_cb,
             )
         else:
             raise ValueError(f"Unsupported media type: {opts.media_type}")

@@ -36,7 +36,7 @@ def test_swap_wrapper_toggles_button():
 
     calls = []
 
-    def fake_fn(*args):
+    def fake_fn(*args, **kwargs):
         calls.append(args)
         return "RESULT"
 
@@ -46,10 +46,27 @@ def test_swap_wrapper_toggles_button():
     assert out[1] == ("RESULT", {"interactive": True, "__type__": "update"})
 
 
+def test_swap_wrapper_forwards_progress():
+    from unittest.mock import MagicMock
+
+    from ui.helpers.controls import swap_with_button_toggle
+
+    seen = {}
+
+    def fake_fn(*args, **kwargs):
+        seen.update(kwargs)
+        return "R"
+
+    fake_progress = MagicMock()
+    out = list(swap_with_button_toggle(fake_fn)("x", progress=fake_progress))
+    assert seen.get("progress") is fake_progress
+    assert out[-1][0] == "R"
+
+
 def test_swap_wrapper_reenables_on_error():
     from ui.helpers.controls import swap_with_button_toggle
 
-    def boom(*args):
+    def boom(*args, **kwargs):
         raise ValueError("nope")
 
     gen = swap_with_button_toggle(boom)()

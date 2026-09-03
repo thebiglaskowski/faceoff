@@ -7,7 +7,7 @@ to avoid full-video RAM residency and PNG round-trips.
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
@@ -39,6 +39,8 @@ def process_video(
     detection_scale: Optional[float] = None,
     enhancement_model: str = "RealESRGAN",
     restoration_model: str = "GFPGAN",
+    *,
+    stage_cb: Optional[Callable[[float, str], None]] = None,
 ) -> Tuple[None, Optional[str]]:
     """Process video files with face swapping via the streaming pipeline."""
     if not device_ids:
@@ -79,4 +81,5 @@ def process_video(
         detection_scale=detection_scale,
         enhancement_model=enhancement_model,
         restoration_model=restoration_model,
+        stage_cb=stage_cb,
     )

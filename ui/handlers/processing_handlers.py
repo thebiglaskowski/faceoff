@@ -81,6 +81,7 @@ def _process_input(
     tensorrt_fp16: bool = True,
     enhancement_model: str = "RealESRGAN",
     restoration_model: str = "GFPGAN",
+    progress=None,
     *,
     media_kind: str = "image",
     expected_media_type: Optional[str] = None,
@@ -227,7 +228,19 @@ def _process_input(
             model_display=model_selection,
         )
 
-        result_img, result_vid = process_media(opts)
+        def _stage_cb(frac: float, desc: str) -> None:
+            if progress is not None:
+                try:
+                    progress(frac, desc=desc)
+                except Exception as exc:
+                    logger.debug("progress update failed: %s", exc)
+
+        if progress is not None:
+            try:
+                progress(0.02, desc="Validating inputs…")
+            except Exception:
+                pass
+        result_img, result_vid = process_media(opts, stage_cb=_stage_cb)
 
         logger.info("Processing complete!")
         logger.info("=" * 40)
@@ -284,6 +297,7 @@ def process_image(
     tensorrt_fp16: bool = True,
     enhancement_model: str = "RealESRGAN",
     restoration_model: str = "GFPGAN",
+    progress=None,
 ):
     """Process an image face swap."""
     return _process_input(
@@ -327,6 +341,7 @@ def process_gif(
     tensorrt_fp16: bool = True,
     enhancement_model: str = "RealESRGAN",
     restoration_model: str = "GFPGAN",
+    progress=None,
 ):
     """Process a GIF face swap."""
     return _process_input(
@@ -370,6 +385,7 @@ def process_video(
     tensorrt_fp16: bool = True,
     enhancement_model: str = "RealESRGAN",
     restoration_model: str = "GFPGAN",
+    progress=None,
 ):
     """Process a video face swap."""
     return _process_input(

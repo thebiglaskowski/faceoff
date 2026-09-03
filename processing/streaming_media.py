@@ -6,7 +6,7 @@ import logging
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -319,7 +319,15 @@ def process_streaming(
     enhancement_model: str = "RealESRGAN",
     restoration_model: str = "GFPGAN",
     workload_profile: Optional[WorkloadProfile] = None,
+    stage_cb: Optional[Callable[[float, str], None]] = None,
 ) -> Tuple[None, Optional[str]]:
+    def _stage(frac: float, desc: str) -> None:
+        if stage_cb is not None:
+            try:
+                stage_cb(frac, desc)
+            except Exception as exc:
+                logger.debug("stage callback failed: %s", exc)
+
     if not device_ids:
         device_ids = [processor.device_id]
 
@@ -366,6 +374,7 @@ def process_streaming(
         processor, source_image, face_confidence, device_ids
     )
     progress.log(f"✅ Found {len(src_faces)} source face(s)")
+    _stage(0.1, f"Detection complete — swapping {ctx.media_type}…")
 
     if face_mappings:
         from utils.validation import validate_face_mappings_or_raise
@@ -543,6 +552,8 @@ def process_streaming(
                             pbar.total = total_frames
                             pbar.n = total_frames
                             pbar.refresh()
+                            _stage(0.4, f"Swapped {total_frames} frames…")
+                    _stage(0.9, "Encoding video…")
                     if writer.frames_written == 0 or not writer.finalize():
                         raise RuntimeError("Streaming video encode failed")
             else:
@@ -573,6 +584,8 @@ def process_streaming(
                             pbar.total = total_frames
                             pbar.n = total_frames
                             pbar.refresh()
+                            _stage(0.4, f"Swapped {total_frames} frames…")
+                    _stage(0.9, "Encoding GIF…")
                     if gif_writer.frames_written == 0 or not gif_writer.finalize():
                         raise RuntimeError("Streaming GIF encode failed")
     except JobCancelled:

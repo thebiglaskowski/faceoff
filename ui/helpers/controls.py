@@ -80,13 +80,15 @@ def swap_with_button_toggle(fn):
     """Wrap a swap handler so the Swap button disables while it runs.
 
     Yields (result, button_update) pairs: disabled first, re-enabled on
-    success or error. Errors propagate after re-enabling.
+    success or error. Errors propagate after re-enabling. Gradio injects
+    its Progress object via the ``progress`` parameter, forwarded to the
+    handler for stage updates.
     """
 
-    def _run(*args):
+    def _run(*args, progress=gr.Progress(track_tqdm=True)):
         yield gr.skip(), gr.update(interactive=False)
         try:
-            result = fn(*args)
+            result = fn(*args, progress=progress)
         except Exception:
             yield gr.skip(), gr.update(interactive=True)
             raise
