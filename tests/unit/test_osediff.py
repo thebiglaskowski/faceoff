@@ -56,10 +56,13 @@ def test_dispatch_routes_osediff_frames():
     enhancer = InMemoryEnhancer("OSEDiff", OSEDIFF_VARIANT, [0])
     frames = [np.zeros((16, 16, 3), dtype=np.uint8) for _ in range(2)]
     sentinel = np.ones((16, 16, 3), dtype=np.uint8) * 7
-    with patch(
-        "processing.osediff_enhancement.enhance_image_osediff",
-        return_value=sentinel,
-    ) as mock_enh:
+    with (
+        patch(
+            "processing.osediff_enhancement.enhance_image_osediff",
+            return_value=sentinel,
+        ) as mock_enh,
+        patch("processing.osediff_enhancement.warm_osediff_pipeline"),
+    ):
         out = enhancer._enhance_bgr_batch(frames, 0)
     assert mock_enh.call_count == 2
     assert all(np.array_equal(f, sentinel) for f in out)
@@ -72,11 +75,33 @@ def test_dispatch_keeps_original_on_frame_error():
 
     enhancer = InMemoryEnhancer("OSEDiff", OSEDIFF_VARIANT, [0])
     frames = [np.zeros((16, 16, 3), dtype=np.uint8)]
-    with patch(
-        "processing.osediff_enhancement.enhance_image_osediff",
-        side_effect=RuntimeError("boom"),
+    with (
+        patch("processing.osediff_enhancement.warm_osediff_pipeline"),
+        patch(
+            "processing.osediff_enhancement.enhance_image_osediff",
+            side_effect=RuntimeError("boom"),
+        ),
     ):
         assert enhancer._enhance_bgr_batch(frames, 0) == frames
+
+
+def test_setup_failure_raises_instead_of_silent_fallback():
+    from unittest.mock import patch
+
+    from processing.osediff_enhancement import OSEDIFF_VARIANT
+
+    enhancer = InMemoryEnhancer("OSEDiff", OSEDIFF_VARIANT, [0])
+    frames = [np.zeros((16, 16, 3), dtype=np.uint8)]
+    with (
+        patch(
+            "processing.osediff_enhancement.warm_osediff_pipeline",
+            side_effect=RuntimeError("no diffusers"),
+        ),
+        patch("processing.osediff_enhancement.enhance_image_osediff") as mock_enh,
+    ):
+        with pytest.raises(RuntimeError, match="no diffusers"):
+            enhancer._enhance_bgr_batch(frames, 0)
+    mock_enh.assert_not_called()
 
 
 def test_fit_to_vram_side_downscales_long_side_only():

@@ -102,8 +102,14 @@ class InMemoryEnhancer:
         from processing.swinir_enhancement import enhance_image_swinir
 
         if self.enhancement_model == "OSEDiff":
-            from processing.osediff_enhancement import enhance_image_osediff
+            from processing.osediff_enhancement import (
+                enhance_image_osediff,
+                warm_osediff_pipeline,
+            )
 
+            # Fail loudly on setup problems (missing deps/weights/pipeline).
+            # A silent full fallback is how "no visible difference" happens.
+            warm_osediff_pipeline(gpu_id)
             out = []
             for bgr in bgr_frames:
                 try:

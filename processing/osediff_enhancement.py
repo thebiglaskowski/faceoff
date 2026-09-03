@@ -199,6 +199,15 @@ def _get_pipeline(gpu_id: int):
         return pipe
 
 
+def warm_osediff_pipeline(gpu_id: int = 0):
+    """Build and cache the pipeline now; raises on setup problems.
+
+    Call once before frame loops so missing deps/weights/pipeline bugs
+    surface as errors instead of degrading to a silent no-op.
+    """
+    return _get_pipeline(gpu_id)
+
+
 def clear_osediff_cache() -> None:
     """Release OSEDiff pipelines (also called on app shutdown paths)."""
     with _osediff_load_lock:
