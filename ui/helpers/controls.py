@@ -76,23 +76,48 @@ JUMP_TO_GALLERY_JS = """() => {
 }"""
 
 
+def swap_error_text(exc: Exception) -> str:
+    """Render an exception as inline Markdown for the per-tab error box."""
+    msg = getattr(exc, "message", None) or (exc.args[0] if exc.args else "")
+    return f"⚠️ {msg}" if msg else "⚠️ Swap failed."
+
+
+def _hidden_error_box():
+    return gr.update(value="", visible=False)
+
+
 def swap_with_button_toggle(fn):
     """Wrap a swap handler so the Swap button disables while it runs.
 
-    Yields (result, button_update) pairs: disabled first, re-enabled on
-    success or error. Errors propagate after re-enabling. Gradio injects
-    its Progress object via the ``progress`` parameter, forwarded to the
-    handler for stage updates.
+    Yields (result, button_update, error_update) triples: disabled first
+    with a cleared error box, re-enabled on success or error. Expected
+    failures (``gr.Error``) render inline in the tab's error box instead
+    of a vanishing toast; unexpected exceptions render inline too and
+    still propagate after re-enabling. Gradio injects its Progress object
+    via the ``progress`` parameter, forwarded to the handler for stage
+    updates.
     """
 
     def _run(*args, progress=gr.Progress(track_tqdm=True)):
-        yield gr.skip(), gr.update(interactive=False)
+        yield gr.skip(), gr.update(interactive=False), _hidden_error_box()
         try:
             result = fn(*args, progress=progress)
-        except Exception:
-            yield gr.skip(), gr.update(interactive=True)
+        except gr.Error as exc:
+            yield gr.skip(), gr.update(interactive=True), gr.update(
+                value=swap_error_text(exc), visible=True
+            )
+            return
+        except Exception as exc:
+            yield (
+                gr.skip(),
+                gr.update(interactive=True),
+                gr.update(
+                    value=(f"⚠️ Unexpected error: {exc} — " "details in the Logs tab."),
+                    visible=True,
+                ),
+            )
             raise
-        yield result, gr.update(interactive=True)
+        yield result, gr.update(interactive=True), _hidden_error_box()
 
     return _run
 

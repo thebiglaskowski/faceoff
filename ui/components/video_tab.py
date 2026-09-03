@@ -243,6 +243,8 @@ def create_video_tab():
             run_video_btn = gr.Button("🔁 Swap Video", variant="primary")
             cancel_video_btn = gr.Button("⛔ Cancel", variant="stop", size="sm")
 
+        swap_error = gr.Markdown(visible=False)
+
     # Return all components needed for event binding
     return {
         "source_vid": source_vid,
@@ -281,6 +283,7 @@ def create_video_tab():
         "tensorrt_fp16_checkbox_vid": tensorrt_fp16_checkbox_vid,
         "run_video_btn": run_video_btn,
         "cancel_video_btn": cancel_video_btn,
+        "swap_error": swap_error,
     }
 
 
@@ -456,7 +459,11 @@ def wire_video_tab(vid_components, gallery_components):
             vid_components["enhancement_model_selector_vid"],
             vid_components["restoration_model_selector_vid"],
         ],
-        outputs=[vid_components["result_vid"], vid_components["run_video_btn"]],
+        outputs=[
+            vid_components["result_vid"],
+            vid_components["run_video_btn"],
+            vid_components["swap_error"],
+        ],
         show_progress="full",
     ).then(
         # Mirror the target for the compare-with-original view

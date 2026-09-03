@@ -229,6 +229,8 @@ def create_image_tab():
             run_image_btn = gr.Button("🔁 Swap Image", variant="primary")
             cancel_image_btn = gr.Button("⛔ Cancel", variant="stop", size="sm")
 
+        swap_error = gr.Markdown(visible=False)
+
     # Return all components needed for event binding
     return {
         "source_img": source_img,
@@ -266,6 +268,7 @@ def create_image_tab():
         "tensorrt_fp16_checkbox": tensorrt_fp16_checkbox,
         "run_image_btn": run_image_btn,
         "cancel_image_btn": cancel_image_btn,
+        "swap_error": swap_error,
     }
 
 
@@ -434,7 +437,11 @@ def wire_image_tab(img_components, gallery_components):
             img_components["enhancement_model_selector"],
             img_components["restoration_model_selector"],
         ],
-        outputs=[img_components["result_img"], img_components["run_image_btn"]],
+        outputs=[
+            img_components["result_img"],
+            img_components["run_image_btn"],
+            img_components["swap_error"],
+        ],
         show_progress="full",
     ).then(
         # Mirror the target for the compare-with-original view

@@ -233,6 +233,8 @@ def create_gif_tab():
             run_gif_btn = gr.Button("🔁 Swap GIF", variant="primary")
             cancel_gif_btn = gr.Button("⛔ Cancel", variant="stop", size="sm")
 
+        swap_error = gr.Markdown(visible=False)
+
     # Return all components needed for event binding
     return {
         "source_gif": source_gif,
@@ -271,6 +273,7 @@ def create_gif_tab():
         "tensorrt_fp16_checkbox_gif": tensorrt_fp16_checkbox_gif,
         "run_gif_btn": run_gif_btn,
         "cancel_gif_btn": cancel_gif_btn,
+        "swap_error": swap_error,
     }
 
 
@@ -449,7 +452,11 @@ def wire_gif_tab(gif_components, gallery_components):
             gif_components["enhancement_model_selector_gif"],
             gif_components["restoration_model_selector_gif"],
         ],
-        outputs=[gif_components["result_gif"], gif_components["run_gif_btn"]],
+        outputs=[
+            gif_components["result_gif"],
+            gif_components["run_gif_btn"],
+            gif_components["swap_error"],
+        ],
         show_progress="full",
     ).then(
         # Mirror the target for the compare-with-original view
