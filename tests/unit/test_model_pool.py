@@ -638,3 +638,43 @@ class TestSwapFaceBatchGpuPaste:
             mock_paste.assert_called_once()
             bgr_fake = mock_paste.call_args[0][1]
             assert isinstance(bgr_fake, torch.Tensor)
+
+
+class TestPoolConcurrentReadDuringCleanup:
+    """is_gpu_initialized must survive concurrent cleanup() mutation."""
+
+    def test_readers_and_cleanup_race_free(self, mock_gpu_dependencies):
+        from unittest.mock import MagicMock
+
+        from core.model_pool import get_model_pool
+
+        pool = get_model_pool()
+        pool.set_model_path("test.onnx")
+        for key in [(0, False), (1, True)]:
+            inst = MagicMock()
+            pool._gpu_instances[key] = inst
+
+        errors = []
+
+        def reader():
+            try:
+                for _ in range(200):
+                    pool.is_gpu_initialized(0)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        def cleaner():
+            try:
+                for _ in range(20):
+                    pool.cleanup()
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=reader) for _ in range(4)]
+        threads.append(threading.Thread(target=cleaner))
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=60)
+
+        assert not errors

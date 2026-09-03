@@ -524,7 +524,10 @@ class ModelPool:
         logger.info("ModelPool cleaned up")
 
     def is_gpu_initialized(self, device_id: int) -> bool:
-        return any(key[0] == device_id for key in self._gpu_instances)
+        # Locked: cleanup() mutates this dict on other threads; an
+        # unlocked any() can raise "dictionary changed size" mid-iteration.
+        with self._pool_lock:
+            return any(key[0] == device_id for key in self._gpu_instances)
 
 
 get_model_pool = ModelPool._get_instance
