@@ -31,21 +31,36 @@ class TerminalLogHandler(logging.Handler):
         super().__init__()
         self._capacity = max(1, capacity)
         self._lock = threading.Lock()
-        self._lines: Deque[str] = deque(maxlen=self._capacity)
+        self._lines: Deque[Tuple[str, str]] = deque(maxlen=self._capacity)
         self._level_counts: Counter[str] = Counter()
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             line = self.format(record)
             with self._lock:
-                self._lines.append(line)
+                self._lines.append((record.levelname, line))
                 self._level_counts[record.levelname] += 1
         except Exception:
             self.handleError(record)
 
     def get_logs(self) -> List[str]:
         with self._lock:
-            return list(self._lines)
+            return [line for _, line in self._lines]
+
+    def get_logs_at_or_above(self, min_level: str) -> List[str]:
+        """Return buffered lines at or above a level name (fallback: all)."""
+        levels = logging.getLevelNamesMapping()
+        threshold = levels.get(str(min_level).upper())
+        if threshold is None:
+            logger.warning("Unknown log level filter %r — showing all", min_level)
+            with self._lock:
+                return [line for _, line in self._lines]
+        with self._lock:
+            return [
+                line
+                for levelname, line in self._lines
+                if levels.get(levelname, 0) >= threshold
+            ]
 
     def get_level_counts(self) -> Dict[str, int]:
         with self._lock:
@@ -60,11 +75,19 @@ class TerminalLogHandler(logging.Handler):
 terminal_handler = TerminalLogHandler(capacity=_buffer_capacity())
 
 
-def get_terminal_output() -> str:
+LOG_LEVEL_CHOICES = ["DEBUG", "INFO", "WARNING", "ERROR"]
+
+_EMPTY_HINT = "(no log entries yet — processing activity will appear here)"
+
+
+def get_terminal_output(min_level: str = "DEBUG") -> str:
     """Return buffered logs as a single string for Gradio display."""
-    logs = terminal_handler.get_logs()
+    if min_level == "DEBUG":
+        logs = terminal_handler.get_logs()
+    else:
+        logs = terminal_handler.get_logs_at_or_above(min_level)
     if not logs:
-        return "(no log entries yet — processing activity will appear here)"
+        return _EMPTY_HINT
     return "\n".join(logs)
 
 
@@ -85,9 +108,29 @@ def clear_terminal_logs() -> Tuple[str, str]:
     return get_terminal_output(), get_terminal_stats()
 
 
-def refresh_terminal_view() -> Tuple[str, str]:
-    """Refresh log text and stats."""
-    return get_terminal_output(), get_terminal_stats()
+def refresh_terminal_view(min_level: str = "DEBUG") -> Tuple[str, str]:
+    """Refresh log text and stats, honoring the level filter."""
+    return get_terminal_output(min_level), get_terminal_stats()
+
+
+def download_terminal_logs() -> str:
+    """Snapshot the full buffer to a temp file for the download button."""
+    import tempfile
+    import time
+
+    logs = terminal_handler.get_logs()
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix=f"faceoff_logs_{int(time.time())}_",
+        suffix=".log",
+        delete=False,
+    )
+    with tmp:
+        tmp.write("\n".join(logs) if logs else _EMPTY_HINT)
+        tmp.write("\n")
+    logger.info("Log buffer snapshot written to %s", tmp.name)
+    return tmp.name
 
 
 def create_terminal_tab() -> dict:
@@ -104,6 +147,15 @@ def create_terminal_tab() -> dict:
         with gr.Row():
             refresh_btn = gr.Button("🔄 Refresh", size="sm", variant="secondary")
             clear_btn = gr.Button("🗑️ Clear buffer", size="sm", variant="secondary")
+            level_filter = gr.Dropdown(
+                choices=LOG_LEVEL_CHOICES,
+                value="DEBUG",
+                label="Minimum level",
+                scale=0,
+            )
+            download_btn = gr.DownloadButton(
+                "⬇️ Download logs", size="sm", variant="secondary"
+            )
             stats_display = gr.Markdown(value=get_terminal_stats())
 
         log_output = gr.Textbox(
@@ -118,22 +170,35 @@ def create_terminal_tab() -> dict:
 
         refresh_btn.click(
             refresh_terminal_view,
+            inputs=[level_filter],
             outputs=[log_output, stats_display],
         )
         clear_btn.click(
             clear_terminal_logs,
             outputs=[log_output, stats_display],
         )
+        level_filter.change(
+            refresh_terminal_view,
+            inputs=[level_filter],
+            outputs=[log_output, stats_display],
+        )
+        download_btn.click(download_terminal_logs, outputs=[download_btn])
 
         if refresh_seconds > 0:
             timer = gr.Timer(refresh_seconds, active=True)
-            timer.tick(get_terminal_output, outputs=log_output)
+            timer.tick(
+                refresh_terminal_view,
+                inputs=[level_filter],
+                outputs=[log_output, stats_display],
+            )
 
     return {
         "log_output": log_output,
         "stats_display": stats_display,
         "refresh_btn": refresh_btn,
         "clear_btn": clear_btn,
+        "level_filter": level_filter,
+        "download_btn": download_btn,
     }
 
 

@@ -90,3 +90,64 @@ def test_clear_terminal_logs():
     assert len(terminal_handler.get_logs()) == 1
     assert "cleared" in output.lower()
     assert "INFO: 1" in stats
+
+
+def test_level_filter_hides_lower_levels():
+    from ui.components.terminal_tab import get_terminal_output
+
+    logging.getLogger("FaceOff").debug("filter-debug-line")
+    logging.getLogger("FaceOff").warning("filter-warn-line")
+
+    assert "filter-debug-line" in get_terminal_output("DEBUG")
+    warnings_only = get_terminal_output("WARNING")
+    assert "filter-warn-line" in warnings_only
+    assert "filter-debug-line" not in warnings_only
+
+
+def test_unknown_level_filter_shows_everything():
+    from ui.components.terminal_tab import get_terminal_output, terminal_handler
+
+    logging.getLogger("FaceOff").debug("fallback-debug-line")
+    assert terminal_handler.get_logs()
+    assert "fallback-debug-line" in get_terminal_output("NOPE")
+
+
+def test_refresh_view_honors_level_filter():
+    from ui.components.terminal_tab import refresh_terminal_view
+
+    logging.getLogger("FaceOff").debug("refresh-debug-line")
+    logging.getLogger("FaceOff").error("refresh-error-line")
+
+    text, stats = refresh_terminal_view("ERROR")
+    assert "refresh-error-line" in text
+    assert "refresh-debug-line" not in text
+    assert "entries" in stats
+
+
+def test_download_snapshot_contains_buffer(tmp_path, monkeypatch):
+    import os
+
+    from ui.components.terminal_tab import download_terminal_logs
+
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    logging.getLogger("FaceOff").info("download-marker-line")
+
+    path = download_terminal_logs()
+    try:
+        assert path.endswith(".log")
+        with open(path, encoding="utf-8") as fh:
+            assert "download-marker-line" in fh.read()
+    finally:
+        os.unlink(path)
+
+
+def test_terminal_tab_exposes_filter_and_download():
+    import gradio as gr
+
+    from ui.components.terminal_tab import LOG_LEVEL_CHOICES, create_terminal_tab
+
+    with gr.Blocks():
+        comps = create_terminal_tab()
+    assert comps["level_filter"].value == "DEBUG"
+    assert [c[0] for c in comps["level_filter"].choices] == LOG_LEVEL_CHOICES
+    assert "Download" in comps["download_btn"].label
