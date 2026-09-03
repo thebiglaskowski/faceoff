@@ -319,6 +319,15 @@ def wire_image_tab(img_components, gallery_components):
         ],
     )
 
+    # A new source invalidates index-based mappings too.
+    img_components["source_img"].change(
+        clear_face_mappings_image,
+        outputs=[
+            img_components["face_mapping_status"],
+            img_components["current_mappings"],
+        ],
+    )
+
     img_components["add_mapping_btn"].click(
         add_face_mapping_image,
         inputs=[

@@ -354,6 +354,15 @@ def wire_gif_tab(gif_components, gallery_components):
         ],
     )
 
+    # A new source invalidates index-based mappings too.
+    gif_components["source_gif"].change(
+        clear_face_mappings_gif,
+        outputs=[
+            gif_components["face_mapping_status_gif"],
+            gif_components["current_mappings_gif"],
+        ],
+    )
+
     # GIF processing button with auto-refresh of gallery
     gif_components["run_gif_btn"].click(
         process_gif,

@@ -75,6 +75,24 @@ def test_stream_yields_live_lines_and_final_status():
     assert "line2" in out[-1]
 
 
+def test_tab_stream_disables_button_during_run():
+    from unittest.mock import patch
+
+    from ui.components.models_tab import _stream_and_refresh
+
+    with patch(
+        "ui.components.models_tab.stream_model_download",
+        return_value=iter(["chunk-a", "chunk-b"]),
+    ):
+        out = list(_stream_and_refresh("All models (recommended)", False))
+    assert len(out) == 3  # 2 live + 1 final refresh
+    assert out[0][0] == "chunk-a"
+    assert out[0][3]["interactive"] is False
+    assert out[-1][0] == "chunk-b"
+    assert out[-1][3]["interactive"] is True
+    assert isinstance(out[-1][1], list)  # refreshed model table
+
+
 def test_stream_cancel_terminates_proc():
     mm = _load()
     from unittest.mock import MagicMock

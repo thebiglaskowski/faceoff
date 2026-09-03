@@ -14,12 +14,17 @@ from processing.model_manager import (
 
 
 def _stream_and_refresh(selection: str, force: bool):
-    """Stream the download log live; refresh table + cache at the end."""
+    """Stream the download log live; refresh table + cache at the end.
+
+    The Download button stays disabled for the whole run: concurrent runs
+    share one cancel flag, so a second run would break the first run's
+    Cancel.
+    """
     last = ""
     for chunk in stream_model_download(selection, force):
         last = chunk
-        yield last, gr.skip(), gr.skip()
-    yield last, get_model_status(), get_trt_cache_text()
+        yield last, gr.skip(), gr.skip(), gr.update(interactive=False)
+    yield last, get_model_status(), get_trt_cache_text(), gr.update(interactive=True)
 
 
 def create_models_tab() -> dict:
@@ -81,7 +86,7 @@ def create_models_tab() -> dict:
         download_btn.click(
             _stream_and_refresh,
             inputs=[download_dropdown, force_checkbox],
-            outputs=[download_log, model_table, cache_text],
+            outputs=[download_log, model_table, cache_text, download_btn],
             show_progress="full",
         )
         cancel_btn.click(

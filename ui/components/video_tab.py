@@ -362,6 +362,15 @@ def wire_video_tab(vid_components, gallery_components):
         ],
     )
 
+    # A new source invalidates index-based mappings too.
+    vid_components["source_vid"].change(
+        clear_face_mappings_video,
+        outputs=[
+            vid_components["face_mapping_status_vid"],
+            vid_components["current_mappings_vid"],
+        ],
+    )
+
     # Video processing button with auto-refresh of gallery
     vid_components["run_video_btn"].click(
         process_video,
