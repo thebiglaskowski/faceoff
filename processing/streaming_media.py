@@ -376,23 +376,6 @@ def process_streaming(
     progress.log(f"✅ Found {len(src_faces)} source face(s)")
     _stage(0.1, f"Detection complete — swapping {ctx.media_type}…")
 
-    if face_mappings:
-        from utils.validation import validate_face_mappings_or_raise
-
-        with video_io.open_streaming_reader(
-            ctx.dest_path,
-            fps=ctx.fps if ctx.media_type == "gif" else None,
-            hwaccel=config.streaming_hwaccel_decode,
-        ) as preview_reader:
-            preview_frames = preview_reader.read_chunk(1)
-        if preview_frames:
-            preview_dst = processor.get_faces(preview_frames[0])
-            preview_dst = filter_faces_by_confidence(preview_dst, face_confidence)
-            preview_dst = sort_faces_by_position(preview_dst)
-            validate_face_mappings_or_raise(
-                face_mappings, len(src_faces), len(preview_dst)
-            )
-
     enhancer: Optional[InMemoryEnhancer] = None
     restoration_session: Optional[RestorationSession] = None
     if enhance:
@@ -510,6 +493,26 @@ def process_streaming(
             pinned_pool_size=chunk_size if use_zero_copy else 0,
             use_nvcodec=use_nvcodec,
         ) as reader:
+            # Validate face mappings against the main reader's first
+            # chunk instead of opening a second preview reader.
+            pending_chunk = reader.read_chunk(chunk_size)
+            if face_mappings and pending_chunk:
+                from utils.validation import validate_face_mappings_or_raise
+
+                preview_dst = processor.get_faces(pending_chunk[0])
+                preview_dst = filter_faces_by_confidence(preview_dst, face_confidence)
+                preview_dst = sort_faces_by_position(preview_dst)
+                validate_face_mappings_or_raise(
+                    face_mappings, len(src_faces), len(preview_dst)
+                )
+
+            def _next_chunk():
+                nonlocal pending_chunk
+                if pending_chunk is not None:
+                    chunk, pending_chunk = pending_chunk, None
+                    return chunk
+                return reader.read_chunk(chunk_size)
+
             if ctx.media_type == "video":
                 with video_io.StreamingVideoWriter(
                     output_path,
@@ -525,7 +528,7 @@ def process_streaming(
                     with progress.track(0, "Processing frames", "frame") as pbar:
                         while True:
                             raise_if_cancelled()
-                            chunk = reader.read_chunk(chunk_size)
+                            chunk = _next_chunk()
                             if not chunk:
                                 break
                             processed, frame_buffer = _process_chunk_with_oom_fallback(
@@ -565,7 +568,7 @@ def process_streaming(
                     with progress.track(0, "Processing GIF frames", "frame") as pbar:
                         while True:
                             raise_if_cancelled()
-                            chunk = reader.read_chunk(chunk_size)
+                            chunk = _next_chunk()
                             if not chunk:
                                 break
                             processed, frame_buffer = _process_chunk_with_oom_fallback(

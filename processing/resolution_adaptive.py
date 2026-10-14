@@ -287,7 +287,7 @@ def detect_and_swap_adaptive(
     # Process each face
     if face_mappings:
         for src_idx, dst_idx in face_mappings:
-            if src_idx < len(src_faces) and dst_idx < len(dst_faces):
+            if 0 <= src_idx < len(src_faces) and 0 <= dst_idx < len(dst_faces):
                 face = dst_faces[dst_idx]
                 # Swap directly on full frame (insightface handles region extraction)
                 result = processor.swapper.get(

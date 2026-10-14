@@ -71,3 +71,36 @@ def test_gif_encode_options_safe_defaults():
     colors, dither = vio._gif_encode_options()
     assert 2 <= colors <= 256
     assert isinstance(dither, bool)
+
+
+def test_streaming_gif_writer_quantizes_frames_from_disk(tmp_path):
+    """Finalize must quantize frame-by-frame from disk, not load all frames."""
+    from unittest.mock import patch
+
+    from PIL import Image
+
+    vio = _load()
+    out = tmp_path / "streamed.gif"
+    writer = vio.StreamingGifWriter(out, tmp_path / "frames", durations=[100, 120, 140])
+    writer.write_frames(
+        [
+            np.full((16, 16, 3), (220, 30, 30), dtype=np.uint8),
+            np.full((16, 16, 3), (30, 220, 30), dtype=np.uint8),
+            np.full((16, 16, 3), (30, 30, 220), dtype=np.uint8),
+        ]
+    )
+    with patch.object(
+        vio,
+        "quantize_frames_global_palette",
+        side_effect=AssertionError("all frames loaded into memory"),
+    ):
+        assert writer.finalize() is True
+    writer.cleanup()
+
+    with Image.open(out) as im:
+        assert getattr(im, "n_frames", 1) == 3
+        durations = []
+        for idx in range(3):
+            im.seek(idx)
+            durations.append(im.info.get("duration"))
+    assert durations == [100, 120, 140]

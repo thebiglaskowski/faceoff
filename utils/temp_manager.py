@@ -6,6 +6,7 @@ Ensures all temp files are organized in the temp/ directory with automatic clean
 import logging
 import shutil
 import tempfile
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
@@ -76,7 +77,7 @@ class TempManager:
 
         temp_dir = self.get_temp_dir(category)
         timestamp = int(time.time() * 1000)
-        filename = f"{prefix}{timestamp}{suffix}"
+        filename = f"{prefix}{timestamp}_{uuid.uuid4().hex[:12]}{suffix}"
         return temp_dir / filename
 
     @contextmanager
@@ -142,7 +143,7 @@ class TempManager:
 
         temp_dir = self.get_temp_dir(category)
         timestamp = int(time.time() * 1000)
-        temp_subdir = temp_dir / f"{prefix}{timestamp}"
+        temp_subdir = temp_dir / f"{prefix}{timestamp}_{uuid.uuid4().hex[:12]}"
         temp_subdir.mkdir(parents=True, exist_ok=True)
 
         try:

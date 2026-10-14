@@ -439,6 +439,22 @@ class TestGradioPathAndMappings:
                 [(0, 1)], src_face_count=1, dst_face_count=1
             )
 
+    def test_validate_face_mappings_or_raise_rejects_negative_indices(self):
+        from utils.validation import validate_face_mappings_or_raise
+
+        for bad in ([(-1, 0)], [(0, -1)], [(-1, -1)]):
+            with pytest.raises(ValueError, match="No valid face mappings"):
+                validate_face_mappings_or_raise(bad, src_face_count=1, dst_face_count=1)
+
+    def test_validate_face_mappings_or_raise_ignores_negative_when_valid_exists(
+        self,
+    ):
+        from utils.validation import validate_face_mappings_or_raise
+
+        validate_face_mappings_or_raise(
+            [(-1, -1), (0, 0)], src_face_count=1, dst_face_count=1
+        )
+
     def test_is_animated_gif_image_detects_multi_frame(self):
         from PIL import Image
 

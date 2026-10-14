@@ -319,6 +319,7 @@ def process_image(
         tensorrt_fp16,
         enhancement_model,
         restoration_model,
+        progress=progress,
         media_kind="image",
         expected_media_type="image",
     )
@@ -363,6 +364,7 @@ def process_gif(
         tensorrt_fp16,
         enhancement_model,
         restoration_model,
+        progress=progress,
         media_kind="gif",
         expected_media_type="gif",
     )
@@ -407,6 +409,7 @@ def process_video(
         tensorrt_fp16,
         enhancement_model,
         restoration_model,
+        progress=progress,
         media_kind="video",
         expected_media_type="video",
     )

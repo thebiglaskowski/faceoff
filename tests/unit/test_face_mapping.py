@@ -42,6 +42,24 @@ def test_add_mapping_garbage_selection_warns_without_raising():
     manager.add.assert_not_called()
 
 
+def test_swap_frame_ignores_negative_mapping_indices():
+    """Negative mapping indices must not silently swap the last face."""
+    import numpy as np
+
+    from processing.frame_batch import _swap_frame
+
+    calls = []
+
+    class FakeProcessor:
+        def swap_face(self, frame, dst, src):
+            calls.append((dst, src))
+            return frame
+
+    frame = np.zeros((4, 4, 3), dtype=np.uint8)
+    _swap_frame(frame, [object()], [object()], [(-1, -1)], processor=FakeProcessor())
+    assert calls == []
+
+
 def test_clear_mapping_resets_display():
     mod = _helper()
     manager = MagicMock()

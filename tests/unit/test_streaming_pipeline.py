@@ -371,6 +371,170 @@ class TestPinnedEncode:
         writer.write_frames_pinned.assert_not_called()
         writer.write_frames.assert_called_once_with(frames)
 
+    def test_probe_video_uses_single_ffprobe_call(self):
+        """Video + audio metadata must come from one ffprobe invocation."""
+        import json
+
+        payload = {
+            "streams": [
+                {
+                    "index": 0,
+                    "codec_name": "h264",
+                    "codec_type": "video",
+                    "width": 320,
+                    "height": 240,
+                    "r_frame_rate": "30000/1001",
+                    "avg_frame_rate": "30000/1001",
+                },
+                {"index": 1, "codec_name": "aac", "codec_type": "audio"},
+            ],
+            "format": {"duration": "12.5"},
+        }
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            return MagicMock(returncode=0, stdout=json.dumps(payload), stderr="")
+
+        with patch.object(video_io.subprocess, "run", side_effect=fake_run):
+            meta = video_io.probe_video("clip.mp4")
+
+        assert len(calls) == 1
+        assert meta["width"] == 320
+        assert meta["height"] == 240
+        assert meta["video_codec"] == "h264"
+        assert meta["video_idx"] == 0
+        assert meta["duration"] == pytest.approx(12.5)
+        assert meta["fps"] == pytest.approx(29.97, abs=0.01)
+        assert meta["has_audio"] is True
+        assert meta["audio_codec"] == "aac"
+
+    def test_detect_faces_for_batch_runs_sequentially_in_order(self):
+        """Detection targets one locked model instance, so no thread pool."""
+        from processing.frame_batch import _detect_faces_for_batch
+
+        frames = [0, 1, 2]
+        with patch(
+            "processing.frame_batch.ThreadPoolExecutor",
+            side_effect=AssertionError("thread pool used"),
+        ):
+            result = _detect_faces_for_batch(frames, lambda f: [f * 10], 0.5, None)
+
+        assert result == [[0], [10], [20]]
+
+    def test_write_frames_writes_exact_frame_bytes(self, tmp_path):
+        """The per-frame writer must emit frames byte-for-byte, in order."""
+        import io
+
+        stdin = io.BytesIO()
+        fake_proc = MagicMock()
+        fake_proc.stdin = stdin
+        fake_proc.stderr = None
+        frames = [
+            np.full((4, 6, 3), 10, dtype=np.uint8),
+            np.full((4, 6, 3), 200, dtype=np.uint8),
+        ]
+        with patch.object(video_io.subprocess, "Popen", return_value=fake_proc):
+            writer = video_io.StreamingVideoWriter(
+                tmp_path / "out.mp4", 6, 4, 2.0, use_nvenc=False
+            )
+            writer.write_frames(frames)
+
+        assert stdin.getvalue() == frames[0].tobytes() + frames[1].tobytes()
+        assert writer.frames_written == 2
+
+    def test_streaming_validates_mappings_without_second_reader(
+        self, tmp_path, mock_gpu
+    ):
+        """Face-mapping validation reuses the main reader's first chunk."""
+        from processing.streaming_media import StreamingContext, process_streaming
+        from processing.workload_profile import WorkloadProfile
+
+        profile = WorkloadProfile(
+            name="test",
+            frame_retention=False,
+            paste_on_gpu=False,
+            detection_on_gpu=False,
+            enhancement_chain=False,
+            zero_copy=False,
+            pinned_encode=False,
+            defer_download=False,
+        )
+        frame = np.zeros((4, 4, 3), dtype=np.uint8)
+        reader = MagicMock()
+        reader.__enter__.return_value = reader
+        reader.read_chunk.side_effect = [[frame], []]
+        reader.width = 4
+        reader.height = 4
+        writer = MagicMock()
+        writer.__enter__.return_value = writer
+        writer.frames_written = 1
+        writer.finalize.return_value = True
+        processor = MagicMock()
+        processor.device_id = 0
+        processor.get_faces.return_value = [MagicMock()]
+
+        ctx = StreamingContext(
+            media_type="video",
+            dest_path="test.mp4",
+            output_dir=tmp_path,
+            fps=30.0,
+            width=4,
+            height=4,
+        )
+        with (
+            patch(
+                "processing.streaming_media.video_io.open_streaming_reader",
+                return_value=reader,
+            ) as mock_open,
+            patch(
+                "processing.streaming_media.video_io.StreamingVideoWriter",
+                return_value=writer,
+            ),
+            patch(
+                "processing.streaming_media._detect_source_faces",
+                return_value=[MagicMock()],
+            ),
+            patch(
+                "processing.streaming_media.filter_faces_by_confidence",
+                side_effect=lambda faces, _: faces,
+            ),
+            patch(
+                "processing.streaming_media.sort_faces_by_position",
+                side_effect=lambda faces: faces,
+            ),
+            patch("processing.streaming_media.log_workload_profile"),
+            patch(
+                "processing.streaming_media.get_progress_tracker",
+                return_value=MagicMock(),
+            ),
+            patch("processing.streaming_media.MemoryManager"),
+            patch(
+                "processing.streaming_media._effective_chunk_size",
+                return_value=2,
+            ),
+            patch(
+                "processing.streaming_media._process_chunk_with_oom_fallback",
+                return_value=([frame], None),
+            ),
+            patch(
+                "processing.streaming_media._postprocess_chunk",
+                return_value=[frame],
+            ),
+            patch("processing.streaming_media._write_chunk_frames"),
+        ):
+            _, output_path = process_streaming(
+                processor,
+                np.zeros((4, 4, 3), dtype=np.uint8),
+                ctx,
+                device_ids=[0],
+                face_mappings=[(0, 0)],
+                workload_profile=profile,
+            )
+
+        assert mock_open.call_count == 1
+        assert output_path.endswith(".mp4")
+
     def test_write_chunk_frames_pinned_rejects_scalar_batch(self, mock_gpu):
         from processing.streaming_media import _write_chunk_frames
 

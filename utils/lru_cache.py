@@ -86,8 +86,19 @@ class LRUModelCache:
         with self._lock:
             # If key exists, update and move to end
             if key in self._cache:
+                old_value = self._cache[key]
                 self._cache[key] = value
                 self._cache.move_to_end(key)
+                if old_value is not value and self._cleanup_fn:
+                    try:
+                        self._cleanup_fn(old_value)
+                    except Exception as e:
+                        logger.warning(
+                            "[%s] Cleanup failed for replaced %s: %s",
+                            self.name,
+                            key,
+                            e,
+                        )
                 return
 
             # Evict oldest if at capacity

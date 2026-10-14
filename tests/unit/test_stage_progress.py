@@ -120,6 +120,44 @@ class TestStageCallback:
         assert calls[0] == (0.02, "Validating inputs…")
         assert (0.45, "Face swap complete — restoring…") in calls
 
+    @pytest.mark.parametrize(
+        "wrapper_name", ["process_image", "process_gif", "process_video"]
+    )
+    def test_tab_wrapper_forwards_progress_to_process_input(self, wrapper_name):
+        """Gradio injects progress into the tab wrappers; it must not be dropped."""
+        import ui.handlers.processing_handlers as handlers
+
+        seen = {}
+
+        def fake_process_input(*args, **kwargs):
+            seen["progress"] = kwargs.get(
+                "progress", args[18] if len(args) > 18 else None
+            )
+            return "ok"
+
+        sentinel = object()
+        with patch.object(handlers, "_process_input", side_effect=fake_process_input):
+            wrapper = getattr(handlers, wrapper_name)
+            result = wrapper(
+                "src",
+                "target",
+                False,
+                0.5,
+                None,
+                "model",
+                0.5,
+                256,
+                4,
+                False,
+                0,
+                False,
+                0.5,
+                progress=sentinel,
+            )
+
+        assert result == "ok"
+        assert seen["progress"] is sentinel
+
     def test_process_input_survives_failing_progress_sink(self, tmp_path, monkeypatch):
         """A raising progress() must not break the swap itself."""
         from PIL import Image as PILImage

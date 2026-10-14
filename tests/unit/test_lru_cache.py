@@ -46,6 +46,27 @@ def test_get_refreshes_recency():
     assert cache.get("a") == 1
 
 
+def test_put_overwrite_cleans_up_replaced_value():
+    LRUModelCache = _load()
+    cleaned = []
+    cache = LRUModelCache("t", max_size=2, cleanup_fn=cleaned.append)
+    cache.put("a", 1)
+    cache.put("a", 2)
+    assert cleaned == [1]
+    assert cache.get("a") == 2
+
+
+def test_put_same_object_does_not_clean_it_up():
+    LRUModelCache = _load()
+    cleaned = []
+    cache = LRUModelCache("t", max_size=2, cleanup_fn=cleaned.append)
+    model = object()
+    cache.put("a", model)
+    cache.put("a", model)
+    assert cleaned == []
+    assert cache.get("a") is model
+
+
 def test_remove_and_clear():
     LRUModelCache = _load()
     cache = LRUModelCache("t", max_size=5)

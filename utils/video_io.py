@@ -5,8 +5,8 @@ Replaces moviepy for video/GIF read, frame extraction, and video writing.
 All operations are subprocess-based; no Python video codec dependencies.
 """
 
+import json
 import logging
-import re
 import subprocess
 import threading
 from dataclasses import dataclass
@@ -76,6 +76,20 @@ class _FfmpegStderrDrain:
 # =============================================================================
 
 
+def _parse_frame_rate(rate) -> float:
+    """Parse an ffprobe frame-rate value ("30000/1001" or numeric) to fps."""
+    if not rate:
+        return 0.0
+    try:
+        if isinstance(rate, str) and "/" in rate:
+            num, den = rate.split("/", 1)
+            num, den = float(num), float(den)
+            return num / den if den > 0 else 0.0
+        return float(rate)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def probe_video(video_path: str) -> dict:
     """
     Probe video metadata using ffprobe --show_entries.
@@ -90,10 +104,9 @@ def probe_video(video_path: str) -> dict:
             "ffprobe",
             "-v",
             "error",
-            "-select_streams",
-            "v",
             "-show_entries",
-            "stream=width,height,codec_name,r_frame_rate,avg_frame_rate,index",
+            "stream=codec_type,width,height,codec_name,r_frame_rate,"
+            "avg_frame_rate,index",
             "-show_entries",
             "format=duration",
             "-of",
@@ -105,77 +118,41 @@ def probe_video(video_path: str) -> dict:
             logger.error("ffprobe failed: %s", result.stderr.strip())
             return {}
 
-        raw = result.stdout.strip()
-        # ffprobe JSON output -- parse manually for reliability
-        # Extract duration
-        dur_match = re.search(r'"duration"\s*:\s*"([^"]+)"', raw)
-        duration = float(dur_match.group(1)) if dur_match else 0.0
-
-        # Extract stream info
-        # width/hight/codec_name/r_frame_rate/avg_frame_rate/index
-        streams = re.findall(r"\{[^}]+\}", raw)
-        video_stream = streams[0] if streams else "{}"
-
-        def _json_val(obj, key):
-            m = re.search(rf'"{key}"\s*:\s*"([^"]+)"', obj)
-            if m:
-                return m.group(1)
-            m = re.search(rf'"{key}"\s*:\s*([0-9.]+)', obj)
-            if m:
-                return float(m.group(1))
-            return None
-
-        width = int(_json_val(video_stream, "width") or 0)
-        height = int(_json_val(video_stream, "height") or 0)
-        video_codec = _json_val(video_stream, "codec_name") or ""
-        r_frame = _json_val(video_stream, "r_frame_rate") or ""
-        video_idx = int(_json_val(video_stream, "index") or -1)
-
-        # Calculate fps from fraction string "numerator/denominator"
-        fps = 0.0
-        if r_frame and "/" in r_frame:
-            num, den = r_frame.split("/")
-            num, den = int(num), int(den)
-            if den > 0:
-                fps = num / den
-        else:
-            try:
-                fps = float(r_frame)
-            except (ValueError, TypeError):
-                pass
-
-        # Check for audio stream
-        has_audio = False
-        audio_codec = ""
         try:
-            cmd2 = [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "a",
-                "-show_entries",
-                "stream=codec_name",
-                "-of",
-                "json",
-                video_path,
-            ]
-            res2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=15)
-            if res2.returncode == 0 and "codec_name" in res2.stdout:
-                has_audio = True
-                m = re.search(r'"codec_name"\s*:\s*"([^"]+)"', res2.stdout)
-                if m:
-                    audio_codec = m.group(1)
-        except Exception:
-            pass
+            data = json.loads(result.stdout.strip() or "{}")
+        except ValueError:
+            logger.error("ffprobe returned unparseable output for %s", video_path)
+            return {}
+
+        streams = data.get("streams") or []
+        video_stream = next(
+            (s for s in streams if s.get("codec_type") == "video"),
+            streams[0] if streams else {},
+        )
+        audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), {})
+
+        try:
+            duration = float((data.get("format") or {}).get("duration") or 0.0)
+        except (ValueError, TypeError):
+            duration = 0.0
+
+        width = int(video_stream.get("width") or 0)
+        height = int(video_stream.get("height") or 0)
+        video_codec = video_stream.get("codec_name") or ""
+        _index = video_stream.get("index")
+        video_idx = int(_index) if _index is not None else -1
+
+        fps = _parse_frame_rate(video_stream.get("r_frame_rate"))
+        if fps <= 0:
+            fps = _parse_frame_rate(video_stream.get("avg_frame_rate"))
 
         return {
             "fps": fps,
             "duration": duration,
             "width": width,
             "height": height,
-            "has_audio": has_audio,
-            "audio_codec": audio_codec,
+            "has_audio": bool(audio_stream),
+            "audio_codec": audio_stream.get("codec_name") or "",
             "video_codec": video_codec,
             "video_idx": video_idx,
         }
@@ -514,8 +491,7 @@ class StreamingVideoWriter:
                 arr = arr[:, :, :3]
             if not arr.flags["C_CONTIGUOUS"]:
                 arr = np.ascontiguousarray(arr)
-            data = arr.tobytes()
-            view = memoryview(data)
+            view = memoryview(arr)
             offset = 0
             while offset < len(view):
                 written = self._proc.stdin.write(view[offset:])
@@ -574,22 +550,14 @@ def _gif_encode_options():
     return max(2, min(colors, 256)), dither
 
 
-def quantize_frames_global_palette(pil_frames, colors=256, dither=False):
-    """Quantize RGB(A) frames against ONE shared palette.
-
-    PIL's default GIF save quantizes every frame independently with
-    Floyd-Steinberg dithering, which reads as crawling static on skin
-    and gradients (and shimmers, since each frame picks a different
-    palette). A single palette built from first/middle/last frames with
-    dithering off removes both.
-    """
+def _global_palette_source(rgb_frames, colors=256):
+    """Build a shared palette image from sampled RGB frames."""
     from PIL import Image
 
-    rgb = [f.convert("RGB") for f in pil_frames]
-    n = len(rgb)
+    n = len(rgb_frames)
     thumbs = []
     for i in sorted({0, n // 2, n - 1}):
-        thumb = rgb[i].copy()
+        thumb = rgb_frames[i].copy()
         thumb.thumbnail((160, 160))
         thumbs.append(thumb)
     strip_width = sum(t.width for t in thumbs)
@@ -599,19 +567,34 @@ def quantize_frames_global_palette(pil_frames, colors=256, dither=False):
     for thumb in thumbs:
         strip.paste(thumb, (x, 0))
         x += thumb.width
-    palette_src = strip.quantize(
-        colors=colors, method=Image.MEDIANCUT, dither=Image.NONE
-    )
+    return strip.quantize(colors=colors, method=Image.MEDIANCUT, dither=Image.NONE)
+
+
+def _quantize_to_palette(rgb_frame, palette_src, colors=256, dither=False):
+    """Quantize one RGB frame against a shared palette."""
+    from PIL import Image
+
     dither_mode = Image.FLOYDSTEINBERG if dither else Image.NONE
-    return [
-        f.quantize(
-            colors=colors,
-            method=Image.MEDIANCUT,
-            dither=dither_mode,
-            palette=palette_src,
-        )
-        for f in rgb
-    ]
+    return rgb_frame.quantize(
+        colors=colors,
+        method=Image.MEDIANCUT,
+        dither=dither_mode,
+        palette=palette_src,
+    )
+
+
+def quantize_frames_global_palette(pil_frames, colors=256, dither=False):
+    """Quantize RGB(A) frames against ONE shared palette.
+
+    PIL's default GIF save quantizes every frame independently with
+    Floyd-Steinberg dithering, which reads as crawling static on skin
+    and gradients (and shimmers, since each frame picks a different
+    palette). A single palette built from first/middle/last frames with
+    dithering off removes both.
+    """
+    rgb = [f.convert("RGB") for f in pil_frames]
+    palette_src = _global_palette_source(rgb, colors)
+    return [_quantize_to_palette(f, palette_src, colors, dither) for f in rgb]
 
 
 class StreamingGifWriter:
@@ -651,28 +634,38 @@ class StreamingGifWriter:
             return False
 
         paths = sorted(self.temp_dir.glob("frame_*.png"))
+        if not paths:
+            logger.error("No frames to write GIF")
+            return False
         from PIL import Image
 
-        pil_frames = []
-        for p in paths:
-            pil_frames.append(Image.open(p).convert("RGBA"))
-
         durations = self.durations
-        if not durations or len(durations) != len(pil_frames):
-            default_ms = int(1000 / 10.0)
-            durations = [default_ms] * len(pil_frames)
-        elif len(durations) > len(pil_frames):
-            durations = durations[: len(pil_frames)]
-        elif len(durations) < len(pil_frames):
-            durations = (durations * ((len(pil_frames) // len(durations)) + 1))[
-                : len(pil_frames)
-            ]
+        if not durations or len(durations) != len(paths):
+            durations = [int(1000 / 10.0)] * len(paths)
 
+        quantized = []
         try:
             colors, dither = _gif_encode_options()
-            quantized = quantize_frames_global_palette(
-                pil_frames, colors=colors, dither=dither
-            )
+            # Build the shared palette from sampled frames only, then
+            # quantize one disk frame at a time — never hold the whole
+            # GIF as RGBA/RGB images in RAM.
+            samples = []
+            for idx in sorted({0, len(paths) // 2, len(paths) - 1}):
+                with Image.open(paths[idx]) as sample:
+                    samples.append(sample.convert("RGB"))
+            palette_src = _global_palette_source(samples, colors)
+            for sample in samples:
+                sample.close()
+            palette_src.load()
+            for path in paths:
+                with Image.open(path) as frame:
+                    rgb = frame.convert("RGB")
+                try:
+                    quantized.append(
+                        _quantize_to_palette(rgb, palette_src, colors, dither)
+                    )
+                finally:
+                    rgb.close()
             quantized[0].save(
                 str(self.output_path),
                 save_all=True,
@@ -690,6 +683,9 @@ class StreamingGifWriter:
         except Exception as exc:
             logger.error("Streaming GIF encode failed: %s", exc)
             return False
+        finally:
+            for frame in quantized:
+                frame.close()
 
     def cleanup(self) -> None:
         import shutil

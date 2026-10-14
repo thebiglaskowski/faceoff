@@ -6,7 +6,6 @@ import io
 import logging
 import sys
 import threading
-import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional
@@ -255,15 +254,3 @@ class MediaProcessor:
             return image
         except Exception as e:
             raise FileProcessingError("Failed to read image") from e
-
-    def write_image(self, file_path: str, image: np.ndarray) -> str:
-        path_obj = Path(file_path)
-        unique_filename = f"{path_obj.stem}_{int(time.time())}{path_obj.suffix}"
-        resolved_path = path_obj.resolve().parent / unique_filename
-        try:
-            success = cv2.imwrite(str(resolved_path), image)
-            if not success:
-                raise FileProcessingError(f"Failed to write image: {resolved_path}")
-            return str(resolved_path)
-        except Exception as e:
-            raise FileProcessingError("Failed to write image") from e

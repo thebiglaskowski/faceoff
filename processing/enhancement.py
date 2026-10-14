@@ -80,8 +80,17 @@ def _get_upsampler(
     from basicsr.archs.rrdbnet_arch import RRDBNet
     from realesrgan import RealESRGANer
 
-    # Create cache key
-    cache_key = (model_name, gpu_id, tile_size, pre_pad, use_fp32)
+    # Create cache key — every construction parameter belongs in it, or a
+    # cached upsampler silently ignores the caller's new value.
+    cache_key = (
+        model_name,
+        gpu_id,
+        tile_size,
+        tile_pad,
+        pre_pad,
+        use_fp32,
+        denoise_strength if model_name == "realesr-general-x4v3" else None,
+    )
 
     cached = _upsampler_cache.get(cache_key)
     if cached is not None:

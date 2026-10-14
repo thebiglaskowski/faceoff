@@ -114,12 +114,9 @@ def _detect_faces_for_batch(
                 faces = detect_fn(frame)
             all_dst_faces.append(faces)
     else:
-        workers = max(1, config.workers_per_gpu) if len(frames) > 1 else 1
-        if workers > 1:
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                all_dst_faces = list(executor.map(detect_fn, frames))
-        else:
-            all_dst_faces = [detect_fn(frame) for frame in frames]
+        # Detection funnels into one lock-guarded model instance, so a
+        # thread pool only adds churn while the calls serialize anyway.
+        all_dst_faces = [detect_fn(frame) for frame in frames]
     all_dst_faces = [
         filter_faces_by_confidence(faces, face_confidence) for faces in all_dst_faces
     ]
@@ -151,8 +148,8 @@ def _swap_frame(
     if face_mappings:
         for src_idx, dst_idx in face_mappings:
             if (
-                src_idx < len(src_faces)
-                and dst_idx < len(dst_faces)
+                0 <= src_idx < len(src_faces)
+                and 0 <= dst_idx < len(dst_faces)
                 and dst_faces[dst_idx] is not None
             ):
                 swapped = swap_fn(swapped, dst_faces[dst_idx], src_faces[src_idx])

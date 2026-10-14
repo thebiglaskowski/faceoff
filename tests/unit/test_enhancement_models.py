@@ -913,3 +913,56 @@ class TestUIComponents:
 
         assert "enhancement_model_selector_vid" in source
         assert "restoration_model_selector_vid" in source
+
+
+def test_upsampler_cache_rebuilds_when_denoise_strength_changes(monkeypatch):
+    """A new denoise_strength must not reuse an upsampler built with the old one."""
+    import sys
+    import types
+
+    import processing.enhancement as enhancement
+
+    constructions = []
+
+    class FakeNet:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeUpsampler:
+        def __init__(self, **kwargs):
+            constructions.append(kwargs.get("dni_weight"))
+
+    basicsr = types.ModuleType("basicsr")
+    basicsr_archs = types.ModuleType("basicsr.archs")
+    rrdbnet_arch = types.ModuleType("basicsr.archs.rrdbnet_arch")
+    rrdbnet_arch.RRDBNet = FakeNet
+    realesrgan = types.ModuleType("realesrgan")
+    realesrgan.RealESRGANer = FakeUpsampler
+    realesrgan_archs = types.ModuleType("realesrgan.archs")
+    srvgg_arch = types.ModuleType("realesrgan.archs.srvgg_arch")
+    srvgg_arch.SRVGGNetCompact = FakeNet
+    monkeypatch.setitem(sys.modules, "basicsr", basicsr)
+    monkeypatch.setitem(sys.modules, "basicsr.archs", basicsr_archs)
+    monkeypatch.setitem(sys.modules, "basicsr.archs.rrdbnet_arch", rrdbnet_arch)
+    monkeypatch.setitem(sys.modules, "realesrgan", realesrgan)
+    monkeypatch.setitem(sys.modules, "realesrgan.archs", realesrgan_archs)
+    monkeypatch.setitem(sys.modules, "realesrgan.archs.srvgg_arch", srvgg_arch)
+
+    enhancement.clear_enhancement_cache()
+    try:
+        enhancement._get_upsampler(
+            model_name="realesr-general-x4v3",
+            gpu_id=0,
+            tile_size=0,
+            denoise_strength=0.2,
+        )
+        enhancement._get_upsampler(
+            model_name="realesr-general-x4v3",
+            gpu_id=0,
+            tile_size=0,
+            denoise_strength=0.8,
+        )
+    finally:
+        enhancement.clear_enhancement_cache()
+
+    assert constructions == [0.2, 0.8]

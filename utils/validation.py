@@ -241,7 +241,7 @@ def validate_face_mappings_or_raise(
     valid = [
         (src_idx, dst_idx)
         for src_idx, dst_idx in face_mappings
-        if src_idx < src_face_count and dst_idx < dst_face_count
+        if 0 <= src_idx < src_face_count and 0 <= dst_idx < dst_face_count
     ]
     if valid:
         return

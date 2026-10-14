@@ -114,7 +114,9 @@ def process_image(
         swaps_applied = 0
         with progress.track(len(face_mappings), "Swapping faces", "face") as pbar:
             for src_idx, dst_idx in face_mappings:
-                if src_idx >= len(src_faces) or dst_idx >= len(dst_faces):
+                if not (
+                    0 <= src_idx < len(src_faces) and 0 <= dst_idx < len(dst_faces)
+                ):
                     pbar.update(1)
                     continue
                 swapped = processor.swapper.get(
