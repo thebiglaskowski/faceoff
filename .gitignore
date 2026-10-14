@@ -30,6 +30,7 @@ temp_gif_enhanced/
 cache/
 *.cache
 tensorrt_cache/
+.ruff_cache/
 
 # --- Tests (exclude pycache and test outputs, but track test files) ---
 tests/__pycache__/
@@ -41,6 +42,8 @@ coverage.xml
 
 # --- Config/environment for local machine only ---
 *.env
+.env.*
+!.env.example
 
 # --- Claude Code local files ---
 .claude/
