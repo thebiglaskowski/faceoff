@@ -56,7 +56,9 @@ class FaceRestorer:
                 import shutil
                 import urllib.request
 
-                url = f"https://github.com/TencentARC/GFPGAN/releases/download/v{self.model_version}.0/{model_name}"
+                # Both supported weights (v1.3 and v1.4) are published under
+                # the v1.3.0 release tag — there is no v1.4.0 release.
+                url = f"https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/{model_name}"
                 try:
                     # urlopen (not urlretrieve) so a stalled connection
                     # times out instead of hanging the worker forever.
